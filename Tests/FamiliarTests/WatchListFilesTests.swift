@@ -32,7 +32,7 @@ struct WatchListFilesTests {
             catch { return WatchListStore.reason(error) }
         }
         #expect(problem("[1, 2]") == "it must be one JSON object: { … }.")
-        #expect(problem("{\"name\": \"x\"}") == "it needs items: a list of item ids or page addresses.")
+        #expect(problem("{\"name\": \"x\"}") == "it needs items: a list of item ids or page addresses, or an items file beside it.")
         #expect(problem("{\"items\": \"123\"}") == "items must be a list of item ids or page addresses, [ … ].")
         #expect(problem("{\"items\": [true]}") == "item 1 must be an id or page address in quotes, or an object with a key: { \"key\": … }.")
         #expect(problem("{\"items\": [\"1\"], \"every_minutes\": \"often\"}") == "every_minutes must be a number of minutes, 5 to 240.")
@@ -79,6 +79,62 @@ struct WatchListFilesTests {
                                   createdAt: created)
         try WatchListFiles.readResults(Data(written.utf8), into: &read)
         #expect(read == watch)
+    }
+
+    @Test func anItemsFileIsReadWithTheDelimiterItsNameSays() throws {
+        func rows(_ text: String, _ name: String) throws -> WatchListItemsFile {
+            try WatchListFiles.parseItems(Data(text.utf8), name: name)
+        }
+        let psv = try rows("\u{FEFF}Item | Price | Badge | In stock\r\n123 | $1,299.00 | Deal | yes\r\n456 |  | none | no\r\n\r\n | 5 | x | y\r\n123 | 1 | 2 | 3\r\n789 | 12.5 | Deal; New | TRUE\r\n", "items.psv")
+        #expect(psv.columns == ["Price", "Badge", "In stock"])
+        #expect(psv.rows == [
+            .init(key: "123", expect: ["Price": .number(1299), "Badge": .text("Deal"), "In stock": .flag(true)]),
+            .init(key: "456", expect: ["Badge": WatchListValue.none, "In stock": .flag(false)]),   // an empty cell says nothing
+            .init(key: "789", expect: ["Price": .number(12.5), "Badge": .list(["Deal", "New"]), "In stock": .flag(true)]),
+        ])
+        #expect(psv.skipped == ["row 5 has no item", "row 6 repeats 123"])
+
+        let tsv = try rows("item\tbadges\n1\tnull\n2\t-\n", "items.tsv")
+        #expect(tsv.rows.map(\.expect) == [["badges": WatchListValue.none], ["badges": WatchListValue.none]])
+        let psvWithTabs = try rows("item\tprice\n1\t€5\n", "items.psv")   // a .psv may be separated by tabs
+        #expect(psvWithTabs.rows == [.init(key: "1", expect: ["price": .number(5)])])
+        let csv = try rows("item,price,note\n\"https://shop.example.com/item/1\",\"1,299.00\",\"Say \"\"hi\"\", then go\"\n", "items.csv")
+        #expect(csv.rows == [.init(key: "https://shop.example.com/item/1", expect: ["price": .number(1299), "note": .text("Say \"hi\", then go")])])
+        let plain = try rows("item\n1\n2\n", "items.csv")   // items only, nothing said about them
+        #expect(plain.rows.map(\.key) == ["1", "2"] && plain.rows.allSatisfy { $0.expect.isEmpty })
+        #expect(throws: WatchListError("items.csv is empty: it needs a header row, then one item per row.")) { try rows("\n\n", "items.csv") }
+    }
+
+    @Test func aCellSaysWhatCountsAsRightInPlainTerms() {
+        #expect(WatchListFiles.cell("") == nil && WatchListFiles.cell("   ") == nil)
+        #expect(WatchListFiles.cell("none") == WatchListValue.none && WatchListFiles.cell("NULL") == WatchListValue.none && WatchListFiles.cell("-") == WatchListValue.none)
+        #expect(WatchListFiles.cell("$1,299.50") == .number(1299.5) && WatchListFiles.cell("-3") == .number(-3))
+        #expect(WatchListFiles.cell("Yes") == .flag(true) && WatchListFiles.cell("false") == .flag(false))
+        #expect(WatchListFiles.cell("Deal;New; ") == .list(["Deal", "New"]))
+        #expect(WatchListFiles.cell("Overall winner") == .text("Overall winner"))
+    }
+
+    @Test func startsAndEndsAreReadWithOrWithoutAnOffset() throws {
+        let offset = try #require(WatchListMoment.parse("2026-10-05T00:00:00-04:00"))
+        #expect(offset.date == Date(timeIntervalSince1970: 1_791_172_800))
+        #expect(WatchListMoment.parse("2026-10-05T04:00:00Z")?.date == offset.date)
+        #expect(WatchListMoment.parse("2026-10-05T00:00:00-0400")?.date == offset.date)
+        #expect(WatchListMoment.parse("2026-10-05T00:00-04:00")?.date == offset.date)
+        var local = DateComponents()
+        local.year = 2026; local.month = 10; local.day = 5
+        let midnight = try #require(Calendar.current.date(from: local))   // without an offset: this Mac's time
+        #expect(WatchListMoment.parse("2026-10-05T00:00:00")?.date == midnight)
+        #expect(WatchListMoment.parse("2026-10-05")?.date == midnight)
+        #expect(WatchListMoment.parse("2026-10-05")?.words == "Mon Oct 5, 12:00 AM")
+        #expect(WatchListMoment.parse("soon") == nil)
+
+        let json = #"{"items": ["1"], "starts": "2026-10-05", "ends": "2026-10-31T23:59:00-04:00"}"#
+        let (definition, _) = try WatchListFiles.parseDefinition(Data(json.utf8), folder: "f", created: created)
+        #expect(definition.starts?.date == midnight && definition.ends?.text == "2026-10-31T23:59:00-04:00")
+        #expect(WatchListFiles.definitionText(definition).contains("\"starts\": \"2026-10-05\",\n  \"ends\": \"2026-10-31T23:59:00-04:00\""))
+        #expect(throws: WatchListError("starts must be a date and time like 2026-10-05T00:00:00-04:00 (without the offset, it's this Mac's time).")) {
+            try WatchListFiles.parseDefinition(Data(#"{"items": ["1"], "starts": "next week"}"#.utf8), folder: "f", created: created)
+        }
     }
 
     @Test func numbersAreWrittenAsPeopleWriteThem() {

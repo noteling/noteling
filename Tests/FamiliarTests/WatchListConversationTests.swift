@@ -123,7 +123,7 @@ struct WatchListConversationTests {
         #expect(items[1]["counts_as_right"] as? [String: AnyHashable] == ["price": 19.99, "badges": ["Deal", "New"]])
         #expect(items[2]["status"] as? String == "couldn't check")
         #expect(items[2]["reason"] as? String == "Signed out of the shop")
-        #expect(items[2]["counts_as_right"] as? String == "what its first check that works shows, with expect")
+        #expect(items[2]["counts_as_right"] as? [String: AnyHashable] == ["badges": ["Deal", "New"]])   // said, so it counts already
 
         #expect(fixture.receipts == ["Watching “Sale items”: 3 items, every 15 minutes."])
         #expect(fixture.asked == 1)
@@ -274,19 +274,131 @@ struct WatchListConversationTests {
         #expect(change.isError && (change.content as? String)?.contains("Noteling doesn't write over a watch.json it can't read.") == true)
         #expect(try String(contentsOf: file, encoding: .utf8) == "{ \"items\": [")
 
-        // A folder that isn't a watch is named too.
+        // A folder whose watch.json can't be read is named too.
         let stray = fixture.place.watches.appendingPathComponent("drafts")
         try FileManager.default.createDirectory(at: stray, withIntermediateDirectories: true)
-        fixture.store.refresh()
+        try fixture.place.write("{\"name\": \"Drafts\"}", to: stray.appendingPathComponent("watch.json"))
         let again = try fixture.object(try await fixture.call("list_watches", [:]))
-        #expect(again["folders_not_watched"] as? [[String: String]] == [["folder": "drafts", "problem": "Can't read watch.json: it isn't in the folder."]])
+        #expect(again["folders_not_watched"] as? [[String: String]] == [["folder": "drafts",
+            "problem": "Can't read watch.json: it needs items: a list of item ids or page addresses, or an items file beside it."]])
+    }
+
+    @Test func teamWatchesAreListedAndTurnedOnByNameIdOrTheEndOfTheirPath() async throws {
+        let fixture = Fixture(setUp: { place in
+            try place.job("holiday/oct/fashion", #"{"name": "October fashion", "items": ["1", "2"], "every_minutes": 120}"#)
+            try place.job("holiday/oct/gm", #"{"name": "GM", "items": ["3"]}"#)
+            try place.job("spring/fashion", #"{"items": ["4"]}"#)
+        })
+        defer { fixture.remove() }
+
+        let listed = try fixture.object(try await fixture.call("list_watches", [:]))
+        let team = try #require(listed["team_watches"] as? [[String: Any]])
+        #expect(team.map { $0["id"] as? String } == ["holiday/oct/fashion", "holiday/oct/gm", "spring/fashion"])
+        #expect(team.allSatisfy { $0["on"] as? Bool == false && $0["from"] as? String == "your team's tools" && $0["items"] is Int })
+        #expect((listed["watches"] as? [Any])?.isEmpty == true)
+
+        let ambiguous = try await fixture.call("turn_on_watch", ["watch": "fashion"])
+        #expect(ambiguous.isError && (ambiguous.content as? String)?.hasPrefix("Several watches go by “fashion”: ") == true)
+
+        let on = try fixture.object(try await fixture.call("turn_on_watch", ["watch": "oct/fashion"]))
+        #expect(on["turned_on"] as? Bool == true && on["id"] as? String == "holiday/oct/fashion" && on["on"] as? Bool == true)
+        #expect((on["items"] as? [[String: Any]])?.map { $0["status"] as? String } == ["as expected", "as expected"])   // checked at once
+        #expect(fixture.alerts.isEmpty && fixture.receipts.last == "Turned on “October fashion” from your team's tools.")
+        #expect(try await fixture.call("turn_on_watch", ["watch": "GM"]).content as? String != nil)
+        #expect(fixture.store.watches.filter { $0.isTeam && $0.on }.map(\.path).sorted() == ["holiday/oct/fashion", "holiday/oct/gm"])
+
+        let off = try await fixture.call("turn_off_watch", ["watch": "holiday/oct/gm"])
+        #expect(off.content as? String == "Turned off “GM”. It no longer checks or notifies; what it found stays.")
+        let again = try await fixture.call("turn_off_watch", ["watch": "gm"])
+        #expect(again.content as? String == "“GM” is already off.")
+    }
+
+    @Test func aTeamWatchIsOnlyTurnedOnOrOff() async throws {
+        let fixture = Fixture(setUp: { place in try place.job("holiday/oct/fashion", #"{"name": "Fashion", "items": ["1"]}"#) })
+        defer { fixture.remove() }
+        let offCheck = try await fixture.call("check_watch_now", ["watch": "fashion"])
+        #expect(offCheck.content as? String == "“Fashion” is off. Turn it on to check it.")
+        let change = try await fixture.call("change_watch", ["watch": "fashion", "every_minutes": 30])
+        #expect(change.isError)
+        #expect(change.content as? String == "This job comes from your team's tools. Change it in the team repository. You can turn it on or off.")
+
+        _ = try await fixture.call("turn_on_watch", ["watch": "fashion"])
+        let stopped = try await fixture.call("stop_watch", ["watch": "fashion"])
+        #expect(stopped.content as? String == "“Fashion” comes from your team's tools, so it was turned off for the person rather than removed. It no longer checks or notifies, and can be turned on again.")
+        #expect(fixture.store.watches.first?.on == false && fixture.trashed.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: fixture.place.team.appendingPathComponent("holiday/oct/fashion/watch.json").path))
+    }
+
+    @Test func aWatchIsntCheckedBeforeItStartsAndTheResultsSaySo() async throws {
+        let fixture = Fixture(setUp: { place in
+            let folder = place.watches.appendingPathComponent("sale")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try place.write(#"{"name": "Sale", "items": ["1"], "starts": "2099-10-05T00:00:00Z", "ends": "2099-10-31T00:00:00Z"}"#,
+                            to: folder.appendingPathComponent("watch.json"))
+        })
+        defer { fixture.remove() }
+        let starts = try #require(fixture.store.watches.first?.starts?.words)
+        let check = try await fixture.call("check_watch_now", ["watch": "Sale"])
+        #expect(check.content as? String == "“Sale” starts \(starts); nothing is checked before then.")
+        let listed = try fixture.object(try await fixture.call("list_watches", [:]))
+        let watch = try #require((listed["watches"] as? [[String: Any]])?.first)
+        #expect(watch["starts"] as? String == starts && watch["ends"] is String)
+        #expect(watch["not_checking"] as? String == "“Sale” starts \(starts); nothing is checked before then.")
+        #expect(fixture.checks.calls.isEmpty)
+    }
+
+    @Test func anItemsFileColumnTheCheckDoesntReportIsSaid() async throws {
+        let fixture = Fixture(setUp: { place in
+            let folder = place.watches.appendingPathComponent("sale")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try place.write(#"{"name": "Sale"}"#, to: folder.appendingPathComponent("watch.json"))
+            try place.write("item|Price|Colour\n1|10|red\n|x|y\n", to: folder.appendingPathComponent("items.psv"))
+        })
+        defer { fixture.remove() }
+        let checked = try fixture.object(try await fixture.call("check_watch_now", ["watch": "Sale"]))
+        let watch = try #require((checked["watches"] as? [[String: Any]])?.first)
+        #expect(watch["items_file"] as? String == "items.psv")
+        #expect(watch["rows_left_out"] as? [String] == ["row 3 has no item"])
+        #expect(watch["columns_not_reported"] as? [String] == ["Colour"])
+        #expect(watch["columns_note"] as? String == "column Colour isn't something the check reports.")
+        let item = try #require((watch["items"] as? [[String: Any]])?.first)
+        #expect(item["status"] as? String == "as expected" && item["not_reported"] as? [String] == ["Colour"])
+        let saved = try #require(fixture.store.watches.first)
+        #expect(WatchListView.notes(saved) == ["Items from items.psv", "Left out: row 3 has no item", "Column Colour isn't something the check reports."])
+    }
+
+    @Test func theWindowSaysWhatEachTeamWatchIs() throws {
+        let start = Date(timeIntervalSince1970: 1_790_000_000)
+        var watch = WatchListWatch(name: "Fashion", check: "c", items: [WatchListItem(key: "1"), WatchListItem(key: "2")], everyMinutes: 120)
+        watch.source = .team
+        watch.path = "holiday/oct/fashion"
+        watch.on = false
+        watch.starts = WatchListMoment.parse("2026-10-05")
+        let before = try #require(watch.starts?.date).addingTimeInterval(-60)
+        #expect(WatchListView.teamSubtitle(watch, checking: false, now: before)
+                == "holiday/oct/fashion · Every 2 hours · 2 items · Starts Mon Oct 5, 12:00 AM · off")
+        watch.on = true
+        watch.ends = WatchListMoment.parse("2026-10-31T23:59:00")
+        let during = try #require(watch.starts?.date).addingTimeInterval(3_600)
+        #expect(WatchListView.teamSubtitle(watch, checking: false, now: during)
+                == "holiday/oct/fashion · Every 2 hours · 2 items · Ends Sat Oct 31, 11:59 PM · not checked yet")
+        let after = try #require(watch.ends?.date).addingTimeInterval(60)
+        #expect(WatchListView.teamSubtitle(watch, checking: false, now: after)
+                == "holiday/oct/fashion · Every 2 hours · 2 items · Ended Sat Oct 31, 11:59 PM")
+        #expect(WatchListView.fromTeam == "From your team's tools")
+
+        var own = WatchListWatch(name: "Sale", check: "c", items: [WatchListItem(key: "1")], lastRunAt: nil)
+        own.starts = watch.starts
+        #expect(WatchListView.subtitle(own, checking: false, now: before) == "Starts Mon Oct 5, 12:00 AM · Every 15 minutes · 1 item")
+        #expect(WatchListView.subtitle(own, checking: false, now: start) == "Starts Mon Oct 5, 12:00 AM · Every 15 minutes · 1 item")
     }
 
     @Test func toolDefinitionsAreValidRoutes() throws {
         let fixture = Fixture()
         defer { fixture.remove() }
         let router = try ToolRouter(routes: fixture.conversation.routes())
-        #expect(router.definitions.compactMap { $0["name"] as? String } == ["watch_items", "list_watches", "check_watch_now", "change_watch", "stop_watch"])
+        #expect(router.definitions.compactMap { $0["name"] as? String }
+                == ["watch_items", "list_watches", "check_watch_now", "change_watch", "turn_on_watch", "turn_off_watch", "stop_watch"])
         let watch = try #require(router.definitions.first)
         #expect((watch["input_schema"] as? [String: Any])?["required"] as? [String] == ["items"])
         let description = try #require(watch["description"] as? String)
@@ -394,7 +506,8 @@ struct WatchListConversationTests {
         item.state = ["price": .number(1)]
         #expect(WatchListView.words(item, checking: false) == "As expected · not reported: In stock")
         item.status = .notAsExpected([WatchListDifference(field: "price", now: .number(13.95), expected: .number(12.33))])
-        #expect(WatchListView.words(item, checking: false) == "Price: 13.95 — expected 12.33\nNot reported: In stock")
+        #expect(WatchListView.words(item, checking: false) == "Price: 13.95 — expected 12.33")
+        #expect(WatchListView.unreported(item) == "Not reported: In stock")   // its own line, not a difference
         item.status = .couldNotCheck("Signed out")
         #expect(WatchListView.words(item, checking: false) == "Couldn't check: Signed out")
         item.url = "file:///etc/hosts"
@@ -424,7 +537,9 @@ private final class Fixture {
     var notifications = "on"
     var trashed: [String] = []
 
-    init(choices: [WatchListCheckChoice] = [Fixture.shop]) {
+    /// `setUp` puts files in place (team jobs, watch folders) before the store first looks.
+    init(choices: [WatchListCheckChoice] = [Fixture.shop], setUp: (Place) throws -> Void = { _ in }) {
+        try? setUp(place)
         store = place.store()
         let checks = checks
         runner = WatchListRunner(store: store, check: { await checks.check($0, $1) })

@@ -12,22 +12,47 @@ struct WatchListRulesTests {
 
     // MARK: what counts as right
 
-    @Test func theFirstCheckThatWorksSetsWhatCountsAsRight() {
-        #expect(WatchListRules.expectations(from: shown, fields: nil, expect: [:]) == shown)
-        #expect(WatchListRules.expectations(from: shown, fields: ["price", "badges", "rating"], expect: [:])
-                == ["price": .number(12.33), "badges": .list(["Deal", "New"])])
+    @Test func withNothingSaidTheFirstCheckThatWorksIsWhatCountsAsRight() {
+        let plain = WatchListTerms()
+        #expect(WatchListRules.expectations(captured: shown, state: shown, checkExpect: nil, own: [:], terms: plain) == shown)
+        #expect(WatchListRules.expectations(captured: shown, state: shown, checkExpect: nil, own: [:],
+                                            terms: WatchListTerms(fields: ["price", "Badge", "rating"]))
+                == ["price": .number(12.33), "badges": .list(["Deal", "New"])])   // names match loosely, and by their plural
+        #expect(WatchListRules.expectations(captured: nil, state: nil, checkExpect: nil, own: [:], terms: plain) == nil)
     }
 
-    @Test func whatThePersonSaysOverridesTheFirstCheckAndCanAddAField() {
-        let expected = WatchListRules.expectations(from: shown, fields: ["price"], expect: ["price": .number(11.99), "seller": .text("Acme Direct")])
-        #expect(expected == ["price": .number(11.99), "seller": .text("Acme Direct")])
+    @Test func anythingSaidIsAllThatCountsWithASnapshotOfOnlyTheFieldsNamed() {
+        // Strongest first: the item's own (its row over watch.json's), the watch's, the check's.
+        let expected = WatchListRules.expectations(captured: shown, state: shown, checkExpect: ["price": .number(10), "in stock": .flag(true), "problems": .number(0)],
+                                                   own: ["price": .number(9.99), "Badge": .text("Deal")],
+                                                   terms: WatchListTerms(fields: ["seller"], expect: ["price": .number(11.99)], explicit: true))
+        #expect(expected == ["seller": .text("Acme"), "price": .number(9.99), "in_stock": .flag(true), "problems": .number(0), "badges": .text("Deal")])
 
         var item = WatchListItem(key: "123")
         let kind = WatchListRules.apply(.checked(reading(shown)), to: &item, fields: nil, expect: ["price": .number(11.99)], at: start)
         #expect(kind == nil)   // the first check never notifies, even when it isn't as expected
-        #expect(item.expected?["price"] == .number(11.99))
-        #expect(item.expected?["seller"] == .text("Acme"))
+        #expect(item.expected == ["price": .number(11.99)])   // a snapshot of everything would turn a sale red
         #expect(item.status == .notAsExpected([WatchListDifference(field: "price", now: .number(12.33), expected: .number(11.99))]))
+
+        var own = WatchListItem(key: "456")
+        own.row = ["badge": .text("Deal")]
+        _ = WatchListRules.apply(.checked(reading(shown)), to: &own, terms: WatchListTerms(), at: start)
+        #expect(own.expected == ["badges": .text("Deal")] && own.status == .asExpected)
+    }
+
+    @Test func aCheckCanSayWhatCountsAsRightByDefault() {
+        let found: [String: WatchListValue] = ["problems": .number(2), "in_stock": .flag(true), "price": .number(24.99)]
+        var item = WatchListItem(key: "123")
+        _ = WatchListRules.apply(.checked(WatchListReading(title: nil, url: nil, state: found, facts: nil,
+                                                           expect: ["problems": .number(0), "in_stock": .flag(true)])),
+                                 to: &item, terms: WatchListTerms(), at: start)
+        #expect(item.checkExpect == ["problems": .number(0), "in_stock": .flag(true)])
+        #expect(item.expected == ["problems": .number(0), "in_stock": .flag(true)])   // not the price: it isn't said
+        #expect(item.status == .notAsExpected([WatchListDifference(field: "problems", now: .number(2), expected: .number(0))]))
+
+        // The watch's expect goes over the check's.
+        WatchListRules.refresh(&item, terms: WatchListTerms(expect: ["problems": .number(2)], explicit: true), quiet: false)
+        #expect(item.status == .asExpected)
     }
 
     @Test func anItemWhoseFirstCheckFailedGetsItsExpectationsFromItsFirstSuccess() {
@@ -118,6 +143,35 @@ struct WatchListRulesTests {
         #expect(!WatchListRules.same(.list(["New"]), .list(["Deal", "New"])))
         #expect(!WatchListRules.same(.list(["Deal", "New"]), .list(["Deal"])))
         #expect(WatchListRules.same(.list(["Deal"]), .text("Deal")))
+    }
+
+    @Test func oneValueExpectedOfAListMeansTheListIncludesIt() {
+        let badges = WatchListValue.list(["Deal", "New"])
+        #expect(WatchListRules.holds(badges, .text("Deal")))              // other labels on the page aren't wrong
+        #expect(!WatchListRules.holds(.list(["New"]), .text("Deal")))
+        #expect(!WatchListRules.holds(.list([]), .text("Deal")))
+        #expect(WatchListRules.holds(badges, .list(["New", "Deal"])))     // a list is still the same set
+        #expect(!WatchListRules.holds(.list(["Deal"]), .list(["Deal", "New"])))
+        #expect(!WatchListRules.holds(badges, .list(["Deal"])))           // so a list a first check captured keeps its meaning
+        #expect(WatchListRules.holds(.text("Deal"), .list(["Deal"])))
+        #expect(!WatchListRules.holds(.text("Deal New"), .text("Deal")))
+
+        let status = WatchListRules.compare(["badges": .list(["New"]), "tags": .list([])], with: ["badges": .text("Deal"), "Tag": .text("Sale")])
+        let differences = [WatchListDifference(field: "badges", now: .list(["New"]), expected: .text("Deal"), includes: true),
+                           WatchListDifference(field: "tags", now: WatchListValue.none, expected: .text("Sale"), includes: true)]
+        #expect(status == .notAsExpected(differences))
+        #expect(differences.map(\.words) == ["Badges: New — expected to include Deal", "Tags: none — expected to include Sale"])
+    }
+
+    @Test func namesMatchTheChecksFieldsLooselyAndByTheirPlural() {
+        let fields: Set<String> = ["in_stock", "badges", "categories", "boxes", "price"]
+        #expect(WatchListRules.field(for: "In Stock", in: fields) == "in_stock")
+        #expect(WatchListRules.field(for: "in-stock", in: fields) == "in_stock")
+        #expect(WatchListRules.field(for: "Badge", in: fields) == "badges")
+        #expect(WatchListRules.field(for: "category", in: fields) == "categories")
+        #expect(WatchListRules.field(for: "box", in: fields) == "boxes")
+        #expect(WatchListRules.field(for: "price", in: fields) == "price")
+        #expect(WatchListRules.field(for: "rating", in: fields) == nil)
     }
 
     @Test func yesAndNo() {
@@ -413,6 +467,20 @@ struct WatchListRulesTests {
         watch.paused = false
         watch.items = []
         #expect(!WatchListSchedule.isDue(watch, at: start + 40 * 60))
+    }
+
+    @Test func aWatchChecksOnlyBetweenItsStartAndItsEnd() {
+        var watch = WatchListWatch(name: "Sale", check: "c", items: [WatchListItem(key: "1")], everyMinutes: 60)
+        watch.starts = WatchListMoment(text: "start", date: start + 3_600)
+        watch.ends = WatchListMoment(text: "end", date: start + 7_200)
+        #expect(!WatchListSchedule.isDue(watch, at: start))                  // before it starts
+        #expect(WatchListSchedule.next(watch, after: start) == start + 3_600)
+        #expect(WatchListSchedule.isDue(watch, at: start + 3_600))
+        #expect(watch.checking(at: start + 5_000) && !watch.ended(at: start + 7_200))
+        #expect(!WatchListSchedule.isDue(watch, at: start + 7_300))          // after it ends
+        #expect(WatchListSchedule.next(watch, after: start + 7_300) == nil)
+        watch.on = false                                                     // a team job that's off
+        #expect(!WatchListSchedule.isDue(watch, at: start + 5_000))
     }
 
     @Test func howOftenIsHeldBetweenFiveMinutesAndFourHours() {

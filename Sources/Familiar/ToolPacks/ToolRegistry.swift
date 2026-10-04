@@ -140,14 +140,17 @@ final class ToolRegistry {
         Log.info("tools: \(packs.count) pack(s), \(scriptCount) script(s), \(noteCount) note(s) in \(place); runtime: \(runner.summary)")
     }
 
-    /// The packs a tools folder holds: its folders (or links to one), not hidden ones, by name.
+    /// A tools folder's `watches/` holds watch jobs (`WatchListStore`), not a pack: the name is reserved.
+    nonisolated static let watchesFolder = "watches"
+
+    /// The packs a tools folder holds: its folders (or links to one), not hidden ones and not `watches/`, by name.
     nonisolated static func packFolders(in root: URL) -> [URL] {
         let fm = FileManager.default
         let entries = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         return entries.filter { dir in
             var isDir: ObjCBool = false
             return fm.fileExists(atPath: dir.path, isDirectory: &isDir) && isDir.boolValue   // follows symlinks
-                && !dir.lastPathComponent.hasPrefix(".")
+                && !dir.lastPathComponent.hasPrefix(".") && dir.lastPathComponent != watchesFolder
         }.sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 

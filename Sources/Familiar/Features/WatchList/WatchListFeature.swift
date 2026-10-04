@@ -12,7 +12,10 @@ final class WatchListFeature {
     let checker: WatchListChecker
 
     init(registry: ToolRegistry, store: WatchListStore? = nil) {
-        let store = store ?? WatchListStore()
+        // Your team's watches are `watches/` in the linked tools, wherever the latest update put them.
+        let store = store ?? WatchListStore(teamDirectory: { [weak registry] in
+            registry?.linkedRoot.map { $0.appendingPathComponent(ToolRegistry.watchesFolder) }
+        })
         let checker = WatchListChecker(registry: registry, folder: { [weak store] id in store?.folder(for: id) })
         let notifier = WatchListNotifier()
         let runner = WatchListRunner(store: store, prepare: { watch in await checker.plan(watch) })
