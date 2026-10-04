@@ -79,6 +79,8 @@ struct MorningFilesView: View {
     var cardGeneration: CardGenerationService? = nil
     var discussCard: ((MorningCard) -> Void)? = nil
     var attention: AttentionLedger? = nil
+    /// An inbox card's question button: asks Noteling about the card in chat.
+    var askAboutCard: ((MorningCard, String) -> Void)? = nil
     @State private var localError: String?
     @State private var showingOriginal: UUID?   // the card whose original text is expanded
     @State private var undo: MorningCard?
@@ -317,6 +319,11 @@ struct MorningFilesView: View {
                     Text("Pick up a file. Put it back whenever you like.").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
                     Spacer(); dispositionPicker
                 }
+                // A folder of cards from a script says which of its files couldn't be read, and why.
+                ForEach(store.inboxNotes[id] ?? [], id: \.self) { note in
+                    Label(note, systemImage: "exclamationmark.triangle").font(.system(size: 12)).foregroundStyle(Pad.redInk)
+                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                }
                 if cards.isEmpty {
                     Text("No \(navigation.disposition.label.lowercased()) files in this folder.")
                         .font(.system(size: 14)).foregroundStyle(Pad.inkSoft).padding(.vertical, 35)
@@ -339,8 +346,9 @@ struct MorningFilesView: View {
         Button { navigation.route = .card(card.id) } label: {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text(card.isSample ? "SAMPLE FILE" : card.sources.first?.kind.uppercased() ?? "NOTE")
-                        .font(.system(size: 9, weight: .semibold)).tracking(1).foregroundStyle(Pad.inkSoft)
+                    Text(card.isSample ? "SAMPLE FILE" : Self.tileLabel(card))
+                        .font(.system(size: 9, weight: .semibold)).tracking(1)
+                        .foregroundStyle(card.inbox?.severity == "high" ? Pad.redInk : Pad.inkSoft)
                     Spacer()
                     Image(systemName: "paperclip").foregroundStyle(Pad.inkSoft)
                 }
@@ -359,7 +367,17 @@ struct MorningFilesView: View {
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Pad.tabEdge.opacity(0.55)))
                 .shadow(color: Pad.ink.opacity(0.07), radius: 4, x: 1, y: 3)
         }.buttonStyle(.plain).accessibilityLabel("Open file: \(card.title)")
-            .contextMenu { Button("Edit note") { navigation.route = .editCard(card.id) } }
+            .contextMenu { if !card.isFromInbox { Button("Edit note") { navigation.route = .editCard(card.id) } } }
+    }
+
+    /// A tile's top line: where the card came from, and for a card a script wrote, how much it matters.
+    static func tileLabel(_ card: MorningCard) -> String {
+        let kind = card.sources.first?.kind.uppercased() ?? "NOTE"
+        switch card.inbox?.severity {
+        case "high": return kind + " · NEEDS A LOOK"
+        case "low": return kind + " · FOR YOUR INFORMATION"
+        default: return kind
+        }
     }
 
     /// A card is three things: what it is, what it means for you, and what you can do. The original stays one tap away.
@@ -374,7 +392,8 @@ struct MorningFilesView: View {
                         Spacer()
                         if let attention { AttentionThumbs(ledger: attention, card: card) }
                         Menu {
-                            Button("Edit") { navigation.route = .editCard(card.id) }
+                            // A card a script wrote says what its file says: there is nothing to edit.
+                            if !card.isFromInbox { Button("Edit") { navigation.route = .editCard(card.id) } }
                             if let discussCard { Button("Discuss or adjust") { discussCard(card) }.disabled(pending != nil) }
                             if let attention { AttentionExplainMenuItem(ledger: attention, card: card) }
                             if card.disposition != .unreviewed {
@@ -387,7 +406,13 @@ struct MorningFilesView: View {
                     }
                     Text(card.title).font(HandFont.font(size: 27)).fixedSize(horizontal: false, vertical: true)
                     if !card.meaning.isEmpty {
-                        Text(card.meaning).font(.system(size: 15)).lineSpacing(4).lineLimit(4).textSelection(.enabled)
+                        // A script's card shows its words in full, as it wrote them.
+                        Text(card.meaning).font(.system(size: 15)).lineSpacing(4).lineLimit(card.isFromInbox ? nil : 4).textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: card.isFromInbox)
+                    }
+                    if let gone = card.inbox?.goneAt {
+                        Label("Its script no longer reports this (\(gone.formatted(date: .abbreviated, time: .shortened))).", systemImage: "tray")
+                            .font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
                     }
                     if let context = card.personalContext, !context.isEmpty {
                         Label(context, systemImage: "person.bubble").font(.system(size: 12)).lineLimit(2)
@@ -412,9 +437,16 @@ struct MorningFilesView: View {
                     if let previous = history.first, let warning = retryWarning(previous) {
                         Label(warning, systemImage: "exclamationmark.circle").font(.system(size: 12)).foregroundStyle(Pad.redInk).fixedSize(horizontal: false, vertical: true)
                     }
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 9) { optionButtons(card, history: history) }
-                        VStack(alignment: .leading, spacing: 8) { optionButtons(card, history: history) }
+                    if card.isFromInbox {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 9) { inboxButtons(card) }
+                            VStack(alignment: .leading, spacing: 8) { inboxButtons(card) }
+                        }
+                    } else {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 9) { optionButtons(card, history: history) }
+                            VStack(alignment: .leading, spacing: 8) { optionButtons(card, history: history) }
+                        }
                     }
                     HStack(spacing: 16) {
                         Button("I’ll do it") { decide(card, .mine) }
@@ -446,6 +478,27 @@ struct MorningFilesView: View {
         }
     }
 
+    /// An inbox card's buttons: each opens a web page or asks Noteling about the card in chat, and nothing else. A card
+    /// with a page and no button for it gets Open page.
+    @ViewBuilder private func inboxButtons(_ card: MorningCard) -> some View {
+        ForEach(Array(Self.inboxActions(card).enumerated()), id: \.offset) { index, action in
+            if let url = action.url.flatMap(URL.init(string:)) {
+                Button(action.label) { NSWorkspace.shared.open(url) }.buttonStyle(MorningActionButton(primary: index == 0)).help(url.absoluteString)
+            } else if let ask = action.ask {
+                Button(action.label) { askAboutCard?(card, ask) }.buttonStyle(MorningActionButton(primary: index == 0)).help(ask)
+                    .disabled(askAboutCard == nil)
+            }
+        }
+    }
+
+    /// What an inbox card's buttons are: its file's, and Open page for its page when none opens it.
+    static func inboxActions(_ card: MorningCard) -> [CardInboxAction] {
+        var actions = card.inbox?.actions ?? []
+        let page = CardInboxFormat.webAddress(card.sources.first?.url ?? "")
+        if !page.isEmpty, !actions.contains(where: { $0.url != nil }) { actions.insert(CardInboxAction(label: "Open page", url: page), at: 0) }
+        return actions
+    }
+
     /// An option counts as run once work on it actually started, not when it was removed from the queue first.
     static func hasRun(_ option: MorningAction, in history: [MorningWorkItem]) -> Bool {
         history.contains { $0.kind == .action && $0.action.id == option.id && $0.startedAt != nil }
@@ -463,7 +516,7 @@ struct MorningFilesView: View {
                         Label(shown ? "Hide original" : "Show original", systemImage: "doc.text")
                     }.buttonStyle(.plain)
                 }
-                if let page { Link(destination: page) { Label("Open original", systemImage: "arrow.up.right.square") } }
+                if let page, !card.isFromInbox { Link(destination: page) { Label("Open original", systemImage: "arrow.up.right.square") } }
             }.font(.system(size: 12)).foregroundStyle(Pad.penInk)
             if shown { sourceEvidence(card) }
         }

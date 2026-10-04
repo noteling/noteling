@@ -24,6 +24,8 @@ import QuartzCore
     var onHandoff: ((MorningWorkItem) -> Void)?
     var onTeachCalendar: (() -> Void)?
     var onDiscussCard: ((MorningCard) -> Void)?
+    /// An inbox card's question button: the app asks Noteling about the card in chat.
+    var onAskAboutCard: ((MorningCard, String) -> Void)?
     var handoffDestination: (() -> NSRect?)?
 
     /// Only the little folder is shown at launch. Opening a file is always an explicit action.
@@ -51,7 +53,8 @@ import QuartzCore
                 self?.onHandoff?(item)
             }, calendarSources: calendarSources, calendarRunner: calendarRunner,
             teachCalendar: { [weak self] in self?.onTeachCalendar?() }, cardGeneration: cardGeneration,
-            discussCard: { [weak self] card in self?.onDiscussCard?(card) }, attention: attention
+            discussCard: { [weak self] card in self?.onDiscussCard?(card) }, attention: attention,
+            askAboutCard: { [weak self] card, question in self?.onAskAboutCard?(card, question) }
         ))
         routeObservation = navigation.$route.combineLatest(store.$workspace)
             .receive(on: RunLoop.main)
@@ -131,7 +134,7 @@ import QuartzCore
     }
 
     private func recordOpen(_ trigger: AttentionOpenTrigger, wasOpen: Bool) {
-        attention?.recordOpened(trigger, route: navigation.route, desk: store.cards.filter { $0.displayDisposition == .unreviewed }.count,
+        attention?.recordOpened(trigger, route: navigation.route, desk: store.attentionDesk,
                                 wasOpen: wasOpen)
     }
 

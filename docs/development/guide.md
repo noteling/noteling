@@ -274,6 +274,8 @@ Behind a company proxy, scripts and uv also get the Mac's network settings (`Scr
 internet address; `SSL_CERT_FILE` (and `REQUESTS_CA_BUNDLE`) pointing at `~/.noteling/run/certificates.pem`, the
 certificates this Mac trusts for everyone, including one a company installs for its proxy; and `UV_NATIVE_TLS=1`.
 The config's `env` map wins over all of them, for example to send internal hosts direct with `NO_PROXY`.
+Every script also gets `NOTELING_CARDS_DIR`, a folder of its own in the cards inbox, where writing a file makes a card in
+Morning Files (see The cards inbox).
 Docs under the stuff limit are pasted into the prompt; larger ones are listed and read on demand.
 
 ### The Waxwing pack (current target)
@@ -389,14 +391,16 @@ do a tool pack:
     "starts": "2026-10-05T00:00:00-04:00",
     "ends": "2026-10-31T23:59:00-04:00",
     "created_at": "2026-10-03T14:00:00Z",
-    "requires": ["SHOP_TOKEN"]
+    "requires": ["SHOP_TOKEN"],
+    "cards": "all"
   }
   ```
   Only `items` is required, and not even that when the folder has an items file. Each item is an id or page address,
   or an object with a `key` and its own `expect`. A missing `name` is the folder's path, a missing `check` the only pack
   check there is, and a missing `id` is made (and written down) the first time Noteling reads the file. `fields`,
   `args`, `starts` and `ends` are optional, `every_minutes` is held to 5–240, and keys Noteling doesn't use are kept when
-  it writes the file.
+  it writes the file. `cards` says which items get a card in Morning Files: left out (or `true`), those that are red or
+  grey; `"all"`, every item; `false`, none (see Cards from watches).
 - `starts` and `ends` are ISO 8601 times, with an offset or without one (then they are the Mac's own time); a date alone
   means its midnight. Nothing is checked, and nobody is told, before `starts` or after `ends`; the window says "Starts
   Mon Oct 5, 12:00 AM" or "Ended …", and the chat tools' results say so too.
@@ -590,6 +594,77 @@ can do** and, only when something couldn't be confirmed, **Couldn't check**.
 from the team's copy, with `~/.noteling/team-watches/<id>/latest.json` and `~/.noteling/team-watches/on.json`. The code is
 in `Sources/Familiar/Features/WatchList/` (`WatchListFiles` for the files); the menu bar's **Watch List…** opens its
 window.
+
+### The cards inbox (`cards/inbox/`)
+A script makes a card in Morning Files by writing a file, with no model involved: one JSON file per card,
+`~/.noteling/cards/inbox/<source>/<id>.json`.
+```json
+{
+  "title": "Refund ready · Order 123",
+  "body": "The price dropped by $10 after you paid.",
+  "url": "https://shop.example.com/order/123",
+  "severity": "high",
+  "actions": [
+    {"label": "Open order", "url": "https://shop.example.com/order/123"},
+    {"label": "Worth it?", "ask": "Is this refund worth claiming?"}
+  ],
+  "details": {"paid": 22.0, "now": 12.0}
+}
+```
+- Only `title` is required (up to 200 characters). `body` is shown in full (up to 8,000), `url` must be an http or https
+  address, `severity` is `high`, `normal` (the default) or `low`, and `details`, text or any JSON (up to 8,000
+  characters), shows under **Show original** and goes with the card when it is discussed. Keys it doesn't know are
+  ignored.
+- `actions` (up to six) only open a web page (`url`) or ask Noteling about the card in chat (`ask`); anything else is
+  dropped. A card from the inbox never runs anything: `MorningStore.enqueue` refuses it, a card discussion can't change
+  its options, and it has no Edit. A card with a `url` and no button that opens a page gets **Open page**.
+- **Identity** is `<source>/<id>`: the folder, and the file's name without `.json`. Writing the file again changes the
+  same card's title, body, page, severity, buttons and details, and nothing the person did: their decision, their
+  context, the folder's name.
+- **Deleting the file** means the matter went away. A card nobody had decided anything about is resolved; a card the
+  person took keeps their decision and says "Its script no longer reports this". A file that comes back reopens a card
+  its deletion resolved.
+- A file that can't be read (not JSON, no title, bigger than 64 KB) is never deleted and never resolves its card: the log
+  says why once, and its source's folder in Morning Files lists it until it is fixed. A source shows up to 500 cards and
+  up to 100 sources are read; files past that are listed, and their cards stay as they are.
+- Each source is a folder in Morning Files, named after its watch for a watch's cards and otherwise after the folder
+  (`pack-shop`). A folder the person renames keeps its name.
+- Noteling looks at the inbox at launch, at the watch list's 30-second tick and right after a watch writes cards. It
+  reads only files that changed, saves only when a card changed, and never writes or deletes a script's files.
+- The card step, its reconciliation and the attention test never touch or count these cards: they only consider the
+  cards they track, and the count of cards to review that the attention test records leaves them out.
+
+**`NOTELING_CARDS_DIR`.** Every script gets a folder of its own in the inbox, made when needed and readable only by the
+person: a pack's scripts `cards/inbox/pack-<pack folder>/`, a watch's check `cards/inbox/watch-<its path, / as ->/`
+(`watch-team-<path>/` for a team's job). The name keeps only letters, digits, `.`, `_` and `-`, so it is always one
+folder directly in the inbox and never another source's. Write the whole file at once, so Noteling never reads half of
+it, and delete it when the matter is over:
+```python
+import json, os
+card = {"title": "Refund ready · Order 123", "body": "The price dropped by $10 after you paid.", "url": "https://shop.example.com/order/123"}
+path = os.path.join(os.environ["NOTELING_CARDS_DIR"], "order-123.json")   # this script's own folder in the inbox
+with open(path + ".tmp", "w") as f: json.dump(card, f)
+os.replace(path + ".tmp", path)   # the whole file at once, so Noteling never reads half of it
+```
+
+**Cards from watches.** On by default, each item that isn't as expected (red) or couldn't be checked (grey) has a card,
+written by Noteling (`WatchListCards`) as `cards/inbox/watch-<path>/item-<key>-<hash>.json` right after each check that
+changes what it shows, and deleted when the item is back to as expected, so its card resolves. `"cards": "all"` gives
+every item a card (as expected ones `low`), and `"cards": false` none. A team job that's off has none, and turning it off
+deletes its files; so do a watch that's gone and one whose cards are turned off, at launch, at each tick and after each
+run.
+- Title: "Not as expected · <title>", "Couldn't check · <title>" or "As expected · <title>"; severity `high` for red,
+  `normal` for grey.
+- Body: the difference lines exactly as in the notification (or "Couldn't check: <reason>"), then the check's `why` as
+  it said it, then every `state` field as `field: value`, then "Checked <time> by <check>". A grey card has no `why` or
+  fields, since they would be an earlier check's.
+- `url` is the item's page; the buttons are **Open page** and, for red or grey, **Why?**, which explains the item as a
+  notification's does (`Assistant.explainWatched`). The check's `facts` are the card's details.
+- A grey card appears on the first check that fails, while the notification waits for the second.
+- Noteling's files in a watch's folder are named `item-…json`. A check may write cards of its own beside them under other
+  names; those are left alone.
+
+The code is in `Sources/Familiar/Features/Morning/CardInbox.swift` and `Features/WatchList/WatchListCards.swift`.
 
 ## Config (`~/.noteling/config.json`)
 | key | default | meaning |

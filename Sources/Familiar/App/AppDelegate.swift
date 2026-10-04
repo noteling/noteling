@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let settings = SettingsWindowController()
     private let watchDraftWindow = WatchDraftWindowController()
     private var watchList: WatchListFeature?
+    private var cardInbox: CardInbox?
     private var savedBubbleFrame: NSRect?
     private var dragOffset: NSPoint?     // cursor position relative to the panel origin while dragging
     private let control = ComputerController()
@@ -244,6 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupWatcher()
         setupWand()
         setupWatchList()
+        setupCardInbox()
         requestPermissionsOnFirstRun()
         Task {
             runner.networkEnv = await ScriptNetwork.current()   // before the first script: the Mac's proxy and certificates
@@ -806,5 +808,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let feature = watchList, let watch = feature.store.watch(id: watchID), let item = watch.item(key) else { showWatchList(); return }
         openChat()
         assistant.explainWatched(watch, item: item, checkedBy: feature.checkLabel(watch))
+    }
+
+    // MARK: cards inbox
+
+    /// Cards that scripts and watch lists write into `cards/inbox/`, picked up into Morning Files at the watch list's
+    /// tick and right after a watch writes cards. A card's buttons only open its page or ask about it in chat.
+    private func setupCardInbox() {
+        let inbox = CardInbox(store: morning)
+        inbox.folderName = { [weak self] source in self?.watchList?.cardFolderName(source) }
+        watchList?.runner.onTick = { [weak inbox] in inbox?.scan() }
+        watchList?.runner.onCardsChanged = { [weak inbox] in inbox?.scan() }
+        morningPanel.onAskAboutCard = { [weak self] card, question in self?.askAboutCard(card, question: question) }
+        cardInbox = inbox
+        inbox.scan()
+    }
+
+    /// A watch's Why? explains its item as a notification does; any other question asks about the card in chat.
+    private func askAboutCard(_ card: MorningCard, question: String) {
+        if let key = card.inbox?.key, let (watch, item) = watchList?.item(forCard: key), item.needsExplaining {
+            explainWatchedItem(watchID: watch.id, key: item.key)
+            return
+        }
+        guard assistant.discussCard(card) else { return }
+        openChat()
+        assistant.question = question
+        assistant.ask()
     }
 }

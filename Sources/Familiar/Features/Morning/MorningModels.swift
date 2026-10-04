@@ -69,6 +69,35 @@ struct MorningCard: Codable, Identifiable, Equatable {
     var personalContext: String? = nil
     /// Options after the first (the first is `action`), best first. Optional so cards saved before it still load.
     var alternatives: [MorningAction]? = nil
+    /// A card a script wrote into the cards inbox (`CardInbox`): its file says what it shows, and it never runs anything.
+    /// Nil for every other card; the card step and the attention test never touch one that has it.
+    var inbox: CardInboxLink? = nil
+}
+
+/// Where an inbox card came from, and what its file asked for besides its words.
+struct CardInboxLink: Codable, Equatable {
+    /// `<source>/<id>`: the folder in the inbox and the file's name without `.json`.
+    var key: String
+    /// high, normal or low.
+    var severity: String
+    /// Buttons that only open a page or ask Noteling a question in chat.
+    var actions: [CardInboxAction]
+    /// When its file was deleted: the script no longer reports it.
+    var goneAt: Date? = nil
+    /// Its file's deletion resolved it, rather than the person: the card opens again if the file comes back.
+    var resolvedByInbox = false
+}
+
+/// One button on an inbox card: open a web page, or ask Noteling something about the card in chat. Never anything else.
+struct CardInboxAction: Codable, Equatable, Identifiable {
+    var label: String
+    var url: String? = nil
+    var ask: String? = nil
+    var id: String { label + "\u{1F}" + (url ?? "") + "\u{1F}" + (ask ?? "") }
+}
+
+extension MorningCard {
+    var isFromInbox: Bool { inbox != nil }
 }
 
 enum MorningWorkKind: String, Codable { case action, context }

@@ -63,6 +63,18 @@ final class ScriptRunner {
     var extraEnv: [String: String] = [:]   // non-secret config env
     /// The Mac's proxy and trusted certificates for scripts and uv (`ScriptNetwork`); Settings' `env` wins over it.
     var networkEnv: [String: String] = [:]
+    /// The cards inbox (`CardInbox`). Each script gets a folder of its own in it, as NOTELING_CARDS_DIR: a pack's
+    /// scripts `pack-<pack folder>`, a watch's check the watch's. Nil gives scripts none.
+    var cardsRoot: URL? = Config.dir.appendingPathComponent("cards/inbox")
+
+    /// The folder a script writes its cards into, made when needed: `source` made safe, so it is always one folder
+    /// directly in the inbox and never another source's.
+    func cardsFolder(_ source: String) -> URL? {
+        guard let cardsRoot else { return nil }
+        let folder = cardsRoot.appendingPathComponent(CardInboxFormat.safe(source))
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        return folder
+    }
 
     /// `timeout` stops the script once it has run that long; `stopsWithCaller` stops it when the calling task is cancelled.
     func run(_ tool: ScriptTool, args: [String: Any], context: ScreenContext?, secrets: [String] = [],
@@ -78,14 +90,16 @@ final class ScriptRunner {
     /// with no size cap. It stops with its caller, and at `timeout`. `toolDir` is the folder a script outside a pack
     /// (a watch's own check.py) calls home, instead of its pack's. Such a script writes no bytecode cache beside
     /// itself: its folder is a person's, or the team's copy, which Noteling never writes into.
+    /// `cardsSource` names its folder in the cards inbox, instead of its pack's.
     func result(_ tool: ScriptTool, args: [String: Any] = [:], context: ScreenContext? = nil, secrets: [String] = [],
-                timeout: TimeInterval = 90, toolDir: URL? = nil) async throws -> Any {
+                timeout: TimeInterval = 90, toolDir: URL? = nil, cardsSource: String? = nil) async throws -> Any {
         try await execute(tool, args: args, context: context, secrets: secrets, timeout: timeout, stopsWithCaller: true,
-                          toolDir: toolDir)["result"] ?? NSNull()
+                          toolDir: toolDir, cardsSource: cardsSource)["result"] ?? NSNull()
     }
 
     private func execute(_ tool: ScriptTool, args: [String: Any], context: ScreenContext?, secrets: [String],
-                         timeout: TimeInterval = 90, stopsWithCaller: Bool = false, toolDir home: URL? = nil) async throws -> [String: Any] {
+                         timeout: TimeInterval = 90, stopsWithCaller: Bool = false, toolDir home: URL? = nil,
+                         cardsSource: String? = nil) async throws -> [String: Any] {
         guard let (exe, cmdArgs) = command(helper: "run_tool.py", script: tool.path, deps: tool.dependencies) else {
             throw ScriptRunnerError(message: "no Python runtime")
         }
@@ -97,6 +111,7 @@ final class ScriptRunner {
         if env["PYTHONDONTWRITEBYTECODE"] == nil { env["PYTHONDONTWRITEBYTECODE"] = "1" }
         env["NOTELING_TOOL_DIR"] = toolDir
         env["FAMILIAR_TOOL_DIR"] = toolDir   // earlier name, kept for existing packs
+        if let cards = cardsFolder(cardsSource ?? "pack-" + tool.packDir) { env["NOTELING_CARDS_DIR"] = cards.path }
         for key in secrets { if let v = Secrets.get(key) { env[key] = v } }
         if let context, let d = try? JSONSerialization.data(withJSONObject: context.json), let s = String(data: d, encoding: .utf8) {
             env["NOTELING_CONTEXT"] = s

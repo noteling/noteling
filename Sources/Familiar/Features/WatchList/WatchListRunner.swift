@@ -29,6 +29,12 @@ final class WatchListRunner: ObservableObject {
     @Published private(set) var checking: Set<UUID> = []
     /// Something to tell the person; the app shows it as a notification.
     var onAlert: ((WatchListAlert) -> Void)?
+    /// Writes the items' card files (`WatchListCards`); nil writes none.
+    var cards: WatchListCards?
+    /// Card files changed: the app takes them into Morning Files.
+    var onCardsChanged: (() -> Void)?
+    /// Every tick, after the watches: the app looks at the cards inbox, for cards scripts wrote too.
+    var onTick: (() -> Void)?
 
     static let concurrentChecks = 2
     static let tickSeconds: Double = 30
@@ -44,6 +50,8 @@ final class WatchListRunner: ObservableObject {
     private var waiting: [CheckedContinuation<Void, Never>] = []
     /// Couldn't-check alerts wait for the end of their run, so several for one reason go out as one.
     private var heldFailures: [UUID: [WatchListAlert]] = [:]
+    /// Watches whose run wrote or deleted a card file: the app takes them in once, at the run's end.
+    private var cardsWritten: Set<UUID> = []
 
     init(store: WatchListStore, prepare: @escaping Prepare, now: @escaping () -> Date = Date.init) {
         self.store = store
@@ -93,6 +101,9 @@ final class WatchListRunner: ObservableObject {
             run(watch.id)
         }
         checkUnchecked()
+        // A watch edited, turned off or gone since: its cards follow. The look at the inbox picks this up.
+        cards?.reconcile(store.watches)
+        onTick?()
     }
 
     /// Takes in what people changed in the watches folder by hand: a watch whose folder went away stops, and items no
@@ -145,7 +156,11 @@ final class WatchListRunner: ObservableObject {
     @discardableResult
     func turn(_ id: UUID, on: Bool) throws -> Task<Void, Never>? {
         try store.setOn(id, on)
-        guard on else { cancel(id); return nil }
+        guard on else {
+            cancel(id)
+            if cards?.reconcile(store.watches) == true { onCardsChanged?() }   // a job that's off has no cards
+            return nil
+        }
         guard let watch = store.watch(id: id), watch.checking(at: now()) else { return nil }
         return run(id, quiet: WatchListQuiet())
     }
@@ -206,6 +221,8 @@ final class WatchListRunner: ObservableObject {
             }
         }
         do { try store.save(id) } catch { Log.info("watch list: couldn't save: \(error.localizedDescription)") }
+        let wrote = cardsWritten.remove(id) != nil
+        if cards?.reconcile(store.watches) == true || wrote { onCardsChanged?() }
         let failures = heldFailures.removeValue(forKey: id) ?? []
         if !Task.isCancelled { WatchListRules.grouped(failures).forEach(tell) }
     }
@@ -259,6 +276,8 @@ final class WatchListRunner: ObservableObject {
             watch.items[index] = item
             alert = kind.map { WatchListAlert(watchID: watch.id, watchName: watch.name, itemKey: key, title: item.label, kind: $0, why: item.whyNow) }
         }
+        // Its card says what this check found, right after it.
+        if let cards, let watch = store.watch(id: watchID), let item = watch.item(key), cards.update(watch, item: item) { cardsWritten.insert(watchID) }
         guard let alert else { return }
         if case .couldNotCheck = alert.kind { heldFailures[watchID, default: []].append(alert) } else { tell(alert) }
     }
@@ -332,7 +351,7 @@ struct WatchListChecker {
     var timeout: TimeInterval = 60
     /// Runs a script and returns what its `run()` returned. Tests put a fake here: no Python, no network.
     var run: (_ script: ScriptTool, _ args: [String: Any], _ context: ScreenContext?, _ secrets: [String], _ timeout: TimeInterval,
-              _ toolDir: URL?) async throws -> Any
+              _ toolDir: URL?, _ cardsSource: String) async throws -> Any
     /// Reads what a script's `run()` takes.
     var introspect: (URL) async throws -> ScriptSchema
     var hasSecret: (String) -> Bool = { Secrets.has($0) || ProcessInfo.processInfo.environment[$0] != nil }
@@ -342,8 +361,9 @@ struct WatchListChecker {
         self.registry = registry
         self.folder = folder
         let runner = registry.runner
-        run = { script, args, context, secrets, timeout, toolDir in
-            try await runner.result(script, args: args, context: context, secrets: secrets, timeout: timeout, toolDir: toolDir)
+        run = { script, args, context, secrets, timeout, toolDir, cardsSource in
+            try await runner.result(script, args: args, context: context, secrets: secrets, timeout: timeout, toolDir: toolDir,
+                                    cardsSource: cardsSource)
         }
         introspect = { try await runner.introspect($0) }
     }
@@ -409,7 +429,7 @@ struct WatchListChecker {
     func checkItem(_ watch: WatchListWatch, _ item: WatchListItem, _ check: WatchListResolvedCheck) async -> WatchListOutcome {
         do {
             let result = try await run(check.script, Self.arguments(for: check.script, item: item.key, extra: watch.args),
-                                       Self.scene(for: item), check.secrets, timeout, check.toolDir)
+                                       Self.scene(for: item), check.secrets, timeout, check.toolDir, WatchListCards.source(for: watch))
             return WatchListReading.parse(result)
         } catch {
             return .failed(Self.failure(error, limit: timeout))
@@ -421,7 +441,7 @@ struct WatchListChecker {
         let limit = WatchListRules.listTimeLimit(items: keys.count)
         do {
             let result = try await run(check.script, Self.arguments(for: check.script, items: keys, extra: watch.args),
-                                       Self.scene(for: watch), check.secrets, limit, check.toolDir)
+                                       Self.scene(for: watch), check.secrets, limit, check.toolDir, WatchListCards.source(for: watch))
             return WatchListReading.parseList(result, keys: keys)
         } catch {
             let reason = Self.failure(error, limit: limit)
