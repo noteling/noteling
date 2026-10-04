@@ -15,7 +15,7 @@ enum WatchListFiles {
 
     /// The keys Noteling reads in watch.json; any other key a person adds is kept when Noteling writes the file.
     static let known: Set<String> = ["id", "name", "check", "items", "args", "fields", "expect", "every_minutes", "paused",
-                                     "created_at", "requires", "starts", "ends"]
+                                     "created_at", "requires", "starts", "ends", "cards"]
 
     /// watch.json, its keys in the order people read them: an item is its key alone, or an object when it has its own
     /// `expect`.
@@ -28,6 +28,11 @@ enum WatchListFiles {
         pairs += [("every_minutes", d.everyMinutes), ("paused", d.paused)]
         if let starts = d.starts { pairs.append(("starts", starts.text)) }
         if let ends = d.ends { pairs.append(("ends", ends.text)) }
+        switch d.cards {
+        case .problems: break
+        case .all: pairs.append(("cards", "all"))
+        case .off: pairs.append(("cards", false))
+        }
         pairs.append(("created_at", seconds(d.createdAt)))
         if !d.requires.isEmpty { pairs.append(("requires", d.requires)) }
         if let other = d.other, let extra = (try? JSONSerialization.jsonObject(with: Data(other.utf8))) as? [String: Any] {
@@ -121,6 +126,14 @@ enum WatchListFiles {
             }
             return moment
         }
+        var cards = WatchListCardsMode.problems
+        switch object["cards"] {
+        case nil, is NSNull: break
+        case let raw? where NoteCheckResult.boolean(raw) != nil: cards = NoteCheckResult.boolean(raw)! ? .problems : .off
+        case let text as String where text.lowercased() == "all": cards = .all
+        case let text as String where ["problems", "default"].contains(text.lowercased()): cards = .problems
+        default: throw WatchListError("cards must be true, false or \"all\".")
+        }
         let id = (object["id"] as? String).flatMap { UUID(uuidString: $0.trimmingCharacters(in: .whitespaces)) }
         let createdAt = (object["created_at"] as? String).flatMap { try? CalendarSubmission.timestamp($0.trimmingCharacters(in: .whitespaces)) }
         let otherKeys = object.filter { !known.contains($0.key) }
@@ -130,7 +143,8 @@ enum WatchListFiles {
             args: try values(object["args"], "args").filter { $0.key != "item" && $0.key != "items" },
             fields: try names("fields", "field names").flatMap { $0.isEmpty ? nil : $0 },
             expect: try values(object["expect"], "expect"), everyMinutes: everyMinutes, paused: paused, createdAt: createdAt ?? created,
-            requires: try names("requires", "secret names") ?? [], starts: try moment("starts"), ends: try moment("ends"), other: other)
+            requires: try names("requires", "secret names") ?? [], starts: try moment("starts"), ends: try moment("ends"), cards: cards,
+            other: other)
         return (definition, id != nil)
     }
 

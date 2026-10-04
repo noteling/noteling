@@ -294,6 +294,12 @@ extension WatchListItem: Codable {
     }
 }
 
+/// Which of a watch's items get a card in Morning Files (`WatchListCards`): those that aren't as expected or couldn't be
+/// checked (the default), every item (`"cards": "all"`), or none (`"cards": false`).
+enum WatchListCardsMode: String {
+    case problems, all, off
+}
+
 /// Whose a watch is: yours, in `watches/` in Noteling's folder, or your team's, in the linked tools' `watches/`, which
 /// Noteling only reads and checks once you turn it on.
 enum WatchListSource: Hashable {
@@ -326,6 +332,7 @@ struct WatchListWatch: Equatable, Identifiable {
     /// No checks or notifications before it starts or after it ends.
     var starts: WatchListMoment?
     var ends: WatchListMoment?
+    var cards = WatchListCardsMode.problems
     /// Its items file (items.psv, .csv or .tsv), when it has one, as last read.
     var file: WatchListItemsFile?
     /// Something to know about its files, e.g. that there are two items files and which one is used.
@@ -384,7 +391,7 @@ struct WatchListWatch: Equatable, Identifiable {
     var definition: WatchListDefinition {
         WatchListDefinition(id: id, name: name, check: check, items: items.filter(\.listed).map { .init(key: $0.key, expect: $0.expect) },
                             args: args, fields: fields, expect: expect, everyMinutes: everyMinutes, paused: paused, createdAt: createdAt,
-                            requires: requires, starts: starts, ends: ends)
+                            requires: requires, starts: starts, ends: ends, cards: cards)
     }
 
     /// Takes in a definition (a watch.json changed by hand, or a change from the chat) and its items file: the file's
@@ -403,6 +410,7 @@ struct WatchListWatch: Equatable, Identifiable {
         requires = definition.requires
         starts = definition.starts
         ends = definition.ends
+        cards = definition.cards
         self.file = file
         let earlier = Dictionary(items.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
         let listed = Dictionary(definition.items.map { ($0.key, $0.expect) }, uniquingKeysWith: { first, _ in first })
@@ -505,6 +513,7 @@ struct WatchListDefinition: Equatable {
     var requires: [String] = []
     var starts: WatchListMoment?
     var ends: WatchListMoment?
+    var cards = WatchListCardsMode.problems
     /// Keys a person added that Noteling doesn't use, kept as they wrote them (compact JSON) when it writes the file.
     var other: String?
 

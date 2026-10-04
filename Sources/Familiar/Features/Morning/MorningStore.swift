@@ -22,6 +22,8 @@ final class MorningStore: ObservableObject {
     private(set) var cardsByKey: [String: MorningCard] = [:]
     private(set) var lessonsByKey: [String: MorningLesson] = [:]
     @Published var queueMessage: String?
+    /// What the cards inbox couldn't read, by the folder of its source, in plain words. Not saved: each look says it.
+    @Published private(set) var inboxNotes: [UUID: [String]] = [:]
 
     var folders: [MorningFolder] { workspace.folders }
     var people: [MorningPerson] { workspace.people }
@@ -92,9 +94,10 @@ final class MorningStore: ObservableObject {
             var card = card
             card.title = card.title.trimmingCharacters(in: .whitespacesAndNewlines)
             if let previous = next.cards.first(where: { $0.id == card.id }) {
-                // Decisions and sample provenance are not editable form fields.
+                // Decisions, sample provenance and where an inbox card came from are not editable form fields.
                 card.disposition = previous.disposition
                 card.isSample = previous.isSample
+                card.inbox = previous.inbox
                 // The editor edits the first option only; the others stay.
                 if card.alternatives == nil { card.alternatives = previous.alternatives }
                 if var tracking = previous.tracking {
@@ -140,6 +143,8 @@ final class MorningStore: ObservableObject {
             guard !next.workItems.contains(where: { $0.cardID == cardID && $0.status.isPending }) else {
                 throw MorningStoreError.invalid("This file already has work waiting or in progress.")
             }
+            // A card a script wrote never runs anything, whatever its file says.
+            guard next.cards[index].inbox == nil else { throw MorningStoreError.invalid(CardInboxFormat.noWork) }
             guard !next.cards[index].isResolved else { throw MorningStoreError.invalid("This matter is resolved. Reopen it before handing over more work.") }
             if let optionID, optionID != next.cards[index].action.id {
                 guard kind == .action else { throw MorningStoreError.invalid("Only the file's options can be chosen.") }
@@ -262,6 +267,9 @@ final class MorningStore: ObservableObject {
             guard let index = next.cards.firstIndex(where: { $0.id == cardID }) else {
                 throw MorningStoreError.invalid("This file could not be found.")
             }
+            if actionInstruction != nil, next.cards[index].inbox != nil {
+                throw MorningStoreError.invalid(CardInboxFormat.noWork + " Its options can't be changed; nothing was saved.")
+            }
             if let actionInstruction {
                 let instruction = actionInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !instruction.isEmpty else { throw MorningStoreError.invalid("Describe what Noteling should do.") }
@@ -280,6 +288,22 @@ final class MorningStore: ObservableObject {
             next.cards[index].updatedAt = Date()
         }
     }
+
+    /// Takes in what the cards inbox holds now (`CardInboxFormat.apply`), saving only when a card changed. It never
+    /// touches a card's decision, the person's context, or any card that didn't come from the inbox.
+    @discardableResult
+    func syncInbox(_ snapshot: CardInboxSnapshot, at: Date = Date()) throws -> CardInboxSummary {
+        let notes = Dictionary(snapshot.notes.map { (CardInboxFormat.folderID($0.key), $0.value) }, uniquingKeysWith: { first, _ in first })
+        if notes != inboxNotes { inboxNotes = notes }
+        var next = workspace
+        let summary = CardInboxFormat.apply(snapshot, to: &next, at: at)
+        guard next != workspace else { return summary }
+        try transact { $0 = next }
+        return summary
+    }
+
+    /// The cards to review that the attention test counts when the pack opens: not those a script wrote into the inbox.
+    var attentionDesk: Int { cards.filter { $0.displayDisposition == .unreviewed && !$0.isFromInbox }.count }
 
     func trackedItems(sourceID: UUID) -> [TrackedSourceItem] {
         cards.compactMap { card in

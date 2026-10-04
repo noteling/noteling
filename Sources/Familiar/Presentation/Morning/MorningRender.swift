@@ -205,6 +205,64 @@ enum MorningRender {
         try renderGeneratedCards(fixtures: fixtures, directory: directory)
         try renderLatestRun(fixtures: fixtures, directory: directory)
         try renderAttention(fixtures: fixtures, directory: directory)
+        try renderInbox(fixtures: fixtures, directory: directory)
+    }
+
+    /// Cards from the cards inbox, with fictional files: a watch's card, a script's card with its own buttons, a file
+    /// that can't be read, and a card the person took whose file then went away.
+    @MainActor private static func renderInbox(fixtures: URL, directory: URL) throws {
+        let store = MorningStore(directory: fixtures.appendingPathComponent("inbox-morning"))
+        let navigation = MorningNavigation()
+        let folder = fixtures.appendingPathComponent("inbox-cards")
+        func file(_ source: String, _ name: String, _ text: String) throws {
+            try FileManager.default.createDirectory(at: folder.appendingPathComponent(source), withIntermediateDirectories: true)
+            try Data(text.utf8).write(to: folder.appendingPathComponent(source).appendingPathComponent(name))
+        }
+        var item = WatchListItem(key: "123", expect: ["price": .number(10)])
+        item.title = "Blue kettle (fictional)"
+        item.url = "https://shop.example.com/item/123"
+        item.state = ["price": .number(12), "badge": .text("Deal"), "in_stock": .flag(true)]
+        item.why = ["The sale price ended a day early."]
+        item.facts = #"{"seller":"Example seller","price":12}"#
+        item.checkedAt = Date().addingTimeInterval(-20 * 60)
+        item.status = .notAsExpected([WatchListDifference(field: "price", now: .number(12), expected: .number(10))])
+        let watch = WatchListWatch(name: "Sale items", check: "shop__watch_item", items: [item])
+        if let card = WatchListCards.card(for: item, in: watch, checkedBy: "shop__watch_item") {
+            try file("watch-sale-items", WatchListCards.fileName(for: item.key), JSONText.pretty(card, indent: ""))
+        }
+        try file("pack-shop", "order-123.json", """
+        {"title": "Refund ready · Order 123 (fictional)", "body": "The price dropped by $10 after you paid. The shop refunds the difference if you ask within 14 days.",
+         "url": "https://shop.example.com/order/123", "severity": "normal",
+         "actions": [{"label": "Open order", "url": "https://shop.example.com/order/123"}, {"label": "Worth it?", "ask": "Is this refund worth claiming?"}]}
+        """)
+        try file("pack-shop", "order-124.json", #"{"title": "Refund for order 124 (fictional)", "severity": "low"}"#)
+        try file("pack-shop", "half-written.json", #"{"title": "Cut off"#)
+        let inbox = CardInbox(store: store, directory: folder)
+        inbox.folderName = { $0 == "watch-sale-items" ? "Sale items" : nil }
+        inbox.scan()
+        try store.setDisposition(cardID: CardInboxFormat.cardID("pack-shop/order-124"), to: .mine)
+        try FileManager.default.removeItem(at: folder.appendingPathComponent("pack-shop/order-124.json"))
+        inbox.scan()
+
+        func save(_ name: String) throws {
+            try image(MorningFilesView(store: store, navigation: navigation, close: {}, filed: {}, handoff: { _ in }, discussCard: { _ in },
+                                       askAboutCard: { _, _ in }),
+                size: NSSize(width: 650, height: MorningPanelController.preferredHeight(for: navigation.route, isEmpty: false)),
+                to: directory.appendingPathComponent(name))
+        }
+        navigation.route = .folders
+        try save("inbox-folders.png")
+        navigation.route = .folder(CardInboxFormat.folderID("watch-sale-items"))
+        try save("inbox-watch-folder.png")
+        navigation.route = .card(CardInboxFormat.cardID("watch-sale-items/" + WatchListCards.fileName(for: item.key).replacingOccurrences(of: ".json", with: "")))
+        try save("inbox-watch-card.png")
+        navigation.route = .folder(CardInboxFormat.folderID("pack-shop"))
+        try save("inbox-script-folder.png")
+        navigation.route = .card(CardInboxFormat.cardID("pack-shop/order-123"))
+        try save("inbox-script-card.png")
+        navigation.disposition = .mine
+        navigation.route = .card(CardInboxFormat.cardID("pack-shop/order-124"))
+        try save("inbox-gone-card.png")
     }
 
     /// Exercise the maintained reconciliation and views with clearly fictional

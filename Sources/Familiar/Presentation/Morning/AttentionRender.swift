@@ -230,7 +230,7 @@ private struct AttentionRenderFailure: Error, CustomStringConvertible {
         for morning in Self.mornings {
             let at = Self.time(morning.at), day = String(morning.at.prefix(10))
             ledger.clock = { at }
-            ledger.recordOpened(.launcher, route: .folders, desk: store.cards.filter { $0.displayDisposition == .unreviewed }.count, wasOpen: false)
+            ledger.recordOpened(.launcher, route: .folders, desk: store.attentionDesk, wasOpen: false)
             guard !unchecked.contains(day) else { continue }
             ledger.clock = { at.addingTimeInterval(40 * 60) }
             ledger.restViewed(day: day, count: ledger.numbers.day(day).restCount, reachedEnd: true, seconds: 52)

@@ -443,8 +443,8 @@ struct WatchListRunnerTests {
         try store.add(watch)
         let scripts = FakeScripts()
         var checker = WatchListChecker(registry: registry, folder: { store.folder(for: $0) })
-        checker.run = { script, args, context, secrets, timeout, toolDir in
-            try await scripts.run(script, args, context, secrets, timeout, toolDir)
+        checker.run = { script, args, context, secrets, timeout, toolDir, cardsSource in
+            try await scripts.run(script, args, context, secrets, timeout, toolDir, cardsSource)
         }
         checker.introspect = { _ in ScriptSchema(description: "Own", inputSchema: ["type": "object", "properties": ["item": [:], "zip": ["type": "string"]]], dependencies: []) }
         checker.hasSecret = { _ in true }
@@ -464,6 +464,8 @@ struct WatchListRunnerTests {
         #expect(call.args["item"] as? String == "123" && call.args["zip"] as? String == "10001")
         #expect(call.timeout == 60)
         #expect(call.context?.appName == "Watch list")
+        _ = try await checkEach(checker, try #require(store.watch(id: watch.id)))   // as the runner passes it, with its folder
+        #expect(scripts.calls.last?.cardsSource == "watch-sale-items")   // NOTELING_CARDS_DIR: the watch's own folder in the cards inbox
 
         var bare = watch
         bare.requires = ["OTHER_TOKEN"]
@@ -482,7 +484,7 @@ struct WatchListRunnerTests {
         let watch = try #require(store.watches.first)
         let scripts = FakeScripts()
         var checker = WatchListChecker(registry: registry, folder: { store.folder(for: $0) })
-        checker.run = { try await scripts.run($0, $1, $2, $3, $4, $5) }
+        checker.run = { try await scripts.run($0, $1, $2, $3, $4, $5, $6) }
         checker.introspect = { _ in ScriptSchema(description: "Own", inputSchema: ["type": "object", "properties": ["item": [:]]], dependencies: []) }
         checker.hasSecret = { _ in true }
 
@@ -492,6 +494,7 @@ struct WatchListRunnerTests {
         #expect(call.script.path.standardizedFileURL == own.standardizedFileURL)
         #expect(call.secrets == ["SHOP_TOKEN"])
         #expect(call.toolDir?.standardizedFileURL == own.deletingLastPathComponent().standardizedFileURL)
+        #expect(call.cardsSource == "watch-team-holiday-oct-fashion")
     }
 
     @Test func aCheckThatTakesItemsGetsThemAllInOneCallWithTimeForEach() async throws {
@@ -508,7 +511,7 @@ struct WatchListRunnerTests {
         scripts.answer = ["123": ["title": "One", "state": ["price": 1]], "456": ["error": "Gone from the shop"],
                           "999": ["title": "Not asked", "state": [:]]] as [String: Any]
         var checker = WatchListChecker(registry: registry, folder: { store.folder(for: $0) })
-        checker.run = { try await scripts.run($0, $1, $2, $3, $4, $5) }
+        checker.run = { try await scripts.run($0, $1, $2, $3, $4, $5, $6) }
         checker.introspect = { _ in ScriptSchema(description: "Own", inputSchema: ["type": "object", "properties": ["items": ["type": "array"], "zip": [:]]], dependencies: []) }
 
         guard case .wholeList(let check) = await checker.plan(watch) else { Issue.record("expected a list check"); return }
@@ -592,14 +595,16 @@ final class FakeScripts {
         var secrets: [String]
         var timeout: TimeInterval
         var toolDir: URL?
+        var cardsSource = ""
     }
     var calls: [Call] = []
     var answer: Any = ["title": "Item", "state": ["price": 10]] as [String: Any]
     var failure: Error?
 
     func run(_ script: ScriptTool, _ args: [String: Any], _ context: ScreenContext?, _ secrets: [String], _ timeout: TimeInterval,
-             _ toolDir: URL?) async throws -> Any {
-        calls.append(Call(script: script, args: args, context: context, secrets: secrets, timeout: timeout, toolDir: toolDir))
+             _ toolDir: URL?, _ cardsSource: String = "") async throws -> Any {
+        calls.append(Call(script: script, args: args, context: context, secrets: secrets, timeout: timeout, toolDir: toolDir,
+                          cardsSource: cardsSource))
         if let failure { throw failure }
         return answer
     }
