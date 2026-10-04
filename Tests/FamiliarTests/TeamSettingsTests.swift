@@ -257,4 +257,58 @@ struct TeamSettingsTests {
         #expect(TeamSettingsFile.load(root: nil, url: nil, home: home) == TeamSettingsState())
         #expect(!FileManager.default.fileExists(atPath: folder.teamSettingsFile.path))
     }
+
+    // MARK: - Settings
+
+    @Test func settingsShowWhatTheTeamSetsAndSaveOnlyYourOwn() throws {
+        let model = SettingsModel()
+        let own = Self.own
+        model.load(config: own, packs: [], team: try Self.team())
+
+        #expect(model.teamLine == "Claude through llm-gateway.example.com · model claude-opus-5 · set by your team's tools")
+        #expect(model.teamPrivacyLine == "Everything Noteling sends to Claude goes to llm-gateway.example.com: your questions, screenshots and the text it reads from your screen.")
+        #expect(SettingsModel.TeamField.allCases.allSatisfy(model.teamSets))
+        #expect(model.teamNoteText == "Your team's tools set these. Unlink them to use your own.")
+        #expect(model.connectionMode == "api" && model.apiBaseURL == "https://llm-gateway.example.com")
+        #expect(model.model == "claude-opus-5" && model.effort == "medium")
+        #expect(!model.showsAPIKey)   // your key isn't sent to the team's gateway
+        #expect(model.teamHeaderNames == ["X-Api-Key", "X-Consumer-Id"])
+        #expect(model.packSecrets.map(\.id) == ["GATEWAY_KEY"])
+        #expect(model.packSecrets.first?.team == true && model.packSecrets.first?.usedBy == "used by your team's Claude settings")
+
+        // Saving keeps your own values for what the team sets: nothing of theirs reaches config.json.
+        model.claudePath = "/usr/local/bin/claude"
+        let saved = model.fields(into: own)
+        #expect(saved.connectionMode == "claudeCode" && saved.model == "own-model" && saved.claudeModel == "sonnet")
+        #expect(saved.effort == "low" && saved.apiBaseURL == "https://own-gateway.example.net" && saved.apiHeaders == ["X-Own": "mine"])
+        #expect(saved.claudePath == "/usr/local/bin/claude" && saved.teamClaude == nil)
+
+        // The team sets only a model; then the link goes: your own fields come back, and can be changed.
+        model.applyTeam(try Self.team(#"{"claude": {"model": "claude-opus-5"}}"#))
+        #expect(model.teamSets(.model) && !model.teamSets(.connection) && !model.teamSets(.effort))
+        #expect(model.teamNoteText == SettingsModel.teamNote && model.teamLine == "Claude · model claude-opus-5 · set by your team's tools")
+        #expect(model.connectionMode == "claudeCode" && model.claudeModel == "claude-opus-5" && model.teamPrivacyLine == nil)
+        model.applyTeam(nil)
+        #expect(model.teamLine == nil && model.teamNoteText == nil && model.packSecrets.isEmpty)
+        #expect(model.connectionMode == "claudeCode" && model.claudeModel == "sonnet" && model.model == "own-model" && model.effort == "low")
+        #expect(!SettingsModel.TeamField.allCases.contains(where: model.teamSets))
+    }
+
+    @Test func secretFieldsKeepWhatIsTypedAndShareNamesWithPacks() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("team-packs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("crm"), withIntermediateDirectories: true)
+        try "---\nname: CRM\nrequires: [GATEWAY_KEY, CRM_KEY]\n---\n".write(to: root.appendingPathComponent("crm/SKILL.md"), atomically: true, encoding: .utf8)
+        let registry = ToolRegistry(root: root, runner: ScriptRunner(config: Config()))
+        await registry.reload()
+
+        let model = SettingsModel()
+        model.load(config: Self.own, packs: registry.packs, team: nil)
+        #expect(model.packSecrets.map(\.usedBy) == ["used by CRM", "used by CRM"])
+        model.packSecrets[0].value = "typed before the update"
+        model.applyTeam(try Self.team())   // an update arrives while Settings is open
+        #expect(model.packSecrets.map(\.id) == ["CRM_KEY", "GATEWAY_KEY"])
+        #expect(model.packSecrets.map(\.usedBy) == ["used by CRM", "used by your team's Claude settings, CRM"])
+        #expect(model.packSecrets[0].value == "typed before the update")
+    }
 }
