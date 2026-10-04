@@ -53,7 +53,7 @@ struct ScriptNetworkTests {
         import os
         def run() -> dict:
             \"\"\"Reports the proxy and certificate variables it was given.\"\"\"
-            return {k: os.environ.get(k) for k in ("HTTPS_PROXY", "NO_PROXY", "SSL_CERT_FILE", "UV_NATIVE_TLS")}
+            return {k: os.environ.get(k) for k in ("HTTPS_PROXY", "NO_PROXY", "SSL_CERT_FILE", "UV_NATIVE_TLS", "PYTHONDONTWRITEBYTECODE")}
         """.write(to: pack.appendingPathComponent("scripts/env.py"), atomically: true, encoding: .utf8)
         let runner = ScriptRunner(config: Config())
         runner.networkEnv = ["HTTPS_PROXY": "http://proxy.example.com:8080", "NO_PROXY": "localhost", "SSL_CERT_FILE": "/tmp/certs.pem", "UV_NATIVE_TLS": "1"]
@@ -66,5 +66,7 @@ struct ScriptNetworkTests {
         #expect(result["HTTPS_PROXY"] as? String == "http://proxy.example.com:8080")
         #expect(result["NO_PROXY"] as? String == "localhost,.corp.example.com")   // Settings' env wins
         #expect(result["SSL_CERT_FILE"] as? String == "/tmp/certs.pem" && result["UV_NATIVE_TLS"] as? String == "1")
+        #expect(result["PYTHONDONTWRITEBYTECODE"] as? String == "1")   // no cache files beside a pack's scripts
+        #expect(!FileManager.default.fileExists(atPath: pack.appendingPathComponent("scripts/__pycache__").path))
     }
 }

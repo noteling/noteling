@@ -93,7 +93,9 @@ final class ScriptRunner {
         let stdin = try JSONSerialization.data(withJSONObject: args)
         var env = networkEnv.merging(extraEnv) { _, configured in configured }
         let toolDir = (home ?? tool.path.deletingLastPathComponent().deletingLastPathComponent()).path
-        if home != nil { env["PYTHONDONTWRITEBYTECODE"] = "1" }
+        // Python never writes its cache beside a script: a team's linked copy is replaced whole on each update, and a
+        // pack folder may be shared or watched for changes.
+        if env["PYTHONDONTWRITEBYTECODE"] == nil { env["PYTHONDONTWRITEBYTECODE"] = "1" }
         env["NOTELING_TOOL_DIR"] = toolDir
         env["FAMILIAR_TOOL_DIR"] = toolDir   // earlier name, kept for existing packs
         for key in secrets { if let v = Secrets.get(key) { env[key] = v } }
