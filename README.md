@@ -91,6 +91,10 @@ When your team’s tools can check items on a site, ask in chat: “watch these 
 
 If someone keeps watch jobs for your group in your team’s tools, they appear under **Team watches** in the same window. Turn on the ones that are yours, there or by asking in chat, such as “turn on fashion”: only those are checked and tell you. They stay as your team wrote them; turning one off is how you stop it.
 
+Each item that isn’t as it should be, or can’t be checked, also gets a card in Morning Files, in a folder named after the watch: what the check found, in its own words, with **Open page** and **Why?**. When the item is back, its card is resolved. Put `"cards": "all"` in a watch’s `watch.json` to give every item a card, or `"cards": false` for none.
+
+Your team’s scripts can put cards in Morning Files too, by writing a small file (see the [developer guide](docs/development/guide.md)). Such a card only opens its page or asks Noteling about it; Noteling never acts on it by itself.
+
 ## Your information, your control
 
 Your saved sources, cards, and run history are stored on your Mac, and Noteling sends nothing to its developer. AI features send what a request needs to your configured Claude connection. Depending on the request, that can include screenshots, text from the window you’re using, the apps and web addresses you used recently, what Noteling reads from your sources, and the lessons you teach, in your own words. **Watch Me** records only the demonstration you start. The [privacy notice](PRIVACY.md) lists exactly what is stored, what is sent, and how to delete it.

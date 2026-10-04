@@ -15,6 +15,7 @@ The app stores its data in `~/.noteling`, or in `$NOTELING_HOME` if you set it. 
 | Sources you set up, run history and findings, including everything a script read returned | `calendar/`, `runs/` |
 | Your watch lists, one folder each: what to watch, what the latest check found and what you were last told, and any items file or check of its own (see Watch lists below) | `watches/` |
 | Your team's watches: which ones you turned on, and what each one you turned on found (see Watch lists below) | `team-watches/` |
+| Cards that tool-pack scripts and watch lists write for Morning Files, one file each (see The cards inbox below) | `cards/inbox/` |
 | Cards, your decisions and context, Who's Who, queued work, what the card step has already judged, and the lessons you teach | `morning/` |
 | Watch Me recordings, only while a draft is being written | `recordings/` |
 | The attention test: each message a mail job read through a script (its subject, sender and address, a short preview and its link) and whether it became a card, and the names of mail jobs that read from the screen beside it; your thumbs, explanations and “Matters to me” marks; what you do with your cards; and when you open the pack | `attention/` |
@@ -92,11 +93,20 @@ This is off until you link a repository in **Settings → Team tools from GitHub
 
 **What goes to Claude.** When you create, list, check, change, or turn on or off a watch in chat, what the checks found, including the check's own words, and where a watch of yours is kept or a team watch's path, becomes part of that conversation. When you ask why an item isn't as expected, from a notification or the Watch List, the request includes the item's address and title, what counts as right, what the latest check found and said and when, its facts, and the tool pack for that page.
 
+## The cards inbox
+
+**What is stored.** A tool-pack script or a watch's check can make a card in Morning Files by writing a small file into `cards/inbox/` in Noteling's folder, in a folder of its own: a title and, if it gives them, text, a web address, how much it matters, buttons, and details. Noteling also writes one there for each item of a watch that isn't as expected or couldn't be checked: the item's title and address, the differences the notification shows, the check's own words, every value it reported, when it ran and which check it was, with its facts as details. Noteling copies what each file says into your cards in `morning/`, with what you decide about them. It deletes a watch's card file when the item is back to as expected, when the watch is gone or turned off, or when the watch's cards are turned off (`"cards": false` in its `watch.json`); it never changes or deletes a file a script wrote. The folders Noteling makes there, and the files it writes, can be read only by your macOS user account.
+
+**Cards never run anything.** A card's buttons only open a web page in your browser or ask Noteling about the card in chat. Noteling doesn't work on these cards, whatever their files say.
+
+**What goes to Claude.** Nothing, until you ask. When you choose a card's question button or **Discuss or adjust**, the card, with its title, text, address, details, buttons and the context you added, becomes part of that conversation, with the question. A watch card's **Why?** sends what a notification's Why does (see Watch lists). The card step never sees these cards.
+
 ## How long it is kept
 
 - Watch Me recordings are deleted when you keep or discard the draft, when you clear the chat pad, or when you quit. Anything left behind by a crash is deleted after 7 days.
 - The card step's judgments stop counting after 30 days unseen and are then deleted. Lessons stay until you forget them, or until 300 newer ones replace them. Freeze diagnostics keep the five newest samples and the two newest step logs.
 - A stopped watch's folder stays in the Trash until you empty it. Each watch keeps only what its latest run found.
+- A card file stays in `cards/inbox/` until its script deletes it, or Noteling for a watch's card. When it goes, its card stays in Morning Files: resolved, if you hadn't decided anything about it.
 - Everything else stays until you delete it. This includes the activity log, which records the apps, window titles and web addresses you use while the app runs (including each address a page moves to without changing its title), the actions the app takes and any errors, and each source run's result, including the reader's own explanation when a run saves nothing.
 
 ## Deleting your data
