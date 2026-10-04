@@ -77,7 +77,8 @@ final class ScriptRunner {
 
     /// The script's own result, for code that uses it directly (a saved job reading its source, a watch list's check),
     /// with no size cap. It stops with its caller, and at `timeout`. `toolDir` is the folder a script outside a pack
-    /// (a watch's own check.py) calls home, instead of its pack's.
+    /// (a watch's own check.py) calls home, instead of its pack's. Such a script writes no bytecode cache beside
+    /// itself: its folder is a person's, or the team's copy, which Noteling never writes into.
     func result(_ tool: ScriptTool, args: [String: Any] = [:], context: ScreenContext? = nil, secrets: [String] = [],
                 timeout: TimeInterval = 90, toolDir: URL? = nil) async throws -> Any {
         try await execute(tool, args: args, context: context, secrets: secrets, timeout: timeout, stopsWithCaller: true,
@@ -92,6 +93,7 @@ final class ScriptRunner {
         let stdin = try JSONSerialization.data(withJSONObject: args)
         var env = networkEnv.merging(extraEnv) { _, configured in configured }
         let toolDir = (home ?? tool.path.deletingLastPathComponent().deletingLastPathComponent()).path
+        if home != nil { env["PYTHONDONTWRITEBYTECODE"] = "1" }
         env["NOTELING_TOOL_DIR"] = toolDir
         env["FAMILIAR_TOOL_DIR"] = toolDir   // earlier name, kept for existing packs
         for key in secrets { if let v = Secrets.get(key) { env[key] = v } }

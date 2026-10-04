@@ -126,9 +126,21 @@ struct WatchListDifference: Codable, Equatable {
     var field: String
     var now: WatchListValue
     var expected: WatchListValue
+    /// One value was expected among a list the check shows (a badge that should be there), rather than the list itself.
+    var includes = false
 
-    /// "Price: 13.95 — expected 12.33"
-    var words: String { "\(WatchListRules.label(field)): \(now.words) — expected \(expected.words)" }
+    init(field: String, now: WatchListValue, expected: WatchListValue, includes: Bool = false) {
+        self.field = field
+        self.now = now
+        self.expected = expected
+        self.includes = includes
+    }
+
+    /// The earlier single file's keys; latest.json writes `includes` itself.
+    private enum CodingKeys: String, CodingKey { case field, now, expected }
+
+    /// "Price: 13.95 — expected 12.33", "Badges: New — expected to include Deal"
+    var words: String { "\(WatchListRules.label(field)): \(now.words) — expected \(includes ? "to include " : "")\(expected.words)" }
 }
 
 /// What an item's last check said: as expected, not as expected (and how), or that it couldn't check (and why).
@@ -172,17 +184,23 @@ extension WatchListStatus: Codable {
 }
 
 /// One watched item: the key exactly as the person gave it (an id or a page address) and what counts as right for it
-/// alone, which watch.json holds; then what its checks found and what the person was last told, which latest.json holds.
+/// alone, which watch.json and the items file hold; then what its checks found and what the person was last told,
+/// which latest.json holds.
 struct WatchListItem: Equatable, Identifiable {
     var key: String
-    /// What counts as right for this item only, as the person said it: over the watch's own `expect`.
+    /// What counts as right for this item only, as watch.json says it: over the watch's own `expect`.
     var expect: [String: WatchListValue] = [:]
+    /// Its row in the items file, when it has one: what counts as right for it, column by column. Over `expect`.
+    var row: [String: WatchListValue]?
+    /// Listed in watch.json's `items`. An item only in the items file isn't, and only that file can take it out.
+    var listed = true
     var title: String?
     var url: String?
-    /// Everything its first check that worked reported: what counts as right starts from this. Nil until then.
+    /// Everything its first check that worked reported: a snapshot of it may count as right. Nil until then.
     var captured: [String: WatchListValue]?
-    /// What counts as right now: `captured` (only the watch's `fields`, when it names some), then the watch's `expect`,
-    /// then the item's own. Worked out again whenever either changes.
+    /// What the latest check that worked said counts as right by default (its `expect`), the weakest of the explicit.
+    var checkExpect: [String: WatchListValue]?
+    /// What counts as right now, worked out by `WatchListRules.expectations` whenever a check or the watch changes.
     var expected: [String: WatchListValue]?
     /// What its last check that worked reported.
     var state: [String: WatchListValue]?
@@ -207,6 +225,9 @@ struct WatchListItem: Equatable, Identifiable {
 
     var id: String { key }
 
+    /// What counts as right for this item alone: watch.json's, with its row in the items file over it.
+    var ownExpect: [String: WatchListValue] { expect.merging(row ?? [:]) { _, row in row } }
+
     /// What the check said in its own words, while its latest check says how the item is. A check that failed has
     /// nothing to say: an earlier check's words are never shown in its place.
     var whyNow: [String] {
@@ -227,11 +248,12 @@ struct WatchListItem: Equatable, Identifiable {
     }
 
     /// Fields that count, or that the person named, but that the latest check didn't report: shown, never alerted on.
-    /// Nothing when it failed.
+    /// Nothing when it failed. Names match the check's own loosely (see `WatchListRules.field`).
     func unreported(named fields: [String]? = nil) -> [String] {
         guard let state, status?.isVerdict == true else { return [] }
+        let reported = Set(state.keys)
         let counted = Set(expected?.keys.map { $0 } ?? []).union(fields ?? [])
-        return counted.filter { state[$0] == nil }.sorted()
+        return counted.filter { WatchListRules.field(for: $0, in: reported) == nil }.sorted()
     }
 
     /// Red and grey rows have something to explain.
@@ -272,9 +294,20 @@ extension WatchListItem: Codable {
     }
 }
 
+/// Whose a watch is: yours, in `watches/` in Noteling's folder, or your team's, in the linked tools' `watches/`, which
+/// Noteling only reads and checks once you turn it on.
+enum WatchListSource: Hashable {
+    case own, team
+}
+
 /// A list of items checked together on a schedule: by the pack's `watch:` script, or by the watch's own check.py.
 struct WatchListWatch: Equatable, Identifiable {
     var id = UUID()
+    var source = WatchListSource.own
+    /// Its folder under `watches/`, e.g. `holiday/oct/fashion`: a team job's id.
+    var path = ""
+    /// A team job is checked only once the person turns it on; a watch of their own always is.
+    var on = true
     var name: String
     /// The check: a pack script's tool name, e.g. shop__watch_item. A check.py in the watch's folder is used instead.
     var check: String
@@ -290,6 +323,13 @@ struct WatchListWatch: Equatable, Identifiable {
     var createdAt = Date()
     /// The secrets its own check.py gets, by the names packs use. A pack's check gets the pack's own instead.
     var requires: [String] = []
+    /// No checks or notifications before it starts or after it ends.
+    var starts: WatchListMoment?
+    var ends: WatchListMoment?
+    /// Its items file (items.psv, .csv or .tsv), when it has one, as last read.
+    var file: WatchListItemsFile?
+    /// Something to know about its files, e.g. that there are two items files and which one is used.
+    var fileNote: String?
     var lastRunAt: Date?
 
     static let defaultMinutes = 15
@@ -323,17 +363,35 @@ struct WatchListWatch: Equatable, Identifiable {
 
     func item(_ key: String) -> WatchListItem? { items.first { $0.key == key } }
 
-    /// What its watch.json holds.
-    var definition: WatchListDefinition {
-        WatchListDefinition(id: id, name: name, check: check, items: items.map { .init(key: $0.key, expect: $0.expect) }, args: args,
-                            fields: fields, expect: expect, everyMinutes: everyMinutes, paused: paused, createdAt: createdAt,
-                            requires: requires)
+    var isTeam: Bool { source == .team }
+
+    /// Whether it is checked at `now`: on, not paused, and between its start and end, if it has them.
+    func checking(at now: Date) -> Bool {
+        on && !paused && !notStarted(at: now) && !ended(at: now)
     }
 
-    /// Takes in a definition (a watch.json changed by hand, or a change from the chat): items keep what their checks
-    /// found, by key; new items start unchecked; and what counts as right is worked out again for every item. `quiet`
-    /// when the person sees the result where they made the change. The watch keeps its id.
-    mutating func adopt(_ definition: WatchListDefinition, quiet: Bool) {
+    func notStarted(at now: Date) -> Bool { starts.map { now < $0.date } ?? false }
+    func ended(at now: Date) -> Bool { ends.map { now > $0.date } ?? false }
+
+    /// What it needs to work out what counts as right for each item. A watch is explicit as soon as anything says what
+    /// counts as right: an items file, its own `expect`, an item's, or a check's.
+    var terms: WatchListTerms {
+        WatchListTerms(fields: fields, expect: expect,
+                       explicit: file != nil || !expect.isEmpty || items.contains { !$0.ownExpect.isEmpty || !($0.checkExpect ?? [:]).isEmpty })
+    }
+
+    /// What its watch.json holds: the items listed there, not those only in its items file.
+    var definition: WatchListDefinition {
+        WatchListDefinition(id: id, name: name, check: check, items: items.filter(\.listed).map { .init(key: $0.key, expect: $0.expect) },
+                            args: args, fields: fields, expect: expect, everyMinutes: everyMinutes, paused: paused, createdAt: createdAt,
+                            requires: requires, starts: starts, ends: ends)
+    }
+
+    /// Takes in a definition (a watch.json changed by hand, or a change from the chat) and its items file: the file's
+    /// items come first, then those listed in watch.json that it doesn't hold. Items keep what their checks found, by
+    /// key; new items start unchecked; and what counts as right is worked out again for every item. `quiet` when the
+    /// person sees the result where they made the change. The watch keeps its id.
+    mutating func adopt(_ definition: WatchListDefinition, file: WatchListItemsFile?, quiet: Bool) {
         name = definition.name
         check = definition.check
         args = definition.args
@@ -343,14 +401,88 @@ struct WatchListWatch: Equatable, Identifiable {
         paused = definition.paused
         createdAt = definition.createdAt
         requires = definition.requires
+        starts = definition.starts
+        ends = definition.ends
+        self.file = file
         let earlier = Dictionary(items.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
-        items = definition.items.map { entry in
-            var item = earlier[entry.key] ?? WatchListItem(key: entry.key)
-            item.expect = entry.expect
-            WatchListRules.refresh(&item, fields: fields, expect: expect, quiet: quiet)
+        let listed = Dictionary(definition.items.map { ($0.key, $0.expect) }, uniquingKeysWith: { first, _ in first })
+        var keys = file?.rows.map(\.key) ?? []
+        keys += definition.items.map(\.key).filter { !keys.contains($0) }
+        let rows = Dictionary((file?.rows ?? []).map { ($0.key, $0.expect) }, uniquingKeysWith: { first, _ in first })
+        items = keys.map { key in
+            var item = earlier[key] ?? WatchListItem(key: key)
+            item.expect = listed[key] ?? [:]
+            item.row = rows[key]
+            item.listed = listed[key] != nil
             return item
         }
+        let terms = self.terms
+        for index in items.indices { WatchListRules.refresh(&items[index], terms: terms, quiet: quiet) }
     }
+
+    /// Works out again what counts as right for every item, after the watch's terms changed.
+    mutating func reexpect(quiet: Bool) {
+        let terms = self.terms
+        for index in items.indices { WatchListRules.refresh(&items[index], terms: terms, quiet: quiet) }
+    }
+}
+
+/// What a watch's items need to work out what counts as right: the fields it names, its own `expect`, and whether
+/// anything says what counts as right explicitly.
+struct WatchListTerms: Equatable {
+    var fields: [String]?
+    var expect: [String: WatchListValue] = [:]
+    var explicit = false
+}
+
+/// A moment as watch.json gives it (`starts`, `ends`): ISO 8601, with an offset or in the Mac's own time, kept as written.
+struct WatchListMoment: Equatable {
+    var text: String
+    var date: Date
+
+    /// "2026-10-05T00:00:00-04:00", "2026-10-05T00:00:00Z", "2026-10-05T00:00" or "2026-10-05" (this Mac's time).
+    static func parse(_ text: String) -> WatchListMoment? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let offset = trimmed.replacingOccurrences(of: #"([+-]\d{2})(\d{2})$"#, with: "$1:$2", options: .regularExpression)
+            .replacingOccurrences(of: #"(T\d{2}:\d{2})(Z|[+-]\d{2}:\d{2})$"#, with: "$1:00$2", options: .regularExpression)
+        if let date = try? CalendarSubmission.timestamp(offset) { return WatchListMoment(text: trimmed, date: date) }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        let plain = trimmed.replacingOccurrences(of: #"\.\d+$"#, with: "", options: .regularExpression)
+        for format in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd"] {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: plain) { return WatchListMoment(text: trimmed, date: date) }
+        }
+        return nil
+    }
+
+    /// "Mon Oct 5, 12:00 AM", in this Mac's time.
+    var words: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "EEE MMM d, h:mm a"
+        return formatter.string(from: date)
+    }
+}
+
+/// A watch's items file: a header row, then one item per row, its first column the item and each other column a field
+/// of the check's `state`, with what counts as right for that item in it.
+struct WatchListItemsFile: Equatable {
+    struct Row: Equatable {
+        var key: String
+        var expect: [String: WatchListValue]
+    }
+
+    /// items.psv, items.csv or items.tsv.
+    var name: String
+    /// The headers after the first, as written.
+    var columns: [String]
+    var rows: [Row]
+    /// Rows left out, in plain words: "row 7 has no item", "row 9 repeats 123".
+    var skipped: [String] = []
 }
 
 /// A watch as its watch.json says it: what to check, what counts as right and how often; not what the checks found.
@@ -371,6 +503,8 @@ struct WatchListDefinition: Equatable {
     var paused = false
     var createdAt: Date
     var requires: [String] = []
+    var starts: WatchListMoment?
+    var ends: WatchListMoment?
     /// Keys a person added that Noteling doesn't use, kept as they wrote them (compact JSON) when it writes the file.
     var other: String?
 
@@ -419,13 +553,17 @@ struct WatchListReading: Equatable {
     var facts: String?
     /// The check's own words about the item, when it said something.
     var why: [String]?
+    /// What the check says counts as right for the item by default, e.g. no problems and in stock.
+    var expect: [String: WatchListValue]?
 
-    init(title: String?, url: String?, state: [String: WatchListValue], facts: String?, why: [String]? = nil) {
+    init(title: String?, url: String?, state: [String: WatchListValue], facts: String?, why: [String]? = nil,
+         expect: [String: WatchListValue]? = nil) {
         self.title = title
         self.url = url
         self.state = state
         self.facts = facts
         self.why = why
+        self.expect = expect
     }
 
     static let fieldLimit = 40
@@ -456,8 +594,18 @@ struct WatchListReading: Equatable {
             return trimmed.isEmpty ? nil : WatchListValue.clip(trimmed, limit)
         }
         let facts = object["facts"].flatMap { $0 is NSNull ? nil : WatchListValue.jsonText($0, limit: factsLimit) }
+        var expect: [String: WatchListValue]?
+        if let raw = object["expect"] as? [String: Any] {
+            var values: [String: WatchListValue] = [:]
+            for key in raw.keys.sorted() {
+                let field = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !field.isEmpty, values.count < fieldLimit else { continue }
+                values[field] = WatchListValue(json: raw[key])
+            }
+            expect = values.isEmpty ? nil : values
+        }
         return .checked(WatchListReading(title: text("title", 300), url: text("url", 2_000), state: state, facts: facts,
-                                         why: whyLines(object["why"])))
+                                         why: whyLines(object["why"]), expect: expect))
     }
 
     /// `why` as the check wrote it: a string or a list of strings, each trimmed and kept short; nil when it said nothing.
@@ -549,7 +697,7 @@ struct WatchListAlert: Equatable {
     }
 }
 
-struct WatchListError: LocalizedError {
+struct WatchListError: LocalizedError, Equatable {
     let message: String
     init(_ message: String) { self.message = message }
     var errorDescription: String? { message }

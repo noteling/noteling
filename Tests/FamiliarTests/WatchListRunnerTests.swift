@@ -329,6 +329,108 @@ struct WatchListRunnerTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.place.watches.appendingPathComponent("sale-items").path))   // not brought back
     }
 
+    // MARK: start, end, and team watches
+
+    @Test func aWatchIsntCheckedBeforeItStartsNorTellsAfterItEnds() async throws {
+        let place = Place()
+        defer { place.remove() }
+        let clock = TestClock()
+        let folder = place.watches.appendingPathComponent("sale")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try place.write(#"{"name": "Sale", "items": ["1"], "every_minutes": 60, "starts": "2026-09-21T15:00:00Z", "ends": "2026-09-21T17:00:00Z"}"#,
+                        to: folder.appendingPathComponent("watch.json"))
+        let store = place.store()
+        let checks = FakeWatchChecks()
+        let runner = WatchListRunner(store: store, check: { await checks.check($0, $1) }, now: { clock.now })
+        var alerts: [WatchListAlert] = []
+        runner.onAlert = { alerts.append($0) }
+        let id = try #require(store.watches.first?.id)
+
+        clock.now = Date(timeIntervalSince1970: 1_789_999_200)   // 14:00, before it starts
+        runner.tick()
+        #expect(runner.current(id) == nil && checks.calls.isEmpty)
+
+        clock.now = Date(timeIntervalSince1970: 1_790_002_800)   // 15:00
+        runner.tick()
+        await runner.current(id)?.value
+        #expect(checks.calls == ["1"])
+
+        // A run that ends after the watch does keeps what it found, and tells nobody.
+        clock.now += 3_600
+        checks.gate = Gate()
+        checks.next["1"] = [checks.reading(price: 13)]
+        runner.tick()
+        try await until { checks.inFlight == 1 }
+        clock.now += 7_200                                         // past its end
+        checks.gate?.open()
+        await runner.current(id)?.value
+        #expect(alerts.isEmpty)
+        #expect(store.watch(id: id)?.items.first?.status == .notAsExpected([WatchListDifference(field: "price", now: .number(13), expected: .number(10))]))
+        runner.tick()
+        #expect(runner.current(id) == nil)                         // after it ends, no more checks
+    }
+
+    @Test func onlyTeamWatchesThatAreOnAreCheckedAndTurningOneOnSaysNothingAtFirst() async throws {
+        let place = Place()
+        defer { place.remove() }
+        try place.job("holiday/oct/fashion", #"{"name": "Fashion", "items": ["1", "2"]}"#)
+        let clock = TestClock()
+        let store = place.store()
+        let checks = FakeWatchChecks()
+        let runner = WatchListRunner(store: store, check: { await checks.check($0, $1) }, now: { clock.now })
+        var alerts: [WatchListAlert] = []
+        runner.onAlert = { alerts.append($0) }
+        let id = WatchListStore.teamID("holiday/oct/fashion")
+
+        runner.tick()
+        #expect(runner.current(id) == nil && checks.calls.isEmpty)   // off: never checked
+
+        await (try runner.turn(id, on: true))?.value                  // checked at once
+        #expect(checks.calls.sorted() == ["1", "2"])
+        try runner.turn(id, on: false)
+
+        // While it was off, item 1 changed. Turning it on again shows that where it was turned on, not as a notification.
+        checks.next["1"] = [checks.reading(price: 12)]
+        await (try runner.turn(id, on: true))?.value
+        #expect(alerts.isEmpty)
+        #expect(store.watch(id: id)?.item("1")?.notified == .notAsExpected([WatchListDifference(field: "price", now: .number(12), expected: .number(10))]))
+
+        checks.next["1"] = [checks.reading(price: 14)]
+        clock.now += 3_600
+        runner.tick()
+        await runner.current(id)?.value
+        #expect(alerts.map(\.body) == ["Price: 14 — expected 10"])
+        #expect(FileManager.default.fileExists(atPath: place.teamResults.appendingPathComponent("holiday/oct/fashion/latest.json").path))
+    }
+
+    @Test func anItemAddedToAnItemsFileIsCheckedAtTheNextTick() async throws {
+        let place = Place()
+        defer { place.remove() }
+        let folder = place.watches.appendingPathComponent("sale")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try place.write(#"{"name": "Sale"}"#, to: folder.appendingPathComponent("watch.json"))
+        try place.write("item,price\n1,10\n", to: folder.appendingPathComponent("items.csv"))
+        let store = place.store()
+        let checks = FakeWatchChecks()
+        let runner = WatchListRunner(store: store, check: { await checks.check($0, $1) })
+        let id = try #require(store.watches.first?.id)
+        await runner.run(id)?.value
+        #expect(store.watch(id: id)?.item("1")?.status == .asExpected)
+
+        try place.write("item,price\n1,10\n2,11\n", to: folder.appendingPathComponent("items.csv"))
+        runner.tick()
+        await runner.current(id)?.value
+
+        #expect(checks.calls.sorted() == ["1", "2"])
+        #expect(store.watch(id: id)?.item("2")?.status == .notAsExpected([WatchListDifference(field: "price", now: .number(10), expected: .number(11))]))
+    }
+
+    /// Lets the runner's tasks move until the condition holds.
+    private func until(_ condition: () -> Bool) async throws {
+        for _ in 0..<1_000 where !condition() { await Task.yield() }
+        try #require(condition())
+    }
+
     // MARK: the real check
 
     @Test func aWatchsOwnCheckIsUsedInsteadOfThePacksAndGetsOnlyTheSecretsItsWatchJsonLists() async throws {
@@ -367,6 +469,29 @@ struct WatchListRunnerTests {
         bare.requires = ["OTHER_TOKEN"]
         checker.hasSecret = { $0 != "OTHER_TOKEN" }
         #expect(unavailable(await checker.plan(bare)) == "It needs OTHER_TOKEN in Settings.")
+    }
+
+    @Test func aTeamWatchsOwnCheckRunsFromTheTeamsCopyWithOnlyItsSecrets() async throws {
+        let place = Place()
+        defer { place.remove() }
+        try place.job("holiday/oct/fashion", #"{"name": "Fashion", "items": ["1"], "requires": ["SHOP_TOKEN", "NOTELING_TOOLS_REPO_TOKEN"]}"#)
+        let own = place.team.appendingPathComponent("holiday/oct/fashion/check.py")
+        try "def run(item: str):\n    return {}\n".write(to: own, atomically: true, encoding: .utf8)
+        let registry = try await shopRegistry(in: place.root, requires: "PACK_TOKEN")
+        let store = place.store()
+        let watch = try #require(store.watches.first)
+        let scripts = FakeScripts()
+        var checker = WatchListChecker(registry: registry, folder: { store.folder(for: $0) })
+        checker.run = { try await scripts.run($0, $1, $2, $3, $4, $5) }
+        checker.introspect = { _ in ScriptSchema(description: "Own", inputSchema: ["type": "object", "properties": ["item": [:]]], dependencies: []) }
+        checker.hasSecret = { _ in true }
+
+        _ = try await checkEach(checker, watch)
+
+        let call = try #require(scripts.calls.last)
+        #expect(call.script.path.standardizedFileURL == own.standardizedFileURL)
+        #expect(call.secrets == ["SHOP_TOKEN"])
+        #expect(call.toolDir?.standardizedFileURL == own.deletingLastPathComponent().standardizedFileURL)
     }
 
     @Test func aCheckThatTakesItemsGetsThemAllInOneCallWithTimeForEach() async throws {

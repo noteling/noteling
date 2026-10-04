@@ -27,8 +27,11 @@ struct WatchListStoreTests {
         let results = try String(contentsOf: folder.appendingPathComponent("latest.json"), encoding: .utf8)
         #expect(results.contains("\"last_told\"") && results.contains("\"price\": 13.95") && results.contains("\"offers\": []"))
 
+        var expected = watch
+        expected.path = "sale-items"
+        expected.reexpect(quiet: false)   // what is said explicitly counts even before an item's first check works
         let reopened = place.store()
-        #expect(reopened.watches == [watch])
+        #expect(reopened.watches == [expected])
         #expect(reopened.problems.isEmpty && reopened.unreadable.isEmpty)
     }
 
@@ -184,6 +187,7 @@ struct WatchListStoreTests {
         let store = place.store()
         let watch = checkedWatch()
         try store.add(watch)
+        let added = store.watch(id: watch.id)
         let file = place.watches.appendingPathComponent("sale-items/watch.json")
         let broken = "{\n  \"name\": \"Sale items\",\n  \"items\": [\"123\",\n}\n"
         try place.write(broken, to: file)
@@ -191,7 +195,7 @@ struct WatchListStoreTests {
         store.refresh()
         let problem = try #require(store.problems[watch.id])
         #expect(problem.hasPrefix("Can't read watch.json: it isn't valid JSON (invalid value around line 4"))
-        #expect(store.watch(id: watch.id) == watch)   // the last good definition
+        #expect(store.watch(id: watch.id) == added)   // the last good definition
 
         // Nothing writes over it: not a change, not a run's results.
         #expect(throws: WatchListError.self) { try store.change(watch.id) { $0.paused = false } }
@@ -247,8 +251,10 @@ struct WatchListStoreTests {
         try place.write("{\"items\": [\"7\", 8], \"expect\": {\"in_stock\": true}}", to: handed.appendingPathComponent("watch.json"))
         // A copy of a folder, id and all.
         try FileManager.default.copyItem(at: place.watches.appendingPathComponent("sale-items"), to: place.watches.appendingPathComponent("sale-items copy"))
-        // A folder with something else in it.
+        // A folder that only groups others, and one whose watch.json can't be read.
         try FileManager.default.createDirectory(at: place.watches.appendingPathComponent("notes"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: place.watches.appendingPathComponent("broken"), withIntermediateDirectories: true)
+        try place.write("{ \"items\": ", to: place.watches.appendingPathComponent("broken/watch.json"))
 
         let changes = store.refresh()
 
@@ -260,7 +266,8 @@ struct WatchListStoreTests {
         #expect(written.contains(weekend.id.uuidString))   // its id is written down, so it stays
         let copy = try #require(store.watches.first { $0.id != original.id && $0.name == "Sale items" })
         #expect(copy.id == WatchListFiles.derivedID(folder: "sale-items copy"))
-        #expect(store.unreadable == ["notes": "Can't read watch.json: it isn't in the folder."])
+        #expect(store.unreadable.keys.sorted() == ["broken"])   // a folder without a watch.json just holds others
+        #expect(store.unreadable["broken"]?.hasPrefix("Can't read watch.json: it isn't valid JSON") == true)
 
         // Renamed: the same watch. Deleted: no longer watched.
         try FileManager.default.moveItem(at: handed, to: place.watches.appendingPathComponent("weekend-picks"))
@@ -322,20 +329,48 @@ struct WatchListStoreTests {
     }
 }
 
-/// A Noteling folder of its own for one test: `watches/` and the earlier `watch-list.json`, never the real ones.
+/// A Noteling folder of its own for one test: `watches/`, the earlier `watch-list.json`, a copy of the team's tools with
+/// its `watches/`, and `team-watches/` for what team watches find; never the real ones.
 @MainActor
 struct Place {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("watch-place-\(UUID().uuidString)")
     var watches: URL { root.appendingPathComponent("watches") }
     var legacy: URL { root.appendingPathComponent("watch-list.json") }
+    var linked: URL { root.appendingPathComponent("linked-tools") }
+    var team: URL { linked.appendingPathComponent("watches") }
+    var teamResults: URL { root.appendingPathComponent("team-watches") }
 
     /// Stopped watches' folders go to a Trash folder of the test's own, never the real Trash.
     func store(trash: ((URL) throws -> Void)? = nil) -> WatchListStore {
         let bin = root.appendingPathComponent("Trash")
-        return WatchListStore(directory: watches, legacyFile: legacy, trash: trash ?? { url in
+        let team = team
+        return WatchListStore(directory: watches, legacyFile: legacy, teamResults: teamResults,
+                              teamDirectory: { FileManager.default.fileExists(atPath: team.path) ? team : nil },
+                              trash: trash ?? { url in
             try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
             try FileManager.default.moveItem(at: url, to: bin.appendingPathComponent(UUID().uuidString))
         })
+    }
+
+    /// A job in the team's tools: its watch.json, and an items file if given.
+    func job(_ path: String, _ json: String, items: (name: String, text: String)? = nil) throws {
+        let folder = team.appendingPathComponent(path)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try write(json, to: folder.appendingPathComponent("watch.json"))
+        if let items { try write(items.text, to: folder.appendingPathComponent(items.name)) }
+    }
+
+    /// An update of the team's tools: a new copy, every file in it new, put in place of the old one.
+    func update(_ change: (URL) throws -> Void) throws {
+        let fresh = root.appendingPathComponent("incoming-\(UUID().uuidString)")
+        try FileManager.default.copyItem(at: linked, to: fresh)
+        try change(fresh.appendingPathComponent("watches"))
+        let later = Date().addingTimeInterval(60)
+        for path in FileManager.default.subpaths(atPath: fresh.path) ?? [] {
+            try FileManager.default.setAttributes([.modificationDate: later], ofItemAtPath: fresh.appendingPathComponent(path).path)
+        }
+        try FileManager.default.removeItem(at: linked)
+        try FileManager.default.moveItem(at: fresh, to: linked)
     }
 
     func remove() { try? FileManager.default.removeItem(at: root) }

@@ -114,7 +114,8 @@ final class WatchListRunner: ObservableObject {
     /// quit, are checked now rather than at the watch's next run. Their first check says nothing: it only finds what
     /// counts as right.
     private func checkUnchecked() {
-        for watch in store.watches where !watch.paused && runs[watch.id] == nil {
+        let time = now()
+        for watch in store.watches where watch.checking(at: time) && runs[watch.id] == nil {
             let unchecked = Set(watch.items.filter { $0.checkedAt == nil }.map(\.key))
             if !unchecked.isEmpty { run(watch.id, items: unchecked) }
         }
@@ -138,6 +139,16 @@ final class WatchListRunner: ObservableObject {
 
     /// The run in progress for a watch, if any.
     func current(_ id: UUID) -> Task<Void, Never>? { runs[id] }
+
+    /// Turns a team watch on or off. Turned on, it is checked right away, if it has started, and that first result
+    /// says nothing: it shows where the person turned it on. Turned off, a run in progress stops.
+    @discardableResult
+    func turn(_ id: UUID, on: Bool) throws -> Task<Void, Never>? {
+        try store.setOn(id, on)
+        guard on else { cancel(id); return nil }
+        guard let watch = store.watch(id: id), watch.checking(at: now()) else { return nil }
+        return run(id, quiet: WatchListQuiet())
+    }
 
     /// Stops a watch's run, when the watch is stopped.
     func cancel(_ id: UUID) {
@@ -242,7 +253,9 @@ final class WatchListRunner: ObservableObject {
         _ = try? store.change(watchID, persist: false) { watch in
             guard let index = watch.items.firstIndex(where: { $0.key == key }) else { return }
             var item = watch.items[index]
-            let kind = WatchListRules.apply(outcome, to: &item, fields: watch.fields, expect: watch.expect, at: time, quiet: quiet)
+            // Turned off, or past its end, while this ran: what it found is kept, and nobody is told.
+            let silent = quiet || !watch.checking(at: time)
+            let kind = WatchListRules.apply(outcome, to: &item, terms: watch.terms, at: time, quiet: silent)
             watch.items[index] = item
             alert = kind.map { WatchListAlert(watchID: watch.id, watchName: watch.name, itemKey: key, title: item.label, kind: $0, why: item.whyNow) }
         }

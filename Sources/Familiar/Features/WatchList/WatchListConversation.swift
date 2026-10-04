@@ -35,38 +35,42 @@ final class WatchListConversation {
     // MARK: tools
 
     func routes() -> [ToolRoute] {
-        let watch: [String: Any] = ["type": "string", "description": "The watch's name or id, as list_watches gives them."]
+        let watch: [String: Any] = ["type": "string", "description": "The watch's name, id or path, as list_watches gives them; a team watch's path may be its last part, like \"fashion\"."]
         let items: (String) -> [String: Any] = { ["type": "array", "items": ["type": "string"], "description": $0] }
         let minutes: [String: Any] = ["type": "integer", "description": "How often to check, in minutes: 5 to 240. Default 15."]
-        let expect: [String: Any] = ["type": "object", "description": "What counts as right for every item, field → value, e.g. {\"price\": 12.33, \"badges\": [\"Deal\"], \"in_stock\": true}. Overrides what the first check shows."]
+        let expect: [String: Any] = ["type": "object", "description": "What counts as right for every item, field → value, e.g. {\"price\": 12.33, \"badges\": \"Deal\", \"in_stock\": true}. One value for a list field means the list should include it."]
         return [
             route("watch_items", Self.watchItemsDescription, [
                 "items": items("The items exactly as the person gave them: ids or page addresses. Up to 50, or 200 when the check takes a whole list at once."),
                 "name": ["type": "string", "description": "A short name for the watch, e.g. \"Sale items\"."],
                 "every_minutes": minutes,
-                "fields": items("Only keep an eye on these things the check reports, e.g. [\"price\", \"badges\"]. Default: everything it reports."),
+                "fields": items("Things the check reports to keep an eye on as its first check finds them, e.g. [\"price\", \"badges\"]. Without fields or expect, everything it reports."),
                 "expect": expect,
                 "args": ["type": "object", "description": "Extra details the check takes, as the person gave them, e.g. {\"zip\": \"10001\"}."],
                 "check": ["type": "string", "description": "Which check to use, when there are several. Default: the only one there is."],
             ], required: ["items"]) { [unowned self] input in try await self.create(input) },
-            route("list_watches", "List what is being watched: each watch's name, how often it checks and when it last did, and each item's status: as expected, not as expected (and how), or couldn't check (and why).",
+            route("list_watches", "List the watches: the person's own, and their team's from the team's tools with whether each is on for them. For each: its name, id or path, how often it checks and when it last did, when it starts or ends, and each item's status: as expected, not as expected (and how), or couldn't check (and why). A team watch that is off shows only what it is.",
                   [:], required: []) { [unowned self] _ in await self.list() },
-            route("check_watch_now", "Check a watch's items now instead of waiting for its schedule, and return what each shows. Without watch, check every watch. Use it when the person asks to check now.",
+            route("check_watch_now", "Check a watch's items now instead of waiting for its schedule, and return what each shows. Without watch, check every watch that is on. Use it when the person asks to check now.",
                   ["watch": watch], required: []) { [unowned self] input in try await self.checkNow(input) },
-            route("change_watch", "Change a watch: add or remove items, change how often it checks, change what counts as right for every item (expect, compared at once with what each item's last check showed), or pause and resume it. New items are checked now.",
+            route("change_watch", "Change one of the person's own watches: add or remove items, change how often it checks, change what counts as right for every item (expect, compared at once with what each item's last check showed), or pause and resume it. New items are checked now. A team watch can only be turned on or off.",
                   ["watch": watch, "add_items": items("Items to add: ids or page addresses."),
                    "remove_items": items("Items to stop watching: as given, or their titles."), "every_minutes": minutes,
                    "expect": ["type": "object", "description": "What counts as right from now on, field → value, for every item."],
                    "paused": ["type": "boolean", "description": "true pauses the watch; false resumes it."]],
                   required: ["watch"]) { [unowned self] input in try await self.change(input) },
-            route("stop_watch", "Stop watching: remove a watch with all its items, so it no longer checks or notifies.",
+            route("turn_on_watch", "Turn on one of the team's watches for the person, so it is checked on its schedule and they are told when an item isn't as it should be. It is checked right away, and the result is returned. (One of their own watches is resumed.)",
+                  ["watch": watch], required: ["watch"]) { [unowned self] input in try await self.turn(input, on: true) },
+            route("turn_off_watch", "Turn off one of the team's watches for the person: it is no longer checked and doesn't notify; what it found stays. (One of their own watches is paused.)",
+                  ["watch": watch], required: ["watch"]) { [unowned self] input in try await self.turn(input, on: false) },
+            route("stop_watch", "Stop watching: one of the person's own watches is removed with all its items (its folder goes to the Trash), so it no longer checks or notifies. A team watch is turned off instead.",
                   ["watch": watch], required: ["watch"]) { [unowned self] input in try self.stop(input) },
         ]
     }
 
-    static let watchItemsDescription = "Watch items for the person and tell them when one is not as it should be right now. Use it when they ask to watch, keep an eye on or monitor items (product ids or page addresses); it is not Watch Me, which records them doing a task. Their team's check for the site checks each item on a schedule, and a Mac notification tells them when an item stops being as expected or changes again, when it is back, or when it can't be checked twice in a row. This creates the watch, checks every item once now, and returns per item its title, status, what it shows now and what counts as right: what its first check shows, unless expect says otherwise. Then confirm in one or two lines what you are watching, what counts as right, and how often, and that they can change what counts as right (expect here, or change_watch later). If notifications are off, say so."
+    static let watchItemsDescription = "Watch items for the person and tell them when one is not as it should be right now. Use it when they ask to watch, keep an eye on or monitor items (product ids or page addresses); it is not Watch Me, which records them doing a task. Their team's check for the site checks each item on a schedule, and a Mac notification tells them when an item stops being as expected or changes again, when it is back, or when it can't be checked twice in a row. This creates the watch, checks every item once now, and returns per item its title, status, what it shows now and what counts as right. What counts as right: when expect is given, or the check says so itself, only that (plus fields, as the first check finds them); otherwise everything the first check shows, or only fields. Then confirm in one or two lines what you are watching, what counts as right, and how often, and that they can change what counts as right (expect here, or change_watch later). If notifications are off, say so."
 
-    /// Each tool first takes in what people changed in the watches folder by hand, so it answers from the files as they are.
+    /// Each tool first takes in what changed in the watches folders, so it answers from the files as they are.
     private func route(_ name: String, _ description: String, _ properties: [String: Any], required: [String],
                        action: @escaping ([String: Any]) async throws -> String) -> ToolRoute {
         ToolRoute(match: .tool(name: name), definition: ["name": name, "description": description,
@@ -81,7 +85,7 @@ final class WatchListConversation {
 
     private func create(_ input: [String: Any]) async throws -> String {
         let keys = try Self.items(input["items"], required: true)
-        guard store.watches.count < WatchListStore.watchLimit else {
+        guard store.watches.filter({ !$0.isTeam }).count < WatchListStore.watchLimit else {
             throw WatchListError("You're already watching \(WatchListStore.watchLimit) lists, the most Noteling keeps. Stop one first.")
         }
         let choice = try resolveCheck(input["check"])
@@ -111,9 +115,14 @@ final class WatchListConversation {
     }
 
     private func list() async -> String {
+        let own = store.watches.filter { !$0.isTeam }, team = store.watches.filter(\.isTeam)
         let unreadable = store.unreadable.keys.sorted().map { ["folder": $0, "problem": store.unreadable[$0]!] }
-        guard !store.watches.isEmpty || !unreadable.isEmpty else { return "Nothing is being watched." + (store.notice.map { " " + $0 } ?? "") }
-        var result: [String: Any] = ["watches": store.watches.map(summary)]
+            + store.teamUnreadable.keys.sorted().map { ["folder": $0, "from": "your team's tools", "problem": store.teamUnreadable[$0]!] }
+        guard !own.isEmpty || !team.isEmpty || !unreadable.isEmpty else {
+            return "Nothing is being watched." + (store.notice.map { " " + $0 } ?? "")
+        }
+        var result: [String: Any] = ["watches": own.map(summary)]
+        if !team.isEmpty { result["team_watches"] = team.map { $0.on ? summary($0) : brief($0) } }
         if !unreadable.isEmpty { result["folders_not_watched"] = unreadable }
         if let notice = store.notice { result["notice"] = notice }
         result["notifications"] = await notificationLine()
@@ -123,10 +132,15 @@ final class WatchListConversation {
     private func checkNow(_ input: [String: Any]) async throws -> String {
         let chosen: [WatchListWatch]
         if Self.text(input["watch"]) == nil {
-            guard !store.watches.isEmpty else { throw WatchListError("Nothing is being watched.") }
-            chosen = store.watches
+            chosen = store.watches.filter { $0.checking(at: now()) || (!$0.isTeam && $0.paused && !$0.notStarted(at: now()) && !$0.ended(at: now())) }
+            guard !chosen.isEmpty else {
+                throw WatchListError(store.watches.isEmpty ? "Nothing is being watched." : "No watch is on and checking right now.")
+            }
         } else {
-            chosen = [try resolve(input["watch"])]
+            let watch = try resolve(input["watch"])
+            if watch.isTeam, !watch.on { throw WatchListError("“\(Self.clip(watch.name, 80))” is off. Turn it on to check it.") }
+            if let reason = notChecking(watch) { throw WatchListError(reason) }
+            chosen = [watch]
         }
         let finished = await checkWaiting(chosen.map(\.id))
         var result: [String: Any] = ["watches": chosen.compactMap { store.watch(id: $0.id) }.map(summary)]
@@ -134,8 +148,17 @@ final class WatchListConversation {
         return Self.json(result)
     }
 
+    /// Before its start or after its end, a watch isn't checked at all.
+    private func notChecking(_ watch: WatchListWatch) -> String? {
+        let name = "“\(Self.clip(watch.name, 80))”"
+        if watch.notStarted(at: now()), let starts = watch.starts { return "\(name) starts \(starts.words); nothing is checked before then." }
+        if watch.ended(at: now()), let ends = watch.ends { return "\(name) ended \(ends.words), so it is no longer checked." }
+        return nil
+    }
+
     private func change(_ input: [String: Any]) async throws -> String {
         let watch = try resolve(input["watch"])
+        guard !watch.isTeam else { throw WatchListError(WatchListStore.teamReadOnly + " You can turn it on or off.") }
         let adding = try Self.items(input["add_items"], required: false)
         let removing = try Self.items(input["remove_items"], required: false)
         let minutes = try input["every_minutes"].map { try Self.minutes($0) }
@@ -154,6 +177,9 @@ final class WatchListConversation {
         try store.change(watch.id) { w in
             for key in removing {
                 guard let index = w.items.firstIndex(where: { Self.matches($0, key) }) else { notFound.append(key); continue }
+                if w.items[index].row != nil, let file = w.file {
+                    throw WatchListError("“\(Self.clip(w.items[index].label, 80))” comes from \(file.name). Take it out of that file to stop watching it.")
+                }
                 w.items.remove(at: index)
             }
             if removing.count > notFound.count { changes.append("removed \(Self.count(removing.count - notFound.count))") }
@@ -168,7 +194,7 @@ final class WatchListConversation {
             if !expect.isEmpty {
                 for (field, value) in expect { w.expect[field] = value }
                 // The chat shows the result, so it is what the person was told.
-                for index in w.items.indices { WatchListRules.refresh(&w.items[index], fields: w.fields, expect: w.expect, quiet: true) }
+                w.reexpect(quiet: true)
                 changes.append("what counts as right")
             }
             if let paused, paused != w.paused { w.paused = paused; changes.append(paused ? "paused" : "resumed") }
@@ -185,11 +211,42 @@ final class WatchListConversation {
         return Self.json(result)
     }
 
+    /// A team watch is turned on or off for the person; one of their own is resumed or paused.
+    private func turn(_ input: [String: Any], on: Bool) async throws -> String {
+        let watch = try resolve(input["watch"])
+        let name = "“\(Self.clip(watch.name, 80))”"
+        guard watch.isTeam else {
+            guard watch.paused == on else { return "\(name) is \(on ? "already checking" : "already paused")." }
+            try store.change(watch.id) { $0.paused = !on }
+            onChange?(on ? "Resumed \(name)." : "Paused \(name).")
+            return on ? "Resumed \(name): it checks \(watch.everyWords) again." : "Paused \(name): it doesn't check or notify until it's resumed."
+        }
+        guard watch.on != on else { return "\(name) is already \(on ? "on" : "off")." }
+        let run = try runner.turn(watch.id, on: on)
+        if on { askForNotifications() }
+        onChange?(on ? "Turned on \(name) from your team's tools." : "Turned off \(name). It no longer checks or notifies.")
+        guard on else { return "Turned off \(name). It no longer checks or notifies; what it found stays." }
+        var finished = true
+        if let run { finished = await WatchListRunner.wait(for: run, atMost: waitLimit) }
+        var result = store.watch(id: watch.id).map(summary) ?? [:]
+        result["turned_on"] = true
+        if let reason = store.watch(id: watch.id).flatMap(notChecking) { result["note"] = reason }
+        if !finished { result["still_checking"] = Self.stillChecking }
+        result["notifications"] = await notificationLine()
+        return Self.json(result)
+    }
+
     private func stop(_ input: [String: Any]) throws -> String {
         let watch = try resolve(input["watch"])
+        let name = "“\(Self.clip(watch.name, 80))”"
+        if watch.isTeam {
+            if watch.on { try runner.turn(watch.id, on: false) }
+            onChange?("Turned off \(name). It comes from your team's tools, so it stays there for others.")
+            return "\(name) comes from your team's tools, so it was turned off for the person rather than removed. It no longer checks or notifies, and can be turned on again."
+        }
         runner.cancel(watch.id)
         try store.remove(watch.id)
-        let receipt = "Stopped watching “\(Self.clip(watch.name, 80))”. Its folder is in the Trash, if you want it back."
+        let receipt = "Stopped watching \(name). Its folder is in the Trash, if you want it back."
         onChange?(receipt)
         return receipt + " It no longer checks or notifies."
     }
@@ -226,15 +283,27 @@ final class WatchListConversation {
     }
 
     /// By id, or by name; without one, the only watch there is.
+    /// By id (a team watch's is its path), by name, by path, or by the end of a path that only one watch's has
+    /// ("fashion" for holiday/oct/fashion).
     private func resolve(_ raw: Any?) throws -> WatchListWatch {
-        let names = store.watches.map { "“\(Self.clip($0.name, 60))”" }.joined(separator: ", ")
+        let names = store.watches.map { "“\(Self.clip($0.name, 60))”" + ($0.isTeam ? " (\($0.path))" : "") }.joined(separator: ", ")
         guard let key = Self.text(raw) else {
             throw WatchListError(store.watches.isEmpty ? "Nothing is being watched." : "Say which watch: \(names).")
         }
         if let id = UUID(uuidString: key), let watch = store.watch(id: id) { return watch }
-        let named = store.watches.filter { $0.name.caseInsensitiveCompare(key) == .orderedSame }
-        if named.count == 1 { return named[0] }
-        if !named.isEmpty { throw WatchListError("Several watches are called “\(Self.clip(key, 80))”; use the id.") }
+        let path = key.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
+        for matching in [
+            { (w: WatchListWatch) in w.path.lowercased() == path },
+            { (w: WatchListWatch) in w.name.caseInsensitiveCompare(key) == .orderedSame },
+            { (w: WatchListWatch) in !path.isEmpty && w.path.lowercased().hasSuffix("/" + path) },
+        ] {
+            let found = store.watches.filter(matching)
+            if found.count == 1 { return found[0] }
+            if found.count > 1 {
+                throw WatchListError("Several watches go by “\(Self.clip(key, 80))”: "
+                    + found.map { "“\(Self.clip($0.name, 60))” (\($0.isTeam ? $0.path : $0.id.uuidString))" }.joined(separator: ", ") + ". Say which.")
+            }
+        }
         throw WatchListError(store.watches.isEmpty ? "Nothing is being watched."
             : "No watch is called “\(Self.clip(key, 80))”. Watches: \(names).")
     }
@@ -254,24 +323,70 @@ final class WatchListConversation {
 
     // MARK: what the chat reads
 
+    /// Items file columns that name nothing any checked item's check reports.
+    static func unreportedColumns(_ watch: WatchListWatch) -> [String] {
+        let checked = watch.items.filter { $0.status?.isVerdict == true }
+        guard let file = watch.file, !checked.isEmpty else { return [] }
+        let reported = Set(checked.flatMap { $0.state.map { Array($0.keys) } ?? [] })
+        return file.columns.filter { !$0.isEmpty && WatchListRules.field(for: $0, in: reported) == nil }
+    }
+
     static let stillChecking = "Some items are still being checked. The Watch List window shows them when they are done, and a notification comes only if one is not as expected later."
 
+    /// A team watch that is off, as the chat lists it: what it is, and that it's off.
+    private func brief(_ watch: WatchListWatch) -> [String: Any] {
+        var result: [String: Any] = ["watch": watch.name, "id": watch.path, "from": "your team's tools", "on": false,
+                                     "every_minutes": watch.everyMinutes, "items": watch.items.count]
+        result.merge(window(watch)) { _, new in new }
+        if let problem = store.problems[watch.id] { result["problem"] = problem }
+        return result
+    }
+
+    /// When it starts and ends, if it does, and whether that keeps it from checking now.
+    private func window(_ watch: WatchListWatch) -> [String: Any] {
+        var result: [String: Any] = [:]
+        if let starts = watch.starts { result["starts"] = starts.words }
+        if let ends = watch.ends { result["ends"] = ends.words }
+        if let reason = notChecking(watch) { result["not_checking"] = reason }
+        return result
+    }
+
     /// A watch as the chat reads it, compact: per item its title, status, what it shows now, what counts as right and
-    /// what the check said in its own words; where its folder is, and whether its watch.json can be read.
+    /// what the check said in its own words; where it comes from, whether its files can be read, and when it runs.
     private func summary(_ watch: WatchListWatch) -> [String: Any] {
-        var result: [String: Any] = ["watch": watch.name, "id": watch.id.uuidString, "every_minutes": watch.everyMinutes,
+        var result: [String: Any] = ["watch": watch.name, "id": watch.isTeam ? watch.path : watch.id.uuidString, "every_minutes": watch.everyMinutes,
                                      "check": store.ownCheck(for: watch.id) == nil ? watch.check : "its own check.py"]
-        if let folder = store.folder(for: watch.id) { result["folder"] = (folder.path as NSString).abbreviatingWithTildeInPath }
+        if watch.isTeam {
+            result["from"] = "your team's tools"
+            result["on"] = watch.on
+        } else {
+            result["path"] = watch.path
+            if let folder = store.folder(for: watch.id) { result["folder"] = (folder.path as NSString).abbreviatingWithTildeInPath }
+        }
+        result.merge(window(watch)) { _, new in new }
         if let problem = store.problems[watch.id] { result["problem"] = problem + " Until it's fixed, the watch keeps what it had." }
+        if let file = watch.file {
+            result["items_file"] = file.name
+            if !file.skipped.isEmpty { result["rows_left_out"] = file.skipped }
+            let columns = Self.unreportedColumns(watch)
+            if !columns.isEmpty {
+                result["columns_not_reported"] = columns
+                result["columns_note"] = columns.map { "column \($0) isn't something the check reports" }.joined(separator: "; ") + "."
+            }
+        }
+        if let note = watch.fileNote { result["files_note"] = note }
         if watch.paused { result["paused"] = true }
         if let fields = watch.fields {
             result["fields"] = fields
             let reported = Set(watch.items.flatMap { $0.state.map { Array($0.keys) } ?? [] })
-            let other = reported.subtracting(fields).subtracting(watch.expect.keys)
+            let counted = Set((fields + watch.expect.keys).compactMap { WatchListRules.field(for: $0, in: reported) })
+            let other = reported.subtracting(counted)
             if !other.isEmpty { result["also_reported"] = other.sorted() }
             // A name the check doesn't use would never be watched: say so, rather than stay green.
             let checked = watch.items.filter { $0.status?.isVerdict == true }
-            let missing = checked.isEmpty ? [] : fields.filter { field in checked.allSatisfy { $0.state?[field] == nil } }
+            let missing = checked.isEmpty ? [] : fields.filter { field in
+                checked.allSatisfy { WatchListRules.field(for: field, in: Set($0.state?.keys.map { $0 } ?? [])) == nil }
+            }
             if !missing.isEmpty {
                 result["fields_not_reported"] = missing
                 result["fields_note"] = "The check doesn't report \(missing.joined(separator: " or ")), so \(missing.count == 1 ? "it isn't" : "they aren't") watched. "
@@ -303,7 +418,8 @@ final class WatchListConversation {
                     row["now"] = state.filter { expected[$0.key] != nil }.mapValues(Self.brief)
                 }
             } else {
-                row["counts_as_right"] = "what its first check that works shows" + (watch.expect.isEmpty ? "" : ", with expect")
+                row["counts_as_right"] = watch.terms.explicit ? "only what is said: expect, its row in the items file, or the check's own"
+                    : "what its first check that works shows" + (watch.fields == nil ? "" : " of the fields named")
             }
             let unreported = item.unreported(named: watch.fields)
             if !unreported.isEmpty { row["not_reported"] = unreported }

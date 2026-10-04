@@ -7,23 +7,82 @@ enum WatchListRules {
     /// Numbers count as the same within half a cent; the rest of the margin absorbs floating-point noise.
     static let tolerance = 0.005 + 1e-9
 
-    /// What counts as right for an item, from its first check that works: every field it reported, or only the fields
-    /// the person named, then whatever they said explicitly (which also adds fields).
-    static func expectations(from state: [String: WatchListValue], fields: [String]?,
-                             expect: [String: WatchListValue]) -> [String: WatchListValue] {
-        var expected = fields.map { names in state.filter { names.contains($0.key) } } ?? state
-        for (field, value) in expect { expected[field] = value }
+    /// What counts as right for one item.
+    /// - When anything says so explicitly (an items file, the watch's `expect`, the item's own, or a check's), only that
+    ///   counts, strongest last: the check's, then the watch's, then the item's own (its row over watch.json's); plus a
+    ///   snapshot of exactly the fields the watch names, from the item's first check that worked. At the start of a sale
+    ///   prices and badges change on purpose, so a snapshot of everything would turn every item red.
+    /// - When nothing does, everything its first check that worked found, or only the fields the watch names.
+    /// Names are matched to the fields the check reports loosely (`field(for:in:)`), so an items file's "Badge" is the
+    /// check's "badges". Nil while there is nothing to go on.
+    static func expectations(captured: [String: WatchListValue]?, state: [String: WatchListValue]?, checkExpect: [String: WatchListValue]?,
+                             own: [String: WatchListValue], terms: WatchListTerms) -> [String: WatchListValue]? {
+        let explicit = terms.explicit || !own.isEmpty || !(checkExpect ?? [:]).isEmpty
+        let reported = Set((state ?? [:]).keys).union((captured ?? [:]).keys)
+        var expected: [String: WatchListValue] = [:]
+        func put(_ values: [String: WatchListValue]) {
+            for (name, value) in values { expected[field(for: name, in: reported) ?? name] = value }
+        }
+        if let captured {
+            if let fields = terms.fields {
+                put(captured.filter { entry in fields.contains { field(for: $0, in: [entry.key]) != nil } })
+            } else if !explicit {
+                put(captured)
+            }
+        } else if !explicit {
+            return nil
+        }
+        put(checkExpect ?? [:])
+        put(terms.expect)
+        put(own)
         return expected
+    }
+
+    /// The field of the check's that a name means: itself; else the same once case, spaces, `-` and `_` are set
+    /// aside ("In stock" is `in_stock`); else its plural ("badge" is `badges`). Nil when the check reports none of them.
+    static func field(for name: String, in fields: Set<String>) -> String? {
+        if fields.contains(name) { return name }
+        let wanted = loose(name)
+        guard !wanted.isEmpty else { return nil }
+        let byLoose = Dictionary(fields.map { (loose($0), $0) }, uniquingKeysWith: { first, second in min(first, second) })
+        if let exact = byLoose[wanted] { return exact }
+        var plurals = [wanted + "s", wanted + "es"]
+        if wanted.hasSuffix("y") { plurals.append(String(wanted.dropLast()) + "ies") }
+        return plurals.lazy.compactMap { byLoose[$0] }.first
+    }
+
+    /// A name as it is matched: lowercase, without spaces, `-` or `_`.
+    static func loose(_ name: String) -> String {
+        name.lowercased().filter { !$0.isWhitespace && $0 != "-" && $0 != "_" }
     }
 
     /// Compares what a check shows now with what counts as right. A field the check didn't report is not a difference:
     /// the row says it wasn't reported, and nothing is alerted.
     static func compare(_ state: [String: WatchListValue], with expected: [String: WatchListValue]) -> WatchListStatus {
-        let differences = expected.keys.sorted().compactMap { field -> WatchListDifference? in
-            guard let now = state[field], let wanted = expected[field], !same(now, wanted) else { return nil }
-            return WatchListDifference(field: field, now: now.normalized, expected: wanted.normalized)
-        }
+        let reported = Set(state.keys)
+        let differences = expected.keys.sorted().compactMap { name -> WatchListDifference? in
+            guard let field = field(for: name, in: reported), let now = state[field], let wanted = expected[name],
+                  !holds(now, wanted) else { return nil }
+            return WatchListDifference(field: field, now: now.normalized, expected: wanted.normalized, includes: includes(now, wanted))
+        }.sorted { $0.field < $1.field }
         return differences.isEmpty ? .asExpected : .notAsExpected(differences)
+    }
+
+    /// Whether what a check shows now is what was expected. One text expected of a list the check shows means the list
+    /// includes it (a badge that should be there: other labels on the page aren't wrong); a list expected of a list
+    /// means the same set, so a list captured from a first check keeps its exact meaning. Everything else as `same`.
+    static func holds(_ now: WatchListValue, _ expected: WatchListValue) -> Bool {
+        if includes(now, expected), case .text(let wanted) = expected.normalized {
+            if case .list(let list) = now.normalized { return list.contains(wanted) }
+            return false   // an empty list includes nothing
+        }
+        return same(now, expected)
+    }
+
+    /// One text expected where the check shows a list.
+    static func includes(_ now: WatchListValue, _ expected: WatchListValue) -> Bool {
+        guard case .text = expected.normalized, case .list = now else { return false }
+        return true
     }
 
     /// Whether what a check shows now counts as what was expected: numbers within half a cent, text exactly once
@@ -72,16 +131,24 @@ enum WatchListRules {
     ///   item is not how they were last told it was;
     /// - never on the item's first check, and never when `quiet` (the person sees the result where they asked, in the
     ///   chat): the result only becomes what they were told.
-    /// What counts as right starts from the first check that works, so an item whose first check failed gets it later;
-    /// `expect` is the watch's own, and the item's own `expect` goes over it.
+    /// A snapshot of what counts as right comes from the first check that works, so an item whose first check failed
+    /// gets it later. `expect` is the watch's own; the item's own goes over it.
     static func apply(_ outcome: WatchListOutcome, to item: inout WatchListItem, fields: [String]?,
                       expect: [String: WatchListValue], at time: Date, quiet: Bool = false) -> WatchListAlert.Kind? {
+        apply(outcome, to: &item, terms: WatchListTerms(fields: fields, expect: expect, explicit: !expect.isEmpty), at: time, quiet: quiet)
+    }
+
+    static func apply(_ outcome: WatchListOutcome, to item: inout WatchListItem, terms: WatchListTerms, at time: Date,
+                      quiet: Bool = false) -> WatchListAlert.Kind? {
         let silent = quiet || item.checkedAt == nil
         item.checkedAt = time
         switch outcome {
         case .failed(let reason):
             item.failures += 1
             item.status = .couldNotCheck(reason)
+            // What is said explicitly counts before any check works; a snapshot waits for one.
+            if let expected = expectations(captured: item.captured, state: item.state, checkExpect: item.checkExpect, own: item.ownExpect,
+                                           terms: terms) { item.expected = expected }
             guard item.failures >= 2, !item.notifiedCouldNotCheck else { return nil }
             item.notifiedCouldNotCheck = true
             return silent ? nil : .couldNotCheck(reason)
@@ -93,9 +160,10 @@ enum WatchListRules {
             item.state = reading.state
             item.facts = reading.facts
             item.why = reading.why
-            let captured = item.captured ?? reading.state
-            item.captured = captured
-            let expected = expectations(from: captured, fields: fields, expect: expect.merging(item.expect) { $1 })
+            item.checkExpect = reading.expect
+            if item.captured == nil { item.captured = reading.state }
+            let expected = expectations(captured: item.captured, state: reading.state, checkExpect: reading.expect, own: item.ownExpect,
+                                        terms: terms) ?? [:]
             item.expected = expected
             let verdict = compare(reading.state, with: expected)
             item.status = verdict
@@ -137,10 +205,14 @@ enum WatchListRules {
     /// told; after a hand edit the next check tells them if it isn't as they now expect. An item that couldn't be
     /// checked keeps its status, and one that never worked gets it all at its first check that works.
     static func refresh(_ item: inout WatchListItem, fields: [String]?, expect: [String: WatchListValue], quiet: Bool) {
-        guard let captured = item.captured else { item.expected = nil; return }
-        let expected = expectations(from: captured, fields: fields, expect: expect.merging(item.expect) { $1 })
+        refresh(&item, terms: WatchListTerms(fields: fields, expect: expect, explicit: !expect.isEmpty), quiet: quiet)
+    }
+
+    static func refresh(_ item: inout WatchListItem, terms: WatchListTerms, quiet: Bool) {
+        let expected = expectations(captured: item.captured, state: item.state, checkExpect: item.checkExpect, own: item.ownExpect,
+                                    terms: terms)
         item.expected = expected
-        guard let state = item.state, item.status?.isVerdict == true else { return }
+        guard let expected, let state = item.state, item.status?.isVerdict == true else { return }
         let verdict = compare(state, with: expected)
         item.status = verdict
         if quiet { item.notified = verdict }
@@ -202,14 +274,15 @@ enum WatchListSchedule {
     static let slack: TimeInterval = 5
 
     static func isDue(_ watch: WatchListWatch, at now: Date) -> Bool {
-        guard !watch.paused, !watch.items.isEmpty else { return false }
+        guard watch.checking(at: now), !watch.items.isEmpty else { return false }
         guard let last = watch.lastRunAt else { return true }
         if last > now.addingTimeInterval(60) { return true }   // the clock went back: don't wait out the difference
         return now.timeIntervalSince(last) >= TimeInterval(watch.everyMinutes * 60) - slack
     }
 
     static func next(_ watch: WatchListWatch, after now: Date) -> Date? {
-        guard !watch.paused, !watch.items.isEmpty else { return nil }
+        guard watch.on, !watch.paused, !watch.items.isEmpty, !watch.ended(at: now) else { return nil }
+        if let starts = watch.starts, now < starts.date { return starts.date }
         guard let last = watch.lastRunAt else { return now }
         return max(now, last.addingTimeInterval(TimeInterval(watch.everyMinutes * 60)))
     }
