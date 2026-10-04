@@ -41,6 +41,7 @@ The attention test measures whether cards show you what matters and leave the re
 
 - **API key:** Anthropic's API, or the gateway you entered. Anthropic's [commercial terms](https://www.anthropic.com/legal/commercial-terms) and [privacy policy](https://www.anthropic.com/legal/privacy) apply, or your gateway's terms if you use one.
 - **Local Claude CLI:** your installed Claude Code, signed in with your own Claude account. That account's terms apply, for example the [consumer terms](https://www.anthropic.com/legal/consumer-terms) for personal plans.
+- **Your team's gateway:** while you link team tools whose settings name a gateway, requests go there instead, whichever connection you picked. See Team settings, under Team tools from GitHub below.
 
 **What a request can include.** Depending on what you are doing:
 
@@ -69,7 +70,15 @@ This is off until you link a repository in **Settings → Team tools from GitHub
 - **What is downloaded, and where it is kept.** When the commit changes, Noteling downloads the repository's files as an archive, unpacks them into `linked-tools/` in its folder in place of the earlier copy, and deletes the archive. `linked-tools.json` records the address, branch and commit, when it last updated or checked, and the last error. Both can be read only by your macOS user account.
 - **The token.** Signed builds keep it in the macOS Keychain, as `NOTELING_TOOLS_REPO_TOKEN` under `app.noteling.mac`; developer builds keep it in `secrets.json`. It is sent only to the repository's host and its subdomains (for github.com, `api.github.com` and `codeload.github.com`), and it is never written to `config.json` or the activity log, or handed to a script. Clearing the token field and choosing **Save** deletes it.
 - **What the team's tools do.** They work like the packs in your own tools folder: their documents and notes can be sent with your questions as described above, and their scripts run on your Mac and can contact the services they were written for. Notes kept in the repository are copied into your `notes/` folder.
-- **Unlinking.** Clear the address and choose **Save**: the copy and `linked-tools.json` are deleted. Notes copied from the team's tools stay in `notes/` until you remove them.
+- **Unlinking.** Clear the address and choose **Save**: the copy, `linked-tools.json` and `team-settings.json` are deleted. Notes copied from the team's tools stay in `notes/` until you remove them.
+
+**Team settings.** The team's tools can include settings for the connection to Claude (a `noteling.json` file). While the tools are linked, these settings win over your own:
+
+- **They can change where your requests go.** They can send every request to Claude to a gateway the team names, instead of the connection you picked, with headers the team sets, and choose the model. Everything a request can include, as listed above (your questions, screenshots, and the text Noteling reads from your screen), then goes to that gateway, and the gateway's terms apply. Your own Anthropic key and your own headers are not sent there, unless the team's settings ask for your key by name.
+- **Where it shows.** At the top of the Claude section of Settings: the host your requests go to, the names of the headers sent (never their values), and the fields the team set, greyed out.
+- **Secrets.** A header can name a secret, such as a key for the gateway. You enter it in Settings, under Tool packs, and Noteling keeps it like a pack's secrets: in the Keychain in signed builds, in `secrets.json` in developer builds. Noteling names headers in the activity log, but never writes their values or any secret there.
+- **What is kept.** So that a broken file doesn't undo settings that worked, Noteling keeps the last team settings it could use in `team-settings.json`, readable only by your macOS user account.
+- **How to stop it.** Unlink the team's tools: your own connection settings come back, and `team-settings.json` is deleted. Your own settings were never changed.
 
 ## Watch lists
 

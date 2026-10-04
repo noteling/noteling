@@ -59,6 +59,8 @@ Each read picks up everything that arrived since the last one, up to the newest 
 
 Someone who helps your group with Noteling may keep tools for your company’s apps in a GitHub repository. In **Settings → Team tools from GitHub**, paste the repository’s address and the token they gave you, then choose **Save**. Noteling downloads the tools and checks for changes every 10 minutes, so a fix reaches you within minutes without you doing anything. You don’t need git or Terminal. The line under the token shows which version you have and when it was updated, or what went wrong; **Update now** checks right away. If a tool in your own tools folder has the same name as one of the team’s, yours is used.
 
+The team’s tools can also set how Noteling reaches Claude, for example through your company’s own gateway. Then the top of the **Claude** section in Settings says where your questions, screenshots and the text Noteling reads from your screen go, and the fields the team set are greyed out. If the gateway needs a key from you, Settings asks for it under **Tool packs**. Unlink the team’s tools to use your own settings again.
+
 ## Pick up where you left off
 
 Cards stay with you across days. Noteling tries to update the same card when it sees the same item again, and can update its status when it finds new evidence. An item disappearing from a scan doesn’t mean it is finished. Noteling looks at each item once, so reading the same mail again doesn’t bring back something it already passed over, unless the item or your reading rules change.

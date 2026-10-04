@@ -322,6 +322,44 @@ current by itself, without git (`Sources/Familiar/ToolPacks/LinkedTools.swift`).
   the folder its pack is loaded from, and never outside it. Scripts run as they do from your own folder;
   `NOTELING_TOOL_DIR` points into the copy, which each update replaces, so a script should keep state elsewhere.
 
+### Team settings (`noteling.json`)
+A team that reaches Claude through its own gateway can set the connection for everyone who links its tools, so nobody
+hands config files around. `noteling.json` at the root of the linked repository (a reserved name there; it is not a
+pack) is read at launch and after each new copy (`Sources/Familiar/Configuration/TeamSettings.swift`):
+```json
+{"claude": {"baseURL": "https://llm-gateway.example.com",
+            "headers": {"X-Consumer-Id": "abc", "X-Api-Key": "$GATEWAY_KEY"},
+            "model": "claude-opus-5", "effort": "medium"}}
+```
+- **Keys.** Only `claude.baseURL`, `claude.headers`, `claude.model` and `claude.effort`. Anything else is ignored, and
+  Settings lists it. A field left out, `null` or empty stays each person's own. `baseURL` starts with `https://`
+  (`http://` only for localhost) and has no `?` or `#`. Noteling adds `/v1/messages` to it, as Anthropic's SDKs do, so
+  leave `/v1` off (Settings warns about it). `effort` is `low`, `medium`, `high`, `xhigh` or `max`. `model` applies to the
+  local Claude CLI too.
+- **Precedence.** While the tools are linked, the file wins over each person's own settings for exactly the fields it
+  sets: `Config.applying(_:)` makes the configuration in effect. A `baseURL` also means the API connection, even for
+  someone who chose the local Claude CLI. That gateway gets only the team's headers: not the person's own headers, and
+  not their Anthropic key unless a header asks for it (`$ANTHROPIC_API_KEY`). The team's values are never written into
+  config.json (`Config.save` refuses a configuration in effect), so unlinking, or removing the file, brings everyone's
+  own values back. Every Claude client is built from the configuration in effect: chat, Watch Me write-ups, source
+  reads, cards and queued tasks, and the `--ask` and `--summarize-recording` commands. When an update changes the file,
+  chat reconnects the way saving Settings does, keeping the conversation.
+- **Secrets.** A header value written exactly `$NAME` is the secret of that name, read when the client is built (the
+  Keychain in signed builds, `secrets.json` in dev builds). `$$` at the start stands for a literal `$`. Names are letters,
+  digits and `_`, like pack secrets, and `$NOTELING_TOOLS_REPO_TOKEN` is never sent. Settings shows a field for each name
+  under Tool packs ("used by your team's Claude settings"). While one is missing there is no connection, and chat says
+  which. The same works in your own `apiHeaders`. Log lines name headers, never their values.
+- **Safety.** A file that isn't valid JSON, or has a value of the wrong type or an unknown effort, changes nothing:
+  Settings shows the plain reason, and the last file that could be used stays in effect, across restarts too (kept
+  owner-only in `~/.noteling/team-settings.json`, for the same repository; unlinking deletes it). The file can't set
+  `Host`, `Content-Length`, `Content-Type`, `Connection`, `Transfer-Encoding` or `anthropic-version`, a header whose name
+  isn't a header name, or one whose value has a line break, and Settings says so. Any other header is allowed,
+  including a gateway's own auth headers. Two names that differ only in case are one header: the first is used.
+- **What people see.** The Claude section of Settings shows one line (`Claude through llm-gateway.example.com · model
+  claude-opus-5 · set by your team's tools`), says that everything sent to Claude goes to that host, and lists the
+  headers sent by name, never their values. The fields the team sets show its values, greyed out ("Your team's tools
+  set this. Unlink them to use your own."), and the API key field is hidden while a team gateway is set.
+
 ### Watch lists (`watch:` scripts)
 Say "watch these items for me: 1, 2, 3" in chat and Noteling checks each item on a schedule, sending a Mac notification
 when one is not as it should be **right now**. A watch is about now, not history: there is no change timeline, and an
@@ -560,8 +598,8 @@ window.
 | claudePath | "" | Claude Code executable path; empty = find automatically |
 | claudeModel | "" | CLI model; empty = Claude Code's default |
 | apiKey | "" | a key here overrides the one Settings saves (in the Keychain); with neither, `ANTHROPIC_API_KEY` is used |
-| apiBaseURL | "" | corporate gateway base URL; empty = api.anthropic.com. With a gateway, an Anthropic key is optional, and Anthropic-only request extras (server-side refusal fallbacks) are not sent |
-| apiHeaders | {} | extra headers for the gateway, e.g. `{"Authorization": "Bearer …"}` when it authenticates without an Anthropic key |
+| apiBaseURL | "" | corporate gateway base URL; empty = api.anthropic.com. With a gateway, an Anthropic key is optional, and Anthropic-only request extras (server-side refusal fallbacks) are not sent. The team's tools can set it instead (see Team settings) |
+| apiHeaders | {} | extra headers for the gateway, e.g. `{"Authorization": "Bearer …"}` when it authenticates without an Anthropic key. A value written `$NAME` is the secret of that name (Settings shows a field for it); `$$` starts a literal `$` |
 | model | claude-opus-5 | API model id |
 | effort | medium | API: low / medium / high / xhigh / max; CLI: low / medium / high |
 | maxTokens | 4096 | answer length cap |
