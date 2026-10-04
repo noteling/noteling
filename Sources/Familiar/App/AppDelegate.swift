@@ -22,6 +22,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var runner: ScriptRunner!
     private var registry: ToolRegistry!
     private lazy var linkedTools = LinkedToolsUpdater(config: { [weak self] in self?.config ?? Config() })
+    /// Your settings with the Claude settings the team's tools set: what reaches Claude. Never saved; `config` is.
+    private var effectiveConfig: Config { config.applying(linkedTools.team.settings) }
     private var assistant: Assistant!
     private let shell = ShellState()
     private let wand = WandController()
@@ -41,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var desktop = DesktopExecutionService(control: control, activities: activities)
     private let execution = ExecutionCoordinator()
     private lazy var recorder = WatchRecorder(config: config, watcher: watcher)
-    private lazy var learning = WatchLearnComposition.make(recorder: recorder, registry: registry, activities: activities, calendarStore: calendarSources, config: { [weak self] in self?.config ?? Config() })
+    private lazy var learning = WatchLearnComposition.make(recorder: recorder, registry: registry, activities: activities, calendarStore: calendarSources, config: { [weak self] in self?.effectiveConfig ?? Config() })
     private var bubbleWasVisibleBeforeControl = false
     private var cancellables = Set<AnyCancellable>()
 
@@ -72,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let linked = registry.linkedRoot { notesStore.moveNotes(fromPacksIn: linked, rename: false) }   // the team's notes
         registry.notesStore = notesStore
         briefs = PageBriefs(registry: registry)
-        assistant = Assistant(config: config, watcher: watcher, registry: registry, shell: shell, learning: learning, execution: execution, desktop: desktop)
+        assistant = Assistant(config: effectiveConfig, watcher: watcher, registry: registry, shell: shell, learning: learning, execution: execution, desktop: desktop)
         assistant.briefs = briefs
         assistant.onStartWand = { [weak self] in self?.startWand() }
         assistant.onCancelWand = { [weak self] in if self?.wand.isActive == true { self?.wand.cancel() } }
@@ -119,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.config.allowControl = allow
             self.config.controlInBackground = background
             self.config.save()
-            self.assistant.reconfigure(self.config)
+            self.assistant.reconfigure(self.effectiveConfig)
             self.morningTasks?.wake()
             self.cardGeneration?.start()
             Log.info("control lane: allow=\(allow) background=\(background)")
@@ -183,16 +185,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupEditMenu()
         setupPanel()
         morningTasks = MorningTaskRunner(store: morning, desktop: desktop, registry: registry,
-                                        activities: activities, config: { [weak self] in self?.config ?? Config() })
+                                        activities: activities, config: { [weak self] in self?.effectiveConfig ?? Config() })
         calendarReader = CalendarCollectionRunner(store: calendarSources, desktop: desktop, registry: registry,
-                                                  activities: activities, config: { [weak self] in self?.config ?? Config() })
+                                                  activities: activities, config: { [weak self] in self?.effectiveConfig ?? Config() })
         calendarSources.refreshSavedWorkflows(root: registry.root)
         taskPanel = BackgroundTaskPanelController(
             store: desktop.tasks, hideFromScreenShare: config.hideFromScreenShare, morning: morning,
             onCancelQueued: { [weak self] id in self?.morningTasks.cancel(id: id) },
             onOpenCard: { [weak self] id in self?.morningPanel.showCard(id: id) })
         cardGeneration = CardGenerationService(morning: morning, sources: calendarSources, desktop: desktop,
-                                               config: { [weak self] in self?.config ?? Config() })
+                                               config: { [weak self] in self?.effectiveConfig ?? Config() })
         cardGeneration.onSorted = { [weak self] observations, runIDs in
             guard let self else { return }
             self.attention.recordSorted(observations, runIDs: runIDs, runs: self.calendarSources.runStore, cards: self.morning.cards)
@@ -249,14 +251,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             assistant.notesHere = registry.notes(for: watcher.current)
             linkedTools.start()   // checks the linked repository now, then every 10 minutes
             Secrets.migrateKeychainToFile(keys: (config.connectionMode == "api" ? ["ANTHROPIC_API_KEY"] : []) + registry.packs.flatMap(\.requires))
-            if !assistant.hasConnection { assistant.reconfigure(config) }   // pick up a migrated key
+            if !assistant.hasConnection { assistant.reconfigure(effectiveConfig) }   // pick up a migrated key
             morningTasks.start()
             cardGeneration.start()
             watchList?.start()   // only once the packs are loaded, so no check runs before its script is known
         }
 
         if !assistant.hasConnection {
-            Log.info(ConversationBackend.setupMessage(config: config))
+            Log.info(ConversationBackend.setupMessage(config: effectiveConfig))
         }
         MainThreadDiagnostics.shared.start()
         MainThreadDiagnostics.shared.mark(.appReady)
@@ -717,12 +719,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// A new copy of the team's tools, or none: reload, and take in the notes kept in it (its files are never renamed).
+    /// Its Claude settings may have changed too: reconnect as saving Settings does, keeping the conversation.
     private func linkedToolsChanged() async {
         registry.linkedRoot = LinkedTools.root(for: config)
         await registry.reload()
         if let linked = registry.linkedRoot { notesStore.moveNotes(fromPacksIn: linked, rename: false) }
         notesStore.reload()
         assistant.notesHere = registry.notes(for: watcher.current)
+        assistant.reconfigure(effectiveConfig)
+        morningTasks?.wake()
+        cardGeneration?.start()
     }
 
     @objc private func openSettings() {
@@ -731,7 +737,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             self.config = self.settings.model.save(into: self.config)
             self.linkedTools.settingsSaved()   // a changed address, branch or token is checked right away
-            self.assistant.reconfigure(self.config)
+            self.assistant.reconfigure(self.effectiveConfig)
             self.runner.extraEnv = self.config.env
             self.setupHotKey()
             MascotStyle.current = MascotStyle(rawValue: self.config.mascotStyle) ?? .innocent
@@ -748,7 +754,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if self.config.notesShortcut { self.notesShortcut.start() } else { self.notesShortcut.stop() }
             self.morningTasks.wake()
             self.cardGeneration?.start()
-            Log.info("settings saved (connection: \(self.config.connectionMode), ready: \(self.assistant.hasConnection), hotkey: \(self.config.hotkey))")
+            Log.info("settings saved (connection: \(self.effectiveConfig.connectionMode), ready: \(self.assistant.hasConnection), hotkey: \(self.config.hotkey))")
         }, onOpenTools: { [weak self] in self?.openTools() }, onReloadTools: { [weak self] in self?.reloadTools() })
     }
     @objc private func openTools() { NSWorkspace.shared.open(config.resolvedToolsDir) }

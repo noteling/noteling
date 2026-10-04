@@ -33,7 +33,8 @@ func runSummarizeRecording() async {
     let purpose = i + 2 < args.count && !args[i + 2].hasPrefix("--") ? args[i + 2] : nil
     let toolsRoot = args.firstIndex(of: "--tools-root").flatMap { $0 + 1 < args.count ? URL(fileURLWithPath: args[$0 + 1]) : nil }
         ?? FileManager.default.temporaryDirectory.appendingPathComponent("familiar-tools-\(Int(Date().timeIntervalSince1970))")
-    var config = Config.load()
+    let own = Config.load()
+    var config = own.applying(TeamSettingsFile.load(for: own).settings)   // the team's Claude settings, as the app uses them
     if args.contains("--claude-cli") { config.connectionMode = "claudeCode" }
     do {
         let rec = try Recording.load(dir)
