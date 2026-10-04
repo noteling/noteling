@@ -43,6 +43,8 @@ struct Config: Codable {
     var watchCropHeight: Int = 560
     var recordingsDir: String = ""            // empty = ~/.noteling/recordings
     var noteAuthor: String = ""               // name written on the notes you leave with the pen; empty = your macOS full name
+    /// What the team's tools set for Claude, on the configuration in effect only (`applying`); never read or written.
+    var teamClaude: TeamSettings.Claude? = nil
 
     /// `$NOTELING_HOME`, else `$FAMILIAR_HOME` (the earlier name), else `~/.noteling`.
     static var dir: URL {
@@ -76,10 +78,12 @@ struct Config: Codable {
     }
 
     /// An explicit key in config.json wins (a deliberate dev override), then the Keychain (what Settings saves), then the environment.
-    var resolvedApiKey: String? {
+    var resolvedApiKey: String? { resolvedApiKey(secret: { Secrets.get($0) }) }
+
+    func resolvedApiKey(secret: (String) -> String?) -> String? {
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
-        if let k = Secrets.get("ANTHROPIC_API_KEY") { return k }
+        if let k = secret("ANTHROPIC_API_KEY") { return k }
         if let env = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"], !env.isEmpty { return env }
         return nil
     }
@@ -152,12 +156,14 @@ struct Config: Codable {
         return cfg
     }
 
-    func save() {
+    /// The configuration in effect holds the team's values (`applying`), so it is never written: only your own is.
+    func save(to file: URL = Config.file) {
+        guard teamClaude == nil else { return }
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let data = try? enc.encode(self) {
-            try? data.write(to: Config.file)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: Config.file.path)
+            try? data.write(to: file)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
         }
     }
 }

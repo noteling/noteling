@@ -13,7 +13,8 @@ func runHeadlessAsk() async {
     guard let i = args.firstIndex(of: "--ask"), i + 1 < args.count else { print("usage: --ask \"question\" [url]"); return }
     let question = args[i + 1]
     let url = i + 2 < args.count && !args[i + 2].hasPrefix("--") ? args[i + 2] : "https://expenses.internal.example.com/reports/new"
-    var config = Config.load()
+    let own = Config.load()
+    var config = own.applying(TeamSettingsFile.load(for: own).settings)   // the team's Claude settings, as the app uses them
     if args.contains("--claude-cli") { config.connectionMode = "claudeCode" }
     if args.contains("--api") { config.connectionMode = "api" }
     guard let client = ConversationBackend.make(config: config) else {

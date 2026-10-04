@@ -272,6 +272,8 @@ struct LinkedToolsFolder {
     var root: URL { home.appendingPathComponent("linked-tools") }
     var incoming: URL { home.appendingPathComponent(".linked-tools-incoming") }
     var recordFile: URL { home.appendingPathComponent("linked-tools.json") }
+    /// The last team settings file that could be used (`TeamSettingsFile`).
+    var teamSettingsFile: URL { home.appendingPathComponent("team-settings.json") }
 
     func record() -> LinkedToolsRecord? {
         guard let data = try? Data(contentsOf: recordFile) else { return nil }
@@ -316,10 +318,10 @@ struct LinkedToolsFolder {
         return ToolRegistry.packFolders(in: root).map(\.lastPathComponent)
     }
 
-    /// Unlinking: the copy, anything half installed, and the record go.
+    /// Unlinking: the copy, anything half installed, the record and the team's settings go.
     func remove() {
         let fm = FileManager.default
-        for url in [root, incoming, recordFile] where fm.fileExists(atPath: url.path) { try? fm.removeItem(at: url) }
+        for url in [root, incoming, recordFile, teamSettingsFile] where fm.fileExists(atPath: url.path) { try? fm.removeItem(at: url) }
     }
 
     /// Puts `new` at `target` in one step. The old copy is swapped to `new`'s place, to be deleted with it.
@@ -362,6 +364,8 @@ struct LinkedToolsFolder {
 final class LinkedToolsUpdater: ObservableObject {
     @Published private(set) var record: LinkedToolsRecord?
     @Published private(set) var checking = false
+    /// What the copy's `noteling.json` sets (`TeamSettings`): read at launch, after each new copy, and on unlinking.
+    @Published private(set) var team = TeamSettingsState()
     /// After a new copy is installed, or the link removed: the app reloads its tools.
     var onToolsChanged: (() async -> Void)?
 
@@ -380,6 +384,7 @@ final class LinkedToolsUpdater: ObservableObject {
         self.token = token
         self.config = config
         record = folder.record()
+        readTeamSettings()
     }
 
     /// Checks now, then every 10 minutes.
@@ -442,6 +447,7 @@ final class LinkedToolsUpdater: ObservableObject {
             let now = Date()
             keep(LinkedToolsRecord(url: address.webURL, branch: branch, sha: sha, updatedAt: now, lastCheckedAt: now))
             Log.info("linked tools: installed \(address.name) at \(sha.prefix(7)), \(packs.count) pack(s)")
+            readTeamSettings()
             await onToolsChanged?()
         } catch is CancellationError {
             return
@@ -456,8 +462,17 @@ final class LinkedToolsUpdater: ObservableObject {
         guard record != nil || FileManager.default.fileExists(atPath: folder.root.path) else { return }
         folder.remove()
         record = nil
+        readTeamSettings()
         Log.info("linked tools: no repository is linked; removed the copy")
         await onToolsChanged?()
+    }
+
+    /// The team's settings from the copy in use; a file that can't be used leaves the last good ones in effect.
+    private func readTeamSettings() {
+        let next = TeamSettingsFile.load(root: LinkedTools.root(for: config(), home: folder.home), url: record?.url, home: folder.home)
+        guard next != team else { return }
+        team = next
+        Log.info("team settings: \(TeamSettingsFile.describe(next))")
     }
 
     private func keep(_ next: LinkedToolsRecord) {

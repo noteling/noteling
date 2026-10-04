@@ -1,4 +1,5 @@
 import FamiliarContracts
+@testable import FamiliarRuntime
 import Foundation
 import Testing
 @testable import Familiar
@@ -250,6 +251,43 @@ struct LinkedToolsTests {
 
         await updater.check()   // and nothing more happens while unlinked
         #expect(f.changes == 2)
+    }
+
+    @Test func theTeamsClaudeSettingsComeWithTheCopy() async throws {
+        let f = Fixture()
+        defer { f.remove() }
+        let shop = ["shop/SKILL.md": "---\nname: Shop\n---\n"]
+        f.serve(sha: Self.first, archive: try Self.archive(shop.merging(["noteling.json": TeamSettingsTests.gateway]) { a, _ in a }))
+        let updater = f.makeUpdater()
+        #expect(updater.team == TeamSettingsState())
+        await updater.check()
+        #expect(updater.team.settings?.claude.host == "llm-gateway.example.com" && updater.team.problem == nil)
+        #expect(ToolRegistry.packFolders(in: f.folder.root).map(\.lastPathComponent) == ["shop"])   // the file is no pack
+        // What the app builds its client from.
+        let effective = f.config.applying(updater.team.settings)
+        let client = ConversationBackend.make(config: effective, secret: { $0 == "GATEWAY_KEY" ? "gk-123" : nil }) as? ClaudeClient
+        #expect(client?.baseURL.host == "llm-gateway.example.com" && client?.extraHeaders["X-Api-Key"] == "gk-123")
+
+        // A broken push keeps the settings that worked and says why, now and after a restart.
+        f.serve(sha: Self.second, archive: try Self.archive(shop.merging(["noteling.json": #"{"claude": "#]) { a, _ in a }, top: "acme-tools-b2b2b2b"))
+        await updater.check()
+        #expect(updater.record?.sha == Self.second && updater.team.fromEarlierFile && updater.team.settings?.claude.model == "claude-opus-5")
+        #expect(updater.team.problem?.hasPrefix("noteling.json in the team's tools can't be used. It isn't valid JSON") == true)
+        #expect(f.makeUpdater().team == updater.team)
+
+        // The team takes the file out: everyone's own settings again.
+        let third = String(repeating: "c3", count: 20)
+        f.serve(sha: third, archive: try Self.archive(shop, top: "acme-tools-c3c3c3c"))
+        await updater.check()
+        #expect(updater.team == TeamSettingsState())
+
+        // And unlinking takes them, and what was kept of them, away.
+        f.serve(sha: Self.first, archive: try Self.archive(shop.merging(["noteling.json": TeamSettingsTests.gateway]) { a, _ in a }))
+        await updater.check()
+        #expect(updater.team.settings != nil && FileManager.default.fileExists(atPath: f.folder.teamSettingsFile.path))
+        f.config.toolsRepo = ""
+        await updater.check()
+        #expect(updater.team == TeamSettingsState() && !FileManager.default.fileExists(atPath: f.folder.teamSettingsFile.path))
     }
 
     // MARK: - Unpacking
