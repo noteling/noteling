@@ -70,8 +70,7 @@ final class ScriptRunner {
         let json = try await execute(tool, args: args, context: context, secrets: secrets, timeout: timeout, stopsWithCaller: stopsWithCaller)
         var out: [String: Any] = ["result": json["result"] ?? NSNull()]
         if let so = json["stdout"] { out["stdout"] = so }
-        let data = try JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys])
-        let s = String(decoding: data, as: UTF8.self)
+        let s = JSONText.pretty(out, indent: "")   // a script's 19.99 stays 19.99 on its way to the model
         return s.count > 20_000 ? String(s.prefix(20_000)) + "\n…(truncated)" : s
     }
 

@@ -31,9 +31,8 @@ struct NoteCheckResult: Equatable {
         if value == nil, !text.isEmpty, (text.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0, options: [.fragmentsAllowed]) }) == nil {
             return NoteCheckResult(script: script, verdict: .info, detail: clip(text))
         }
-        let data = value.flatMap { try? JSONSerialization.data(withJSONObject: $0, options: [.fragmentsAllowed, .sortedKeys]) }
         return NoteCheckResult(script: script, verdict: .info, detail: "Ran, but didn't say whether this holds.",
-                               raw: data.map { String(String(decoding: $0, as: UTF8.self).prefix(1_500)) })
+                               raw: value.map { String(JSONText.compact($0).prefix(1_500)) })
     }
 
     /// The pad's line: "CHECKED · roles · as you: You don't have role Y."

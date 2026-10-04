@@ -91,9 +91,8 @@ final class PageBriefs {
     static func result(of output: String) -> String {
         guard let data = output.data(using: .utf8),
               let wrapper = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let value = wrapper["result"],
-              let json = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .fragmentsAllowed]) else { return output }
-        let text = String(decoding: json, as: UTF8.self)
+              let value = wrapper["result"] else { return output }
+        let text = JSONText.compact(value)
         return text.count > 12_000 ? String(text.prefix(12_000)) + "…(cut)" : text
     }
 }
