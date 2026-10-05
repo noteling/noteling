@@ -155,7 +155,8 @@ struct WatchListCardsTests {
 
         await fixture.runner.run(watch.id)?.value
 
-        #expect(try FileManager.default.contentsOfDirectory(atPath: file.deletingLastPathComponent().path) == ["job.json"])
+        // The card, and the run's problems for Excel, which it carries.
+        #expect(try FileManager.default.contentsOfDirectory(atPath: file.deletingLastPathComponent().path).sorted() == ["job.json", "problems.csv"])
         #expect(fixture.changes == 1)
         #expect(try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int == 0o600)
         let morning = MorningStore(directory: fixture.place.root.appendingPathComponent("morning"))
@@ -175,9 +176,10 @@ struct WatchListCardsTests {
         await fixture.runner.run(watch.id)?.value
         #expect(fixture.changes == 1)
 
-        // Nothing wrong: the file goes, so the card resolves.
+        // Nothing wrong: the file goes, so the card resolves, and its CSV file with it.
         await fixture.runner.run(watch.id)?.value
         #expect(!FileManager.default.fileExists(atPath: file.path))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: file.deletingLastPathComponent().path).isEmpty)
         #expect(fixture.changes == 2)
         inbox.scan()
         #expect(morning.cards.first?.disposition == .resolved && morning.cards.first?.inbox?.goneAt != nil)
@@ -250,16 +252,17 @@ struct WatchListCardsTests {
         let folder = fixture.inbox.appendingPathComponent("watch-sale-items")
         let gone = fixture.inbox.appendingPathComponent("watch-old-list")
         for (place, name) in [(folder, "item-123-6b86b273.json"), (folder, "item-456-00000000.json"), (folder, "deal-9.json"),
-                              (gone, "item-1-11111111.json")] {
+                              (folder, "prices.csv"), (folder, "all-2.csv"), (gone, "item-1-11111111.json"), (gone, "problems.csv")] {
             try FileManager.default.createDirectory(at: place, withIntermediateDirectories: true)
             try Data(#"{"title": "Not as expected · Old"}"#.utf8).write(to: place.appendingPathComponent(name))
         }
 
         #expect(WatchListCards(root: fixture.inbox).reconcile(fixture.store.watches))   // a launch after the update
 
-        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["deal-9.json", "job.json"])   // a check's own file stays
+        // A check's own files stay; Noteling's go, a part of an earlier all.csv too.
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["deal-9.json", "job.json", "prices.csv", "problems.csv"])
         #expect(try FileManager.default.contentsOfDirectory(atPath: gone.path).isEmpty)
-        #expect(!WatchListCards(root: fixture.inbox).reconcile(fixture.store.watches))
+        #expect(!WatchListCards(root: fixture.inbox).reconcile(fixture.store.watches))   // the next launch: nothing to write
     }
 
     // MARK: resolved, and Open job

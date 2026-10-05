@@ -14,6 +14,10 @@ struct CardInboxEntry: Equatable {
     var details = ""
     /// What the matter is made of, by key: a card the person resolved opens again when a later file has another.
     var parts: [String] = []
+    /// The names of files beside it that its card carries (`files`), as written.
+    var files: [String] = []
+    /// What taking them found, when the look took them; nil leaves the card's files as they are.
+    var attached: CardFilesTaken? = nil
     var modifiedAt = Date()
     var key: String { source + "/" + id }
 }
@@ -102,6 +106,7 @@ enum CardInboxFormat {
         }
         let parts = (object["parts"] as? [Any] ?? []).compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
         entry.parts = Array(parts.filter { !$0.isEmpty && $0.count <= partLength }.prefix(partLimit))
+        entry.files = CardFiles.names(object["files"])
         return entry
     }
 
@@ -150,11 +155,11 @@ enum CardInboxFormat {
     static let noWork = "This card came from a script. It can open its page or ask Noteling about it in chat, but Noteling doesn't work on it."
 
     /// Takes in what the inbox holds now. A new file is a new card in its source's folder; a changed file changes
-    /// the card's words, page, severity and buttons, and nothing else; a deleted file means the matter went away: the
-    /// card is resolved if the person hadn't decided anything about it, and otherwise keeps their decision and says
-    /// its script no longer reports it. A file that comes back opens a card its deletion resolved. A card the person
-    /// resolved stays resolved until its file names a part it didn't have when they did. Cards not from the inbox are
-    /// never touched.
+    /// the card's words, page, severity, buttons and files, and nothing else; a deleted file means the matter went
+    /// away: the card is resolved if the person hadn't decided anything about it, and otherwise keeps their decision
+    /// and says its script no longer reports it. Either way the card keeps its files. A file that comes back opens a
+    /// card its deletion resolved. A card the person resolved stays resolved until its file names a part it didn't
+    /// have when they did. Cards not from the inbox are never touched.
     static func apply(_ snapshot: CardInboxSnapshot, to workspace: inout MorningWorkspace, at: Date) -> CardInboxSummary {
         var summary = CardInboxSummary()
         for (source, name) in snapshot.folders.sorted(by: { $0.key < $1.key }) {
@@ -224,8 +229,8 @@ enum CardInboxFormat {
         card.inbox = link
     }
 
-    /// The card's words come from its file: title, body, page, severity, buttons, parts, and the longer details. Its
-    /// decision, the person's context and its folder are theirs.
+    /// The card's words come from its file: title, body, page, severity, buttons, parts, the longer details, and the
+    /// files the look took for it. Its decision, the person's context and its folder are theirs.
     private static func fill(_ card: inout MorningCard, from entry: CardInboxEntry) {
         card.title = entry.title
         card.summary = entry.body
@@ -240,6 +245,11 @@ enum CardInboxFormat {
         card.inbox?.severity = entry.severity
         card.inbox?.actions = entry.actions
         card.inbox?.parts = entry.parts.isEmpty ? nil : entry.parts
+        if let attached = entry.attached {
+            card.inbox?.files = attached.files.isEmpty ? nil : attached.files
+            card.inbox?.fileNotes = attached.notes.isEmpty ? nil : attached.notes
+            card.inbox?.filesFrom = attached.from
+        }
     }
 }
 
@@ -250,10 +260,13 @@ struct CardInboxError: LocalizedError, Equatable {
 }
 
 /// Looks at the cards inbox and hands what it finds to the card store. It reads only files that changed since the
-/// last look, says once in the log what it couldn't read, and never deletes or changes a file.
+/// last look, copies the files a new card file lists into the card's own folder in `cards/files/`, says once in the
+/// log what it couldn't read, and never deletes or changes a file in the inbox.
 @MainActor
 final class CardInbox {
     let directory: URL
+    /// Where cards keep their files: `cards/files/`, beside the inbox.
+    let files: URL
     let store: MorningStore
     /// The card view's folder name for a source: a watch's name, a pack's; nil keeps the folder's own name.
     var folderName: (String) -> String? = { _ in nil }
@@ -265,9 +278,10 @@ final class CardInbox {
         var size: Int
     }
 
-    init(store: MorningStore, directory: URL = Config.dir.appendingPathComponent("cards/inbox")) {
+    init(store: MorningStore, directory: URL = Config.dir.appendingPathComponent("cards/inbox"), files: URL? = nil) {
         self.store = store
         self.directory = directory
+        self.files = files ?? directory.deletingLastPathComponent().appendingPathComponent("files")
     }
 
     /// Looks at the inbox and takes in what changed. Nothing is saved when nothing changed.
@@ -298,6 +312,7 @@ final class CardInbox {
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         var seen = Set<String>()
+        var links: [UUID: CardInboxLink]?   // the inbox cards as they are, once a new file needs them
         for folder in sources.prefix(CardInboxFormat.sourceLimit) {
             let source = folder.lastPathComponent
             var notes: [String] = []
@@ -328,7 +343,8 @@ final class CardInbox {
                 else {
                     do {
                         let data = try Data(contentsOf: file)
-                        result = .success(try CardInboxFormat.parse(data, source: source, id: id, modifiedAt: stamp.date ?? Date()))
+                        let entry = try CardInboxFormat.parse(data, source: source, id: id, modifiedAt: stamp.date ?? Date())
+                        result = .success(attach(entry, in: folder, links: &links))
                     } catch {
                         result = .failure(error as? CardInboxError ?? CardInboxError(error.localizedDescription))
                     }
@@ -360,5 +376,27 @@ final class CardInbox {
     private func note(_ source: String, _ line: String, into snapshot: inout CardInboxSnapshot) {
         snapshot.notes[source, default: []].append(line)
         if logged.insert(source + "/" + line).inserted { Log.info("cards inbox: \(source): \(line)") }
+    }
+
+    /// What a card file just read means for its card's files: when it lists files, they are taken, unless its card
+    /// took them from this very version of the file already (read again at the next launch, say), which keeps them as
+    /// they are, even if the script has since deleted its own; when it lists none, a card that had files has none.
+    private func attach(_ entry: CardInboxEntry, in folder: URL, links: inout [UUID: CardInboxLink]?) -> CardInboxEntry {
+        var entry = entry
+        let id = CardInboxFormat.cardID(entry.key)
+        if links == nil {
+            links = Dictionary(store.cards.compactMap { card in card.inbox.map { (card.id, $0) } }, uniquingKeysWith: { first, _ in first })
+        }
+        let link = links?[id]
+        let destination = CardFiles.folder(for: id, in: files)
+        if entry.files.isEmpty {
+            guard link?.files != nil || link?.fileNotes != nil || FileManager.default.fileExists(atPath: destination.path) else { return entry }
+        } else if let taken = link?.filesFrom, abs(taken.timeIntervalSince(entry.modifiedAt)) < 0.001 {
+            return entry
+        }
+        let attached = CardFiles.take(entry.files, in: folder, to: destination, from: entry.modifiedAt)
+        for line in attached.notes where logged.insert(entry.key + "/" + line).inserted { Log.info("cards inbox: \(entry.key): \(line)") }
+        entry.attached = attached
+        return entry
     }
 }

@@ -93,6 +93,8 @@ If someone keeps watch jobs for your group in your team’s tools, they appear u
 
 Each watch also has one card in Morning Files, however long its list, updated by each run: how many items aren’t as they should be, and each of them with what the check found, in its own words, with **Open job** and **Why?**. When everything is back, the card is resolved; if you resolve it yourself, it stays that way until another item goes wrong, or the problem goes away and comes back. Put `"cards": "all"` in a watch’s `watch.json` to keep its card even when all is well, or `"cards": false` for none.
 
+The card also carries the run’s full results as a file for Excel, however long the list: `problems.csv`, with every item that isn’t as expected or couldn’t be checked, and `all.csv` too if you put `"files": ["problems", "all"]` in its `watch.json`. Under **Files** on the card, **Open** opens it, **Save as…** keeps a copy, and **Show in Finder** shows where it is.
+
 Your team’s scripts can put cards in Morning Files too, by writing a small file (see the [developer guide](docs/development/guide.md)). Such a card only opens its page or asks Noteling about it; Noteling never acts on it by itself.
 
 A folder you don’t need in Morning Files can be hidden: right-click it, or open it, and choose **Hide folder**. Nothing in it is deleted and new files still arrive; **Hidden folders · Show** at the bottom of the home brings it back.

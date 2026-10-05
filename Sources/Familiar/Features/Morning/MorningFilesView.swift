@@ -85,6 +85,8 @@ struct MorningFilesView: View {
     var askAboutCard: ((MorningCard, String) -> Void)? = nil
     /// The watches, with their pages here: Watches, one watch's page, and the line on a watch's cards folder.
     var watches: WatchListPanel? = nil
+    /// What a card's Files section does with a file: open it, save a copy, show it in Finder.
+    var cardFiles = CardFileActions()
     @State private var localError: String?
     @State private var showingOriginal: UUID?   // the card whose original text is expanded
     @State private var undo: MorningCard?
@@ -388,14 +390,21 @@ struct MorningFilesView: View {
     }
 
     private func fileTile(_ card: MorningCard) -> some View {
-        Button { navigation.route = .card(card.id) } label: {
+        let attached = Self.attachedLabel(card)
+        return Button { navigation.route = .card(card.id) } label: {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text(card.isSample ? "SAMPLE FILE" : Self.tileLabel(card))
                         .font(.system(size: 9, weight: .semibold)).tracking(1)
                         .foregroundStyle(card.inbox?.severity == "high" ? Pad.redInk : Pad.inkSoft)
                     Spacer()
-                    Image(systemName: "paperclip").foregroundStyle(Pad.inkSoft)
+                    if let attached {
+                        // The files it carries: a paperclip and how many.
+                        HStack(spacing: 2) { Image(systemName: "paperclip"); Text("\(card.files.count)") }
+                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(Pad.penInk).help(attached)
+                    } else {
+                        Image(systemName: "paperclip").foregroundStyle(Pad.inkSoft)
+                    }
                 }
                 Text(card.title).font(HandFont.font(size: 20)).lineLimit(2).fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.leading)
                 if !card.meaning.isEmpty {
@@ -411,8 +420,14 @@ struct MorningFilesView: View {
                 .background(Pad.fieldPaper, in: RoundedRectangle(cornerRadius: 5))
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Pad.tabEdge.opacity(0.55)))
                 .shadow(color: Pad.ink.opacity(0.07), radius: 4, x: 1, y: 3)
-        }.buttonStyle(.plain).accessibilityLabel("Open file: \(card.title)")
+        }.buttonStyle(.plain).accessibilityLabel("Open file: \(card.title)" + (attached.map { ", " + $0 } ?? ""))
             .contextMenu { if !card.isFromInbox { Button("Edit note") { navigation.route = .editCard(card.id) } } }
+    }
+
+    /// "2 files attached", for a card that carries files; nil for one that carries none.
+    static func attachedLabel(_ card: MorningCard) -> String? {
+        let count = card.files.count
+        return count == 0 ? nil : count == 1 ? "1 file attached" : "\(count) files attached"
     }
 
     /// A tile's top line: where the card came from, and for a card a script wrote, how much it matters.
@@ -498,6 +513,12 @@ struct MorningFilesView: View {
                         Button("Ignore") { decide(card, .ignored) }
                         Button("I’ve handled this") { perform { try store.setCardResolution(cardID: card.id, resolved: true) } }
                     }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
+                }
+                // The files it carries stay with it, resolved or not.
+                if !card.files.isEmpty || card.inbox?.fileNotes != nil {
+                    CardFilesSection(card: card, actions: cardFiles, report: { message, problem in
+                        if problem { localError = message } else { localError = nil; undo = nil; notice = message }
+                    })
                 }
                 originalLink(card)
                 workResults(card)

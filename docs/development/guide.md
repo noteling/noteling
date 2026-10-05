@@ -392,7 +392,8 @@ do a tool pack:
     "ends": "2026-10-31T23:59:00-04:00",
     "created_at": "2026-10-03T14:00:00Z",
     "requires": ["SHOP_TOKEN"],
-    "cards": "all"
+    "cards": "all",
+    "files": ["problems", "all"]
   }
   ```
   Only `items` is required, and not even that when the folder has an items file. Each item is an id or page address,
@@ -400,7 +401,8 @@ do a tool pack:
   check there is, and a missing `id` is made (and written down) the first time Noteling reads the file. `fields`,
   `args`, `starts` and `ends` are optional, `every_minutes` is held to 5–240, and keys Noteling doesn't use are kept when
   it writes the file. `cards` says when the watch has its card in Morning Files: left out (or `true`), while any item is
-  red or grey; `"all"`, always; `false`, never (see Cards from watches).
+  red or grey; `"all"`, always; `false`, never (see Cards from watches). `files` says which files its card carries for
+  Excel: left out, `["problems"]`; `["problems", "all"]`; or `[]`, none (see Files for Excel).
 - `starts` and `ends` are ISO 8601 times, with an offset or without one (then they are the Mac's own time); a date alone
   means its midnight. Nothing is checked, and nobody is told, before `starts` or after `ends`; the window says "Starts
   Mon Oct 5, 12:00 AM" or "Ended …", and the chat tools' results say so too.
@@ -595,6 +597,40 @@ can do** and, only when something couldn't be confirmed, **Couldn't check**.
 from the team's copy, with `~/.noteling/team-watches/<id>/latest.json` and `~/.noteling/team-watches/on.json`. The code is
 in `Sources/Familiar/Features/WatchList/` (`WatchListFiles` for the files, `WatchListPages` for the pages).
 
+**Files for Excel.** A run over a long list can't be read on a card, so a watch's card carries the run's full results
+as CSV files, which open where people already work, such as Excel (⌘F, filters, tabs). `files` in `watch.json` says
+which (`WatchListExport`):
+- `problems.csv` (`["problems"]`, the default): every item not as expected or that couldn't be checked, those not as
+  expected first, each in the watch's order;
+- `all.csv` (`["problems", "all"]`, or `["all"]`): every item, as expected too, in the watch's order;
+- `[]`: none. A kind with no items has no file.
+
+One row per item, with these columns:
+
+| Column | What it holds |
+|---|---|
+| `item` | the item as given: an id or a page address |
+| `title`, `url` | the check's title, and the page to open |
+| `status` | `as expected`, `not as expected`, `couldn't check` or `not checked yet` |
+| `symptoms` | the fields that differ, joined with "; " |
+| one per field the check reports, named as it names it | what the item shows now; empty while it couldn't check, since an earlier check's values are never shown |
+| `expected <field>`, one per field that counts | what counts as right |
+| `why` | the check's own `why` lines joined with " / ", or why it couldn't check |
+| `checked_at` | when, in this Mac's time: `2026-10-05 18:31:05` |
+| `check` | which check ran |
+
+The fields the watch names in `fields` come first, then the rest alphabetically. Numbers are written as the check wrote
+them (19.99, never 19.989999999999998), yes or no as `yes` and `no`, a list joined with "; ", and none as `none`. The
+files follow RFC 4180 (a cell holding a comma, a quote or a line break is quoted, its quotes doubled), in UTF-8 with a
+byte order mark so Excel reads every language, lines ending in CRLF; a text that starts the way a formula does (`=`,
+`+`, `-`, `@`) gets a `'` in front, so it shows as written and never runs. Excel opens at most 1,048,576 rows, so a
+file of more than 1,048,575 items is split into `all-1.csv`, `all-2.csv`… (`problems-1.csv`…), and the card says so
+under its summary line: "All results are in 2 files: Excel opens at most 1,048,576 rows per file." Noteling writes them
+at the end of each run into the watch's folder of the cards inbox, before `job.json`, which lists them, so they reach
+the card like any inbox card's files (see The cards inbox), and the card keeps only the latest run's. When only they
+change, `job.json` is written again as it was, so the card takes them. With `"cards": false` there is no card and there
+are no files; a run with nothing wrong deletes them with `job.json`, and the resolved card keeps the copies it has.
+
 **Watches in Morning Files.** The watches live in the Morning panel, beside the sources, not in a window of their own: a
 watch is the same kind of thing as a source (checks on a schedule, results, and a card in Morning Files).
 - **Watches** (`MorningNavigation.Route.watches`) is reached from the Watches box on the panel's home, under the sources,
@@ -628,7 +664,8 @@ A script makes a card in Morning Files by writing a file, with no model involved
     {"label": "Open order", "url": "https://shop.example.com/order/123"},
     {"label": "Worth it?", "ask": "Is this refund worth claiming?"}
   ],
-  "details": {"paid": 22.0, "now": 12.0}
+  "details": {"paid": 22.0, "now": 12.0},
+  "files": ["refunds.csv", "receipt.pdf"]
 }
 ```
 - Only `title` is required (up to 200 characters). `body` is shown in full (up to 8,000), `url` must be an http or https
@@ -642,19 +679,36 @@ A script makes a card in Morning Files by writing a file, with no model involved
 - `parts` (up to 1,000 strings) says what the matter is made of, such as which items are wrong. A card the person
   resolved stays resolved while its file stays, however it changes, until it names a part it didn't have when they
   resolved it; then it opens again. Without `parts`, nothing a file says while it stays opens it.
+- `files` (up to 10) names files the script wrote beside the card file, in the same folder, such as the full results of
+  a run for Excel: plain names only, never a path, so nothing outside that folder is ever taken. When Noteling reads a
+  new version of the card file, it copies them into its own folder, `cards/files/<card id>/`, in place of the card's
+  earlier ones, all at once: a card keeps only its latest files, and the script may change or delete its own afterwards
+  without breaking the card. The same card file read again (at the next launch, say) keeps them as they are, so write
+  the files first, then the card file, and write the card file again when they change. Each may be up to 500 MB, and
+  only tables, text, PDFs and pictures are taken: csv, tsv, txt, json, md, log, xlsx, pdf, png, jpg, jpeg, gif and heic;
+  never anything that can run, such as an app, a command, a script, an installer, a disk image, a web page, an SVG or an
+  archive. A listed file that is missing, too big, of another kind, a link, hidden or past the tenth isn't attached,
+  and the card says why, one plain note each: "problems.csv wasn't attached: it's 620 MB, and the most is 500 MB."
+  Nothing else changes: the card is still a card, with the files that could be attached. The copies keep their
+  modification times and can only be read, so a change made in Excel is saved somewhere else rather than lost at the
+  next run. The card stores each file's name, size and modification time; its **Files** section lists them with their
+  size, and **Open** (in the file's default app), **Save as…** and **Show in Finder**, and its tile on the folder page
+  shows a paperclip and how many.
 - **Identity** is `<source>/<id>`: the folder, and the file's name without `.json`. Writing the file again changes the
-  same card's title, body, page, severity, buttons and details, and nothing the person did: their decision, their
+  same card's title, body, page, severity, buttons, details and files, and nothing the person did: their decision, their
   context, the folder's name.
 - **Deleting the file** means the matter went away. A card nobody had decided anything about is resolved; a card the
-  person took keeps their decision and says "Its script no longer reports this". A file that comes back is the matter
-  again: a resolved card opens again, whoever resolved it, and a card the person took keeps their decision.
+  person took keeps their decision and says "Its script no longer reports this". Either way it keeps its files. A file
+  that comes back is the matter again: a resolved card opens again, whoever resolved it, and a card the person took
+  keeps their decision.
 - A file that can't be read (not JSON, no title, bigger than 64 KB) is never deleted and never resolves its card: the log
   says why once, and its source's folder in Morning Files lists it until it is fixed. A source shows up to 500 cards and
   up to 100 sources are read; files past that are listed, and their cards stay as they are.
 - Each source is a folder in Morning Files, named after its watch for a watch's cards and otherwise after the folder
   (`pack-shop`). A folder the person renames keeps its name.
 - Noteling looks at the inbox at launch, at the watch list's 30-second tick and right after a watch writes cards. It
-  reads only files that changed, saves only when a card changed, and never writes or deletes a script's files.
+  reads only files that changed, saves only when a card changed, and never writes or deletes a script's files, including
+  those a card carries and those it doesn't list.
 - The card step, its reconciliation and the attention test never touch or count these cards: they only consider the
   cards they track, and the count of cards to review that the attention test records leaves them out.
 
@@ -669,6 +723,16 @@ card = {"title": "Refund ready · Order 123", "body": "The price dropped by $10 
 path = os.path.join(os.environ["NOTELING_CARDS_DIR"], "order-123.json")   # this script's own folder in the inbox
 with open(path + ".tmp", "w") as f: json.dump(card, f)
 os.replace(path + ".tmp", path)   # the whole file at once, so Noteling never reads half of it
+```
+A card that carries a file names it under `files`. Write the file the same way, before the card file:
+```python
+import csv, json, os
+folder = os.environ["NOTELING_CARDS_DIR"]
+with open(os.path.join(folder, "refunds.csv.tmp"), "w", newline="", encoding="utf-8-sig") as f:   # utf-8-sig: Excel reads every language
+    csv.writer(f).writerows([["order", "refund"], ["123", "10.00"], ["124", "4.50"]])
+os.replace(os.path.join(folder, "refunds.csv.tmp"), os.path.join(folder, "refunds.csv"))   # the file first
+with open(os.path.join(folder, "refunds.json.tmp"), "w") as f: json.dump({"title": "2 refunds ready", "files": ["refunds.csv"]}, f)
+os.replace(os.path.join(folder, "refunds.json.tmp"), os.path.join(folder, "refunds.json"))   # then the card that lists it
 ```
 
 **Cards from watches.** On by default, each watch has one card, however long its list: `cards/inbox/watch-<path>/job.json`,
@@ -691,11 +755,15 @@ cards are turned off, at launch, at each tick and after each run.
 - `details` are the facts of the items it lists (up to 8,000 characters). The buttons are **Open job** (the watch's page)
   and **Why?**, which asks the chat "Why are items in Sale items not as expected right now?" in general chat, where
   `list_watches` has the details; nothing of the screen goes with it.
+- `files`: the CSV files its watch's `files` name, written beside `job.json` before it (see Files for Excel), so the
+  whole list is a click away however long it is.
 - Earlier versions wrote one file per item (`item-…json`); they are deleted at launch, so their cards resolve. Noteling's
-  file in a watch's folder is `job.json`: a check may write cards of its own beside it under other names, and those are
-  left alone.
+  files in a watch's folder are `job.json`, `problems.csv` and `all.csv` (and their numbered parts): a check may write
+  cards and files of its own beside them under other names, and those are left alone.
 
-The code is in `Sources/Familiar/Features/Morning/CardInbox.swift` and `Features/WatchList/WatchListCards.swift`.
+The code is in `Sources/Familiar/Features/Morning/CardInbox.swift` (with `CardFiles.swift` for the files a card carries
+and `CardFilesView.swift` for its Files section) and `Features/WatchList/WatchListCards.swift` (with
+`WatchListExport.swift` for the CSV files).
 
 ## Config (`~/.noteling/config.json`)
 | key | default | meaning |

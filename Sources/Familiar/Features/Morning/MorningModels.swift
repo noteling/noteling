@@ -94,6 +94,23 @@ struct CardInboxLink: Codable, Equatable {
     var parts: [String]? = nil
     /// The parts it had when the person resolved it: a later file with another part opens it again.
     var resolvedParts: [String]? = nil
+    /// The files its latest card file listed and Noteling took: copies in `cards/files/<card id>/`. Nil when it has none.
+    var files: [CardFile]? = nil
+    /// The files it listed that weren't attached, one plain note each.
+    var fileNotes: [String]? = nil
+    /// The modification date of the card file its files were taken from: that file read again keeps them as they are.
+    var filesFrom: Date? = nil
+}
+
+/// A file an inbox card carries, such as a run's full results for Excel: Noteling's own copy, taken from beside the
+/// card's file when it was written, so the script can change or delete its file without breaking the card.
+struct CardFile: Codable, Equatable, Identifiable {
+    var name: String
+    /// In bytes.
+    var size: Int64
+    /// When the script last wrote it.
+    var modifiedAt: Date
+    var id: String { name }
 }
 
 /// One button on an inbox card: open a web page, ask Noteling something about the card in chat, or open a watch's
@@ -109,6 +126,8 @@ struct CardInboxAction: Codable, Equatable, Identifiable {
 
 extension MorningCard {
     var isFromInbox: Bool { inbox != nil }
+    /// The files it carries, in the order its card file listed them.
+    var files: [CardFile] { inbox?.files ?? [] }
 }
 
 enum MorningWorkKind: String, Codable { case action, context }

@@ -15,7 +15,7 @@ enum WatchListFiles {
 
     /// The keys Noteling reads in watch.json; any other key a person adds is kept when Noteling writes the file.
     static let known: Set<String> = ["id", "name", "check", "items", "args", "fields", "expect", "every_minutes", "paused",
-                                     "created_at", "requires", "starts", "ends", "cards"]
+                                     "created_at", "requires", "starts", "ends", "cards", "files"]
 
     /// watch.json, its keys in the order people read them: an item is its key alone, or an object when it has its own
     /// `expect`.
@@ -33,6 +33,7 @@ enum WatchListFiles {
         case .all: pairs.append(("cards", "all"))
         case .off: pairs.append(("cards", false))
         }
+        if d.files != [.problems] { pairs.append(("files", d.files.map(\.rawValue))) }
         pairs.append(("created_at", seconds(d.createdAt)))
         if !d.requires.isEmpty { pairs.append(("requires", d.requires)) }
         if let other = d.other, let extra = (try? JSONSerialization.jsonObject(with: Data(other.utf8))) as? [String: Any] {
@@ -134,6 +135,19 @@ enum WatchListFiles {
         case let text as String where ["problems", "default"].contains(text.lowercased()): cards = .problems
         default: throw WatchListError("cards must be true, false or \"all\".")
         }
+        var files: [WatchListCardFile] = [.problems]
+        if let raw = object["files"], !(raw is NSNull) {
+            let wrong = WatchListError(#"files must list "problems", "all" or both, or be [] for none."#)
+            guard let list = raw as? [Any] else { throw wrong }
+            var chosen = Set<WatchListCardFile>()
+            for entry in list {
+                guard var name = (entry as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else { throw wrong }
+                if name.hasSuffix(".csv") { name.removeLast(4) }
+                guard let file = WatchListCardFile(rawValue: name) else { throw wrong }
+                chosen.insert(file)
+            }
+            files = WatchListCardFile.allCases.filter(chosen.contains)
+        }
         let id = (object["id"] as? String).flatMap { UUID(uuidString: $0.trimmingCharacters(in: .whitespaces)) }
         let createdAt = (object["created_at"] as? String).flatMap { try? CalendarSubmission.timestamp($0.trimmingCharacters(in: .whitespaces)) }
         let otherKeys = object.filter { !known.contains($0.key) }
@@ -144,7 +158,7 @@ enum WatchListFiles {
             fields: try names("fields", "field names").flatMap { $0.isEmpty ? nil : $0 },
             expect: try values(object["expect"], "expect"), everyMinutes: everyMinutes, paused: paused, createdAt: createdAt ?? created,
             requires: try names("requires", "secret names") ?? [], starts: try moment("starts"), ends: try moment("ends"), cards: cards,
-            other: other)
+            files: files, other: other)
         return (definition, id != nil)
     }
 
@@ -421,10 +435,14 @@ enum WatchListFiles {
 
     /// Writes the whole file under a hidden name beside it, readable only by this account, then moves it into place.
     static func write(_ text: String, to file: URL) throws {
+        try write(Data(text.utf8), to: file)
+    }
+
+    static func write(_ data: Data, to file: URL) throws {
         let manager = FileManager.default
         let temporary = file.deletingLastPathComponent().appendingPathComponent(".\(file.lastPathComponent)-\(UUID().uuidString).tmp")
         defer { try? manager.removeItem(at: temporary) }
-        guard manager.createFile(atPath: temporary.path, contents: Data(text.utf8), attributes: [.posixPermissions: 0o600]) else {
+        guard manager.createFile(atPath: temporary.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
             throw WatchListError("Couldn't write \(file.lastPathComponent) in \(file.deletingLastPathComponent().path).")
         }
         guard rename(temporary.path, file.path) == 0 else {
