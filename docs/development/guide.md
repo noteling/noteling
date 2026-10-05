@@ -399,8 +399,8 @@ do a tool pack:
   or an object with a `key` and its own `expect`. A missing `name` is the folder's path, a missing `check` the only pack
   check there is, and a missing `id` is made (and written down) the first time Noteling reads the file. `fields`,
   `args`, `starts` and `ends` are optional, `every_minutes` is held to 5–240, and keys Noteling doesn't use are kept when
-  it writes the file. `cards` says which items get a card in Morning Files: left out (or `true`), those that are red or
-  grey; `"all"`, every item; `false`, none (see Cards from watches).
+  it writes the file. `cards` says when the watch has its card in Morning Files: left out (or `true`), while any item is
+  red or grey; `"all"`, always; `false`, never (see Cards from watches).
 - `starts` and `ends` are ISO 8601 times, with an offset or without one (then they are the Mac's own time); a date alone
   means its midnight. Nothing is checked, and nobody is told, before `starts` or after `ends`; the window says "Starts
   Mon Oct 5, 12:00 AM" or "Ended …", and the chat tools' results say so too.
@@ -418,11 +418,11 @@ Noteling looks at the folders again at every tick and before each run (and befor
 `fields`, `paused`, `every_minutes`, `starts` and `ends` take effect at once. Items no check has looked at yet are
 checked right away, and what counts as right is worked out again, so a value taken out of `expect` goes back to what
 it was. A `watch.json` or items file that can't be read is never written over or deleted: the watch keeps its last good
-definition, the window and the chat show "Can't read watch.json: <reason>", and the log says so once, until the file is
-fixed. A folder someone puts there is watched (a copy of another watch's folder becomes a watch of its own), a renamed
+definition, its row on the Watches page and the chat show "Can't read watch.json: <reason>", and the log says so once,
+until the file is fixed. A folder someone puts there is watched (a copy of another watch's folder becomes a watch of its own), a renamed
 folder is the same watch, and a folder that is deleted stops its watch. Noteling watches up to 20 of a person's own
-folders, oldest first. **Stop watching**, in the window or with `stop_watch`, moves the folder to the macOS Trash, so
-it can be put back; the window's **Show in Finder** opens it. On first launch with folders, an earlier single
+folders, oldest first. **Stop watching**, on the watch's page or with `stop_watch`, moves the folder to the macOS Trash, so
+it can be put back; the page's **Show in Finder** opens it. On first launch with folders, an earlier single
 `watch-list.json` is moved into them, with what each item's checks found and what the person was last told, and
 renamed `watch-list.json.moved-<time>`.
 
@@ -434,8 +434,8 @@ items file, and sometimes their own `check.py`.
 - They are read-only: Noteling never writes into the team's copy, since every update replaces it. What a job finds is
   kept in `~/.noteling/team-watches/<id>/latest.json`, so it outlasts updates. `change_watch` refuses ("This job comes
   from your team's tools. Change it in the team repository."), and `stop_watch` turns it off.
-- They are off until the person turns them on, in the window's **Team watches** section (name, path, how often, how
-  many items, when it starts or ends, an on/off switch, "From your team's tools") or with `turn_on_watch`; which ones are
+- They are off until the person turns them on, in the **Team watches** section of the Watches page (name, path, how
+  often, how many items, when it starts or ends, an on/off switch, "From your team's tools") or with `turn_on_watch`; which ones are
   on is kept in `~/.noteling/team-watches/on.json`, owner-only. Only jobs that are on are checked and notify, up to 20
   at once. Turning one on checks it right away, and that first result says nothing: it shows where the person turned it
   on. Once on, its items and results show like a watch of their own, without Stop or Show in Finder.
@@ -481,8 +481,8 @@ item|price|badge|in stock
 - `why` is the check's own reason, in its own words: a short string, or a list of them (up to five, each up to 300
   characters), e.g. "The page shows $24.99, but the price of record is $19.99 (set 10:32 AM). The page hasn't caught
   up." It shows in the notification after the difference lines (the first reason, in at most two lines, cut at a word),
-  under the differences in the window's row, in the chat tools' results and in the explanation, as "What the check
-  said". The model never writes it, and a check that couldn't check shows none, not an earlier one's.
+  under the differences in the item's row on its watch's page, in the chat tools' results and in the explanation, as
+  "What the check said". The model never writes it, and a check that couldn't check shows none, not an earlier one's.
 - An `error` key, an exception, no `state` object, or running past 60 seconds means "couldn't check". The reason shown
   is the first line of the error, without the script's file name or the Python error type.
 - It runs through the bundled uv like any pack script, with the Mac's proxy and certificates, the pack's `requires:`
@@ -561,7 +561,8 @@ couldn't be checked twice in a row ("Couldn't check: <reason>", once until a che
 what counts as right, the next check tells them. Three or more items of one watch that couldn't be checked for the same
 reason in one run make one notification ("Couldn't check 12 items: <reason>"). The title is the item's title, the
 subtitle the watch's name, and the body plain words: one line per difference, e.g. "Price: 24.99 — expected 19.99",
-then the check's `why`. Clicking it opens the chat on why the item is red or grey, or else the Watch List.
+then the check's `why`. Clicking it opens the chat on why the item is red or grey, or else the watch's page in Morning
+Files (Watches, when the watch is gone).
 Notifications use UserNotifications and work only from the `.app` bundle; elsewhere (`swift run`, tests) alerts go to
 the log. macOS asks for permission when the first watch is created or a team job turned on; without it everything else
 works and the chat says they are off.
@@ -580,7 +581,7 @@ the end of a path that only one has, like "fashion"):
 - `list_watches` (the person's own, then `team_watches` with whether each is on, and folders it can't watch),
   `check_watch_now` {watch?}, `change_watch` {watch, add_items?, remove_items?, every_minutes?, expect?, paused?},
   `turn_on_watch` {watch} and `turn_off_watch` {watch} (a team job on or off; one of the person's own resumed or
-  paused), and `stop_watch` {watch}. A change leaves a receipt on the pad and an Open Watch List tab; a watch whose files
+  paused), and `stop_watch` {watch}. A change leaves a receipt on the pad and an Open Watches tab; a watch whose files
   can't be read says so, and isn't changed until they're fixed. Results include when a watch starts or ends, its items
   file, rows it left out and columns the check doesn't report.
 
@@ -592,8 +593,27 @@ can do** and, only when something couldn't be confirmed, **Couldn't check**.
 **Files.** A person's watches: `~/.noteling/watches/<path>/watch.json`, an optional items file and `check.py`, and
 `latest.json` (folders 0700, files Noteling writes 0600, each written whole and moved into place). Team watches: read
 from the team's copy, with `~/.noteling/team-watches/<id>/latest.json` and `~/.noteling/team-watches/on.json`. The code is
-in `Sources/Familiar/Features/WatchList/` (`WatchListFiles` for the files); the menu bar's **Watch List…** opens its
-window.
+in `Sources/Familiar/Features/WatchList/` (`WatchListFiles` for the files, `WatchListPages` for the pages).
+
+**Watches in Morning Files.** The watches live in the Morning panel, beside the sources, not in a window of their own: a
+watch is the same kind of thing as a source (checks on a schedule, results, and a card in Morning Files).
+- **Watches** (`MorningNavigation.Route.watches`) is reached from the Watches box on the panel's home, under the sources,
+  from the panel's menu, from the menu bar's **Watches…**, and from the chat's **Open Watches** tab. It lists every
+  watch, the person's own first, then **Team watches** ("From your team's tools"). A row shows the name (and a team
+  job's path), how often it runs and when it starts or ends, when it last checked ("Not checked yet", "Checking now",
+  "Paused", "Off") and how its items stand ("3 as expected · 2 not as expected · 1 couldn't check"), with **Check now**
+  and **Pause**/**Resume**, or a team job's on/off switch. A watch.json or items file that can't be read, the items file's
+  notes (rows left out, columns the check doesn't report, several items files) and folders past the limits show on
+  their rows. With nothing watched, it says how to start in chat, and that the team's jobs show there once its tools are
+  linked.
+- **A watch's page** (`.watch(id)`), opened from its row, from its card's **Open job**, and from a notification about an
+  item that is back to as expected: its name, schedule and how it stands; Check now, Pause or the on/off switch, and for
+  a watch of the person's own **Show in Finder** and **Stop watching…** (which asks first); what's wrong with its files;
+  **Cards (n)**, to its card's folder; and every item with its dot, what it shows, what the check said, when it was
+  checked, and **Why?** and **Open page**.
+- **A watch's cards folder** starts with "Checked 6:31 PM · every 15 minutes · Check now · Open job"; other folders don't.
+- Opening the panel on a watch page isn't recorded by the attention test, which is about looks at the cards. The panel
+  is 650 points wide on every screen, the watch pages too, and hides from screen sharing as it always has.
 
 ### The cards inbox (`cards/inbox/`)
 A script makes a card in Morning Files by writing a file, with no model involved: one JSON file per card,
@@ -615,9 +635,13 @@ A script makes a card in Morning Files by writing a file, with no model involved
   address, `severity` is `high`, `normal` (the default) or `low`, and `details`, text or any JSON (up to 8,000
   characters), shows under **Show original** and goes with the card when it is discussed. Keys it doesn't know are
   ignored.
-- `actions` (up to six) only open a web page (`url`) or ask Noteling about the card in chat (`ask`); anything else is
+- `actions` (up to six) only open a web page (`url`), ask Noteling about the card in chat (`ask`), or open a watch's
+  page in Morning Files (`watch`, the watch's id; the button shows only while there is such a watch); anything else is
   dropped. A card from the inbox never runs anything: `MorningStore.enqueue` refuses it, a card discussion can't change
   its options, and it has no Edit. A card with a `url` and no button that opens a page gets **Open page**.
+- `parts` (up to 1,000 strings) says what the matter is made of, such as which items are wrong. A card the person
+  resolved stays resolved, however its file changes, until a file names a part it didn't have when they resolved it;
+  then it opens again. Without `parts`, nothing a file says opens it.
 - **Identity** is `<source>/<id>`: the folder, and the file's name without `.json`. Writing the file again changes the
   same card's title, body, page, severity, buttons and details, and nothing the person did: their decision, their
   context, the folder's name.
@@ -647,22 +671,28 @@ with open(path + ".tmp", "w") as f: json.dump(card, f)
 os.replace(path + ".tmp", path)   # the whole file at once, so Noteling never reads half of it
 ```
 
-**Cards from watches.** On by default, each item that isn't as expected (red) or couldn't be checked (grey) has a card,
-written by Noteling (`WatchListCards`) as `cards/inbox/watch-<path>/item-<key>-<hash>.json` right after each check that
-changes what it shows, and deleted when the item is back to as expected, so its card resolves. `"cards": "all"` gives
-every item a card (as expected ones `low`), and `"cards": false` none. A team job that's off has none, and turning it off
-deletes its files; so do a watch that's gone and one whose cards are turned off, at launch, at each tick and after each
-run.
-- Title: "Not as expected · <title>", "Couldn't check · <title>" or "As expected · <title>"; severity `high` for red,
-  `normal` for grey.
-- Body: the difference lines exactly as in the notification (or "Couldn't check: <reason>"), then the check's `why` as
-  it said it, then every `state` field as `field: value`, then "Checked <time> by <check>". A grey card has no `why` or
-  fields, since they would be an earlier check's.
-- `url` is the item's page; the buttons are **Open page** and, for red or grey, **Why?**, which explains the item as a
-  notification's does (`Assistant.explainWatched`). The check's `facts` are the card's details.
-- A grey card appears on the first check that fails, while the notification waits for the second.
-- Noteling's files in a watch's folder are named `item-…json`. A check may write cards of its own beside them under other
-  names; those are left alone.
+**Cards from watches.** On by default, each watch has one card, however long its list: `cards/inbox/watch-<path>/job.json`,
+written by Noteling (`WatchListCards`) at the end of each run, when what the run found changed, with what it found as it
+found it, and no model. A run with nothing wrong deletes it, so the card resolves; problems in a later run write it
+again, and the same card opens again. If the person resolved the card while items were still wrong, it stays resolved
+until a run finds an item wrong that wasn't when they resolved it (the file's `parts` are its wrong items). A watch being
+checked keeps its card as it was until its run ends. `"cards": "all"` keeps the card always, `"cards": false` gives
+none, and a team job that's off has none: turning it off deletes its file, as do a watch that's gone and one whose
+cards are turned off, at launch, at each tick and after each run.
+- Title: "Sale items: 2 of 8 not as expected · 6:31 PM"; with only items it couldn't check, "Sale items: couldn't check
+  1 of 8 · 6:31 PM"; with `"all"` and nothing wrong, "Sale items: all 8 as expected · 6:31 PM". Severity `high` with
+  anything not as expected, `normal` with only couldn't-check, `low` otherwise.
+- Body: a summary line, "2 not as expected · 1 couldn't check · 5 as expected · checked 6:31 PM by <check>", then each
+  wrong item, those not as expected first, then those it couldn't check: its title (and key), its difference lines
+  exactly as the notification writes them and the check's `why` as it said it, or "Couldn't check: <reason>". With
+  `"all"`, every other item follows in one line ("Blue kettle (123): As expected"). Up to 50 items, within the 8,000
+  characters the inbox shows of a body; the rest are counted: "…and 150 more. Open the job to see them all."
+- `details` are the facts of the items it lists (up to 8,000 characters). The buttons are **Open job** (the watch's page)
+  and **Why?**, which asks the chat "Why are items in Sale items not as expected right now?" in general chat, where
+  `list_watches` has the details; nothing of the screen goes with it.
+- Earlier versions wrote one file per item (`item-…json`); they are deleted at launch, so their cards resolve. Noteling's
+  file in a watch's folder is `job.json`: a check may write cards of its own beside it under other names, and those are
+  left alone.
 
 The code is in `Sources/Familiar/Features/Morning/CardInbox.swift` and `Features/WatchList/WatchListCards.swift`.
 
