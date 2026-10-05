@@ -35,15 +35,17 @@ Click Noteling in the Dock to open chat. You can also double-click the little no
 
 Start with a view you already use, such as your email inbox.
 
-1. Open the small folder on your desktop, then choose **Manage sources → Teach a source with Watch Me**.
+1. Open the small folder on your desktop, then choose **Jobs → Teach a job with Watch Me**.
 2. Show Noteling the app, account, and view you want it to check. Choose **Stop Watching** when you’re done.
 3. Give it a short description, such as “Check unread email.” Add optional context about what to include, skip, or stop at.
-4. Review what Noteling learned. If something is off, just type what to change, such as “only the last 3 days”, and it writes the draft again. Then choose **Keep it**, and confirm any source details it asks you to review.
-5. In **Settings**, enable **Allow Noteling to control the mouse and keyboard when asked** so it can navigate the app you showed it. Then choose **Run all sources** to check for fresh information.
+4. Review what Noteling learned. If something is off, just type what to change, such as “only the last 3 days”, and it writes the draft again. Then choose **Keep it**, and confirm any details it asks you to review.
+5. In **Settings**, enable **Allow Noteling to control the mouse and keyboard when asked** so it can navigate the app you showed it. Then, in **Jobs**, choose **Run now** on your new job to check for fresh information.
 
-**Run all sources** opens the **Latest run** page, which shows what each source found. If a source didn’t finish, the page names it at the top, and the **Latest run** link in the folder says so too. When a run ends, Noteling turns what it found into cards. **Manage sources** is where you change the instructions; **Run history** is where you find earlier runs.
+**Jobs** is everything Noteling runs for you, in one list: jobs that read your mail, a web page or a calendar, and jobs that check items (see Keep an eye on items). The **Jobs** box on the folder’s home sums it up, such as “5 jobs · 2 need attention · last run 6:31 PM”, and opens it; so does **Jobs…** in the menu bar. Jobs that need you come first: one whose last run failed, one that needs a review or something in Settings, or one whose items aren’t as they should be. Each row says what the job does, how often it runs, how its last run went, such as “12 new · 3 cards”, and how it stands, with **Run now**.
 
-You can also do this from chat, any time later: ask “what did my inbox check find?”, or say “change it to only unread email from today”. Noteling changes the saved source, shows a note of what it saved, and offers **Open Manage sources**. When you ask it to run a source now, it offers a **Run now** button. Nothing runs until you tap it.
+Click a job to open its page: what its last run found, **Edit** to change its instructions, **Remove**, and **Card**, which opens the card it made. **Run all reading jobs** runs every job that reads and opens the **Latest run** page, which shows what each job found; if one didn’t finish, the page names it at the top, and the **Latest run** link in Jobs says so too. When a run ends, Noteling turns what it found into cards. **Run history** is where you find earlier runs.
+
+You can also do this from chat, any time later: ask “what did my inbox check find?”, or say “change it to only unread email from today”. Noteling changes the saved job, shows a note of what it saved, and offers **Open Jobs**. When you ask it to run a job now, it offers a **Run now** button, which runs it and opens its page. Nothing runs until you tap it.
 
 ## Read your mail without the screen
 
@@ -81,15 +83,15 @@ The test’s record stays on your Mac. What you teach with the thumbs, **Let me 
 
 ## Teach it what matters to you
 
-What matters to you isn’t what matters to someone else, so Noteling learns it from you. On **Latest run** or any run in **Run history**, each message that didn’t become a card has **Matters to me**; tap it, and **Why?** lets you say why in a few words if you like. The rest’s **Matters to me**, the thumbs on a card, and **Let me explain…** teach it too.
+What matters to you isn’t what matters to someone else, so Noteling learns it from you. On a job’s page, **Latest run** or any run in **Run history**, each message that didn’t become a card has **Matters to me**; tap it, and **Why?** lets you say why in a few words if you like. The rest’s **Matters to me**, the thumbs on a card, and **Let me explain…** teach it too.
 
 Each of these is kept as a lesson. When Noteling next sorts what a job read, it sends that job’s 40 newest lessons (each one’s subject or title, sender, what you said and your words) to your Claude connection beside its rules, so a message like one you marked becomes a card, and one like a thumbs-down doesn’t. Lessons apply to mail that arrives later; teaching doesn’t sort what was already sorted again. **What you’ve taught** lists every lesson, and **Forget** removes one.
 
 ## Keep an eye on items
 
-When your team’s tools can check items on a site, ask in chat: “watch these items for me: 1, 2, 3”. Noteling checks each one right away and tells you what it shows and what will count as right. Then it checks again every 15 minutes and sends a Mac notification when an item isn’t as it should be right now, when it’s back, or when it can’t be checked, with the check’s own reason when it gives one. Click the notification to see why and what you can do. To change what counts as right, just say so, such as “the price should be 12.33”. Your watches live in Morning Files, beside your sources: **Watches** (on the panel’s home, or **Watches…** in the menu bar) lists each one with how its items stand, **Check now** and **Pause**, and a watch’s page shows every item, with **Why?**, **Open page**, **Show in Finder** and **Stop watching**. Each watch is a small folder you can open, edit and pass to a teammate: change its `watch.json` and Noteling picks it up within a minute. You can also put a table of items beside it, `items.psv` (or `.csv` or `.tsv`): a header row, then one item per row with what it should show, such as its price or a badge it should have, and only what the table says counts. A watch can say when it starts and ends. Stopping a watch moves its folder to the Trash, so you can put it back.
+When your team’s tools can check items on a site, ask in chat: “watch these items for me: 1, 2, 3”. Noteling checks each one right away and tells you what it shows and what will count as right. Then it checks again every 15 minutes and sends a Mac notification when an item isn’t as it should be right now, when it’s back, or when it can’t be checked, with the check’s own reason when it gives one. Click the notification to see why and what you can do. To change what counts as right, just say so, such as “the price should be 12.33”. Your watches are jobs, so they’re in **Jobs** with the rest: each with how its items stand, **Run now** and **Pause**. A watch’s page shows every item, with **Why?**, **Open page**, **Show in Finder** and **Stop watching**, and **Card**, which opens its card. Each watch is a small folder you can open, edit and pass to a teammate: change its `watch.json` and Noteling picks it up within a minute. You can also put a table of items beside it, `items.psv` (or `.csv` or `.tsv`): a header row, then one item per row with what it should show, such as its price or a badge it should have, and only what the table says counts. A watch can say when it starts and ends. Stopping a watch moves its folder to the Trash, so you can put it back.
 
-If someone keeps watch jobs for your group in your team’s tools, they appear under **Team watches** on the same page. Turn on the ones that are yours, there or by asking in chat, such as “turn on fashion”: only those are checked and tell you. They stay as your team wrote them; turning one off is how you stop it.
+If someone keeps watch jobs for your group in your team’s tools, they appear in **Jobs** too, after your own, each marked “from your team’s tools” and with a switch. Turn on the ones that are yours, there or by asking in chat, such as “turn on fashion”: only those are checked and tell you. They stay as your team wrote them; turning one off is how you stop it.
 
 Each watch also has one card in Morning Files, however long its list, updated by each run: how many items aren’t as they should be, and each of them with what the check found, in its own words, with **Open job** and **Why?**. When everything is back, the card is resolved; if you resolve it yourself, it stays that way until another item goes wrong, or the problem goes away and comes back. Put `"cards": "all"` in a watch’s `watch.json` to keep its card even when all is well, or `"cards": false` for none.
 
@@ -101,7 +103,7 @@ The little Morning folder on your screen can be put away too: right-click it and
 
 ## Your information, your control
 
-Your saved sources, cards, and run history are stored on your Mac, and Noteling sends nothing to its developer. AI features send what a request needs to your configured Claude connection. Depending on the request, that can include screenshots, text from the window you’re using, the apps and web addresses you used recently, what Noteling reads from your sources, and the lessons you teach, in your own words. **Watch Me** records only the demonstration you start. The [privacy notice](PRIVACY.md) lists exactly what is stored, what is sent, and how to delete it.
+Your jobs, cards, and run history are stored on your Mac, and Noteling sends nothing to its developer. AI features send what a request needs to your configured Claude connection. Depending on the request, that can include screenshots, text from the window you’re using, the apps and web addresses you used recently, what Noteling reads from your sources, and the lessons you teach, in your own words. **Watch Me** records only the demonstration you start. The [privacy notice](PRIVACY.md) lists exactly what is stored, what is sent, and how to delete it.
 
 Mouse and keyboard control is off until you turn it on, in Settings or with the hand button on the chat pad. Tasks show their progress and any approval requests in the task window; **Stop** ends the work. Checking a tracked email conversation on screen may open it and mark it as read; the mail pack never does.
 
@@ -109,7 +111,7 @@ To quit, choose **Quit Noteling** or press **⌘Q** while Noteling is active. If
 
 ## Still growing
 
-Noteling is an early version. You start source checks yourself; scheduled morning checks aren’t available yet. Apart from mail read through the mail pack, it works through the apps you show it, and some screens or controls aren’t supported. Card matching and AI interpretations can make mistakes, so review important findings and actions.
+Noteling is an early version. You start the jobs that read yourself; scheduled morning reads aren’t available yet. Apart from mail read through the mail pack, it works through the apps you show it, and some screens or controls aren’t supported. Card matching and AI interpretations can make mistakes, so review important findings and actions.
 
 [Feedback and bug reports](https://github.com/noteling/noteling/issues) help us decide what to improve next.
 

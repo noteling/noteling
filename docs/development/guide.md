@@ -51,8 +51,8 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
 6. Claude can call the pack's scripts, `read_file` / `grep` over the docs, and `read_screen` (accessibility text).
    General chat also knows the saved sources (the jobs taught with Watch Me or created in chat).
    - **Context:** every turn carries a short "Your saved jobs" list: name, kind, address, reading rules, and when each was taught and last run.
-   - **Tools** (`SourceConversation`): `get_source` shows one job with its latest findings, `update_source` edits it through the same store and checks as Manage sources, `remove_source` / `restore_source` take it out of future runs and bring it back, `create_source` starts a job that reads through a pack script, with no teaching, and `offer_run_source` adds a Run now tab.
-   - **Rules:** only the person's tap runs a job. Edits wait while a read is running, and they never clear a source's "needs review" flag. Each change leaves a receipt on the pad and an Open Manage sources tab.
+   - **Tools** (`SourceConversation`): `get_source` shows one job with its latest findings, `update_source` edits it through the same store and checks as Edit on its page in Jobs, `remove_source` / `restore_source` take it out of future runs and bring it back, `create_source` starts a job that reads through a pack script, with no teaching, and `offer_run_source` adds a Run now tab, which runs the job and opens its page in Jobs.
+   - **Rules:** only the person's tap runs a job. Edits wait while a read is running, and they never clear a source's "needs review" flag. Each change leaves a receipt on the pad and an Open Jobs tab.
 7. **Control** (off by default, Settings → "Allow Noteling to control the mouse and keyboard"): ask it to do something
    ("type the sum formula for me") and it does it through Claude's computer toolset. By default it works **in the
    background**: it drives the window you were in when you asked through Accessibility and events sent to that app, so
@@ -126,18 +126,21 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    **Try sample files** adds explicitly fictional examples; these can only prepare local drafts and analysis.
    Preparation uses your configured Claude connection with no tools. **Work in an app** uses existing desktop control
    and approvals. Queue entries survive restarts; interrupted work returns for review rather than replaying actions.
-   **Manage sources → Teach a source with Watch Me** teaches a calendar, inbox, or web view from a demonstration.
+   **Jobs** (see below) lists everything Noteling runs: the saved sources, which read a calendar, inbox or web view
+   (reading jobs), and the watches, which check items (see Watch lists). **Jobs → Teach a job with Watch Me** teaches a
+   calendar, inbox, or web view from a demonstration.
    Show the location, account, and information to read; explain what they mean and review the learned description in chat.
-   **Keep it** registers a reading source in Morning Files. If no reading source was established, Noteling keeps the review
+   **Keep it** registers a reading source in Jobs. If no reading source was established, Noteling keeps the review
    open and explains what is missing. Ordinary Watch Me action workflows remain separate from source collection.
-   Previously saved demonstrations appear under **Saved reading workflows → Review & add** so you can confirm their
-   source address and reading scope without recording again. For calendars, choose a day and **Read calendar**.
-   Each saved source has **Edit** and **Remove** actions. Edit its description, location, account and reading rules;
-   changes update the same source. Remove excludes it from future batches while keeping past run results.
-   **Removed sources → Restore** brings the saved setup back, including after a restart.
+   Previously saved demonstrations appear under **Saved demonstrations → Review & add** in Jobs so you can confirm their
+   source address and reading scope without recording again. A calendar job reads today with **Run now**; for another
+   day, choose **Read another day…** on its page, pick a day and hours, and **Read calendar**.
+   Each reading job's page has **Edit** (or **Review**) and **Remove…**. Edit its description, location, account and
+   reading rules; changes update the same source. Remove excludes it from future batches while keeping past run results.
+   **Removed jobs → Restore** in Jobs (or **Undo** right after removing it) brings the saved setup back, including after a restart.
    Noteling uses fresh observations to collect that date and compute meeting blocks, accepted conflicts, and open time
    within your selected briefing window. Partial reads show their limitations and do not assert free time.
-   **Run all sources** reads registered sources one at a time: calendars for today (09:00–17:00 briefing window in each
+   **Run all reading jobs** reads registered sources one at a time: calendars for today (09:00–17:00 briefing window in each
    source’s time zone), and mail/web sources within their saved scope. It collects up to 25 visible mail/web observations,
    retaining evidence and coverage gaps. New-item inbox discovery uses visible rows and snippets. Separately,
    unresolved cards can request bounded rechecks of their tracked conversations, including opening a matching thread.
@@ -146,10 +149,10 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    read-only, back to the last read a card step sorted (24 hours the first time, at most 7 days, the newest 200
    messages). Chat creates such a job with `create_source`; the job's reading rules are applied by the card step.
    Results show which reads completed, were partial, or failed. Stop cancels the remaining reads
-   and keeps collections already saved. **Run all sources** opens the **Latest run** screen, which follows the run and
-   names any source that didn't finish at the top. The card controls (**Make cards from saved results**, **View cards**)
+   and keeps collections already saved. **Run all reading jobs** opens the **Latest run** screen, which follows the run and
+   names any job that didn't finish at the top. The card controls (**Make cards from saved results**, **View cards**)
    are on the run screens; the main screen shows card work only while it runs or when it fails.
-   Clicking a completed row opens that run’s findings; **Manage sources** is for saved setup and rules.
+   Clicking a completed row opens that run’s findings; a run's **Open job** opens the job's page, for its setup and rules.
    **Run history** keeps earlier results available after a restart. Findings appear before expandable collection
    details, and partial or failed reads remain clearly labeled.
    Each run is stored under `~/.noteling/runs/<readable-timestamp>/`, with `run.json`, per-source JSON
@@ -158,6 +161,35 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    This first calendar collection supports exposed Accessibility navigation controls; unsupported controls are reported.
    Calendar collection does not create or move meetings. Reads are started explicitly; scheduled collection, preference
    history and relationship-based recommendations are not connected yet. Apart from script jobs, sources are read from the screen.
+
+   **Jobs** (`MorningNavigation.Route.jobs`, `Features/Jobs/`) is one page for both kinds, opened from the Jobs box on
+   the panel's home ("5 jobs · 2 need attention · last run 6:31 PM"), the panel's **⋯** menu, the menu bar's **Jobs…**,
+   and the chat's **Open Jobs** tab. Storage and runners stay each kind's own: `CalendarStore` and
+   `CalendarCollectionRunner` for reading jobs, `WatchListStore` and `WatchListRunner` for watches.
+   - The list (`JobsPage`) has every reading job, calendars included, and every watch, the person's own and the team's.
+     Jobs that need attention come first (a failed, partial or skipped read; one that needs review, can't run yet or
+     needs something in Settings, such as a pack's secret or mouse and keyboard control for a job that reads from the
+     screen; a watch whose items aren't as expected or couldn't be checked, or whose files can't be read), then the
+     person's own, then the team's, each by name. A row says what the job does ("Reads mail", "Checks 3 items · from
+     your team's tools"), how often it runs ("Every 15 minutes", "When you run it", with a watch's start or end), how its
+     last run went ("Last run 6:31 PM · 12 new · 3 cards", "2 of 8 not as expected · 1 couldn't check", "nothing
+     saved") and how it stands (Running, Waiting to run, Paused, Off, Needs Settings, Needs review, Can't run yet,
+     Failed), with what's wrong in red. Its buttons: **Run now** (a reading job's read, a calendar's today; a watch's
+     check), **Stop** while a reading job reads, **Open Settings** when it needs something there, and **Pause**/**Resume**
+     for a watch of the person's own or the on/off switch for a team job. A watch's file notes stay on its row. The
+     page also has **Run all reading jobs** with **Stop all**, **Latest run** (saying when a job didn't finish) and **Run
+     history**; folders in the watches folders that aren't jobs, and why; **Saved demonstrations** to review and add;
+     **Removed jobs** to restore; **Teach a job with Watch Me**; and how to start watching items in chat.
+   - Every job's page starts with the same header (`JobHeader`): its name, what it does and how often, its last run,
+     how it stands, its buttons, and **Card**, which opens the card it made: a watch's card from
+     `cards/inbox/watch-…/job.json`, resolved or not, or a reading job's open cards (a menu when there are several, those
+     its latest run made or saw first). A reading job's page (`SourceJobPage`, `.sourceJob(id)`) then has its meaning,
+     account and reading rules, **Edit**/**Review**, **Remove…**, **Read another day…** for a calendar, **Run history**,
+     and its latest run's findings, with **Open the run**, "Became a card" and **Matters to me**. A watch's page is
+     `.watch(id)` (see Watch lists).
+   - Back from a job's page goes to Jobs, and from Jobs to the home; a card or a run opened from a job's page comes back
+     to it. The older Manage sources (`.sources`) and Watches (`.watches`, which shows Jobs) routes still work, but
+     nothing the person sees leads there.
    Saved observations generate continuing cards. Repeated scans match cards using the source and an extracted item key;
    newer evidence can update or resolve a card, while missing items remain open. Human edits and handled decisions persist.
    The card step judges each item once: only items that are new or changed since its last judgment go to the model.
@@ -418,7 +450,7 @@ Noteling looks at the folders again at every tick and before each run (and befor
 `fields`, `paused`, `every_minutes`, `starts` and `ends` take effect at once. Items no check has looked at yet are
 checked right away, and what counts as right is worked out again, so a value taken out of `expect` goes back to what
 it was. A `watch.json` or items file that can't be read is never written over or deleted: the watch keeps its last good
-definition, its row on the Watches page and the chat show "Can't read watch.json: <reason>", and the log says so once,
+definition, its row in Jobs and the chat show "Can't read watch.json: <reason>", and the log says so once,
 until the file is fixed. A folder someone puts there is watched (a copy of another watch's folder becomes a watch of its own), a renamed
 folder is the same watch, and a folder that is deleted stops its watch. Noteling watches up to 20 of a person's own
 folders, oldest first. **Stop watching**, on the watch's page or with `stop_watch`, moves the folder to the macOS Trash, so
@@ -434,8 +466,8 @@ items file, and sometimes their own `check.py`.
 - They are read-only: Noteling never writes into the team's copy, since every update replaces it. What a job finds is
   kept in `~/.noteling/team-watches/<id>/latest.json`, so it outlasts updates. `change_watch` refuses ("This job comes
   from your team's tools. Change it in the team repository."), and `stop_watch` turns it off.
-- They are off until the person turns them on, in the **Team watches** section of the Watches page (name, path, how
-  often, how many items, when it starts or ends, an on/off switch, "From your team's tools") or with `turn_on_watch`; which ones are
+- They are off until the person turns them on, with the switch on their row in Jobs (name, path, how many items
+  "from your team's tools", how often, when it starts or ends) or with `turn_on_watch`; which ones are
   on is kept in `~/.noteling/team-watches/on.json`, owner-only. Only jobs that are on are checked and notify, up to 20
   at once. Turning one on checks it right away, and that first result says nothing: it shows where the person turned it
   on. Once on, its items and results show like a watch of their own, without Stop or Show in Finder.
@@ -562,7 +594,7 @@ what counts as right, the next check tells them. Three or more items of one watc
 reason in one run make one notification ("Couldn't check 12 items: <reason>"). The title is the item's title, the
 subtitle the watch's name, and the body plain words: one line per difference, e.g. "Price: 24.99 — expected 19.99",
 then the check's `why`. Clicking it opens the chat on why the item is red or grey, or else the watch's page in Morning
-Files (Watches, when the watch is gone).
+Files (Jobs, when the watch is gone).
 Notifications use UserNotifications and work only from the `.app` bundle; elsewhere (`swift run`, tests) alerts go to
 the log. macOS asks for permission when the first watch is created or a team job turned on; without it everything else
 works and the chat says they are off.
@@ -581,7 +613,7 @@ the end of a path that only one has, like "fashion"):
 - `list_watches` (the person's own, then `team_watches` with whether each is on, and folders it can't watch),
   `check_watch_now` {watch?}, `change_watch` {watch, add_items?, remove_items?, every_minutes?, expect?, paused?},
   `turn_on_watch` {watch} and `turn_off_watch` {watch} (a team job on or off; one of the person's own resumed or
-  paused), and `stop_watch` {watch}. A change leaves a receipt on the pad and an Open Watches tab; a watch whose files
+  paused), and `stop_watch` {watch}. A change leaves a receipt on the pad and an Open Jobs tab; a watch whose files
   can't be read says so, and isn't changed until they're fixed. Results include when a watch starts or ends, its items
   file, rows it left out and columns the check doesn't report.
 
@@ -595,25 +627,29 @@ can do** and, only when something couldn't be confirmed, **Couldn't check**.
 from the team's copy, with `~/.noteling/team-watches/<id>/latest.json` and `~/.noteling/team-watches/on.json`. The code is
 in `Sources/Familiar/Features/WatchList/` (`WatchListFiles` for the files, `WatchListPages` for the pages).
 
-**Watches in Morning Files.** The watches live in the Morning panel, beside the sources, not in a window of their own: a
-watch is the same kind of thing as a source (checks on a schedule, results, and a card in Morning Files).
-- **Watches** (`MorningNavigation.Route.watches`) is reached from the Watches box on the panel's home, under the sources,
-  from the panel's menu, from the menu bar's **Watches…**, and from the chat's **Open Watches** tab. It lists every
-  watch, the person's own first, then **Team watches** ("From your team's tools"). A row shows the name (and a team
-  job's path), how often it runs and when it starts or ends, when it last checked ("Not checked yet", "Checking now",
-  "Paused", "Off") and how its items stand ("3 as expected · 2 not as expected · 1 couldn't check"), with **Check now**
-  and **Pause**/**Resume**, or a team job's on/off switch. A watch.json or items file that can't be read, the items file's
-  notes (rows left out, columns the check doesn't report, several items files) and folders past the limits show on
-  their rows. With nothing watched, it says how to start in chat, and that the team's jobs show there once its tools are
-  linked.
-- **A watch's page** (`.watch(id)`), opened from its row, from its card's **Open job**, and from a notification about an
-  item that is back to as expected: its name, schedule and how it stands; Check now, Pause or the on/off switch, and for
-  a watch of the person's own **Show in Finder** and **Stop watching…** (which asks first); what's wrong with its files;
-  **Cards (n)**, to its card's folder; and every item with its dot, what it shows, what the check said, when it was
-  checked, and **Why?** and **Open page**.
-- **A watch's cards folder** starts with "Checked 6:31 PM · every 15 minutes · Check now · Open job"; other folders don't.
-- Opening the panel on a watch page isn't recorded by the attention test, which is about looks at the cards. The panel
-  is 650 points wide on every screen, the watch pages too, and hides from screen sharing as it always has.
+**Watches among the jobs.** The watches live in the Morning panel, in Jobs with the reading jobs, not in a window of
+their own: to a person a watch is the same kind of thing as a source (it runs, has results, and makes a card in Morning
+Files). See Jobs, under Morning Files above, for the list and the header every job's page shares.
+- **In Jobs** (`MorningNavigation.Route.jobs`; the older `.watches` route shows it too) a watch's row shows its name
+  (and a team job's path), what it checks ("Checks 3 items", "· from your team's tools"), how often it runs and when it
+  starts or ends, its last run and how its items stand ("Last run 6:31 PM · 2 of 8 not as expected · 1 couldn't check",
+  "Not run yet"), how it stands ("Running", "Paused", "Paused in the team's tools", "Off", "Needs Settings" when its
+  check lacks a secret, "Failed" when nothing could be checked), with **Run now**, which checks it now, and **Pause**/
+  **Resume**, or a team job's on/off switch. A watch.json or items file that can't be read, the items file's notes (rows
+  left out, columns the check doesn't report, several items files) and folders past the limits show on their rows. The
+  team's jobs come after the person's own, under "From your team's tools. Turn on the ones that are yours: only those
+  run and tell you." With nothing at all, Jobs says how to start a job, including watching items in chat, and that the
+  team's jobs show there once its tools are linked.
+- **A watch's page** (`.watch(id)`), opened from its row, from its card's **Open job**, from its cards folder, and from
+  a notification about an item that is back to as expected: the jobs' header (its name, what it checks and how often,
+  its last run, Run now, Pause or the on/off switch, and **Card**, its job.json card); for a watch of the person's own
+  **Show in Finder** and **Stop watching…** (which asks first); what's wrong with its files; **Cards folder (n)**, to
+  its card's folder, with any cards its check wrote itself; and every item with its dot, what it shows, what the check
+  said, when it was checked, and **Why?** and **Open page**. Back goes to Jobs, or to the folder it was opened from.
+- **A watch's cards folder** starts with "Checked 6:31 PM · every 15 minutes · Run now · Open job"; other folders don't.
+- Opening the panel on Jobs or a watch's page from the menu bar or a notification isn't recorded by the attention test,
+  which is about looks at the cards; the chat's Open Jobs tab is recorded as a chat open. The panel is 650 points wide on
+  every screen, the jobs' too, and hides from screen sharing as it always has.
 
 ### The cards inbox (`cards/inbox/`)
 A script makes a card in Morning Files by writing a file, with no model involved: one JSON file per card,
@@ -636,7 +672,7 @@ A script makes a card in Morning Files by writing a file, with no model involved
   characters), shows under **Show original** and goes with the card when it is discussed. Keys it doesn't know are
   ignored.
 - `actions` (up to six) only open a web page (`url`), ask Noteling about the card in chat (`ask`), or open a watch's
-  page in Morning Files (`watch`, the watch's id; the button shows only while there is such a watch); anything else is
+  page in Jobs (`watch`, the watch's id; the button shows only while there is such a watch); anything else is
   dropped. A card from the inbox never runs anything: `MorningStore.enqueue` refuses it, a card discussion can't change
   its options, and it has no Edit. A card with a `url` and no button that opens a page gets **Open page**.
 - `parts` (up to 1,000 strings) says what the matter is made of, such as which items are wrong. A card the person
@@ -752,7 +788,8 @@ pre-approved, so the user clicks one prompt on first launch, once per install.
   - `Sources/FamiliarRuntime`: API/CLI providers, conversation history, execution lifecycle, tool routing, and process helpers; no app/native imports.
   - `Sources/Familiar/App`: composition, desktop activity ownership, shell state, app entry point, and headless/render commands.
   - `Sources/Familiar/Features`: Chat, WatchLearn, ContextNotes, Companion, and Settings. Each workflow keeps its own state; chat presents Watch events without owning recordings.
-    - `Features/Calendar`: sources and jobs (calendar, mail and web profiles in `CalendarStore`), screen reads (`SourceCollectionTask`) and script reads (`ScriptReading`, `ScriptReadWindow`), the run archive (`SourceRunStore`), chat's job tools (`SourceConversation`), and the Manage sources, Latest run and Run history screens. `App/CalendarCollectionRunner` runs the reads.
+    - `Features/Calendar`: sources and jobs (calendar, mail and web profiles in `CalendarStore`), screen reads (`SourceCollectionTask`) and script reads (`ScriptReading`, `ScriptReadWindow`), the run archive (`SourceRunStore`), chat's job tools (`SourceConversation`), the Latest run and Run history screens, the editors, and the older Manage sources screen. `App/CalendarCollectionRunner` runs the reads.
+    - `Features/Jobs`: the jobs as one list: their words, statuses and order and the cards each made (`Jobs`), the Jobs page and the home's Jobs box (`JobsPage`, `JobsEntry`), the header and buttons every job's page shares (`JobHeader`, `JobControls`, `JobCardLink`), and a reading job's page (`SourceJobPage`). A watch's page is `WatchJobPage`, in `Features/WatchList`.
     - `Features/Morning`: cards, Who's Who and queued work in `morning.sqlite` (`MorningStore`), the card step and its judgments (`CardGenerationService`, `CardGenerationSubmission`), reconciliation with continuing cards, card discussions, and the Morning Files screens.
     - `Features/Attention`: the one-week attention test: its append-only ledger in `attention/`, labels from thumbs, explanations and card actions, the numbers, and the thumbs, daily line, rest and week screens.
     - `Features/BackgroundTasks`: `BackgroundTaskStore`, the task screen's state: the running task and up to 20 recent results with their last frame.
