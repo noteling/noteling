@@ -89,6 +89,14 @@ final class MorningStore: ObservableObject {
         }
     }
 
+    /// Hides a folder from the home, or shows it again. Nothing in it changes.
+    func setFolderHidden(_ id: UUID, hidden: Bool) throws {
+        try transact { next in
+            guard let index = next.folders.firstIndex(where: { $0.id == id }) else { throw MorningStoreError.invalid("That folder no longer exists.") }
+            next.folders[index].hidden = hidden ? true : nil
+        }
+    }
+
     func saveCard(_ card: MorningCard) throws {
         try transact { next in
             var card = card

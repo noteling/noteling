@@ -20,6 +20,31 @@ struct MorningStoreTests {
         #expect(fileMode?.intValue == 0o600)
     }
 
+    @Test func aHiddenFolderStaysHiddenKeepsItsFilesAndComesBack() throws {
+        let fixture = Fixture()
+        defer { fixture.remove() }
+        let store = MorningStore(directory: fixture.directory)
+        let replies = try #require(store.folders.first { $0.name == "Replies" })
+        let card = fixture.card(folderID: replies.id, people: [])
+        try store.saveCard(card)
+
+        try store.setFolderHidden(replies.id, hidden: true)
+        let reopened = MorningStore(directory: fixture.directory)
+        #expect(reopened.folders.first { $0.id == replies.id }?.isHidden == true)
+        #expect(reopened.cards.contains { $0.id == card.id && $0.folderID == replies.id })   // its files stay
+        #expect(MorningFilesView.shownFolders(reopened.folders, showingHidden: false).map(\.name) == ["Unfinished", "Housekeeping"])
+        #expect(MorningFilesView.shownFolders(reopened.folders, showingHidden: true).map(\.name) == ["Unfinished", "Housekeeping", "Replies"])
+        #expect(MorningFilesView.hiddenFoldersLine(reopened.folders, showingHidden: false) == "Hidden folders (1) · Show")
+        #expect(MorningFilesView.hiddenFoldersLine(reopened.folders, showingHidden: true) == "Hide them again")
+
+        try reopened.setFolderHidden(replies.id, hidden: false)
+        #expect(MorningStore(directory: fixture.directory).folders.allSatisfy { !$0.isHidden })
+        #expect(MorningFilesView.hiddenFoldersLine(reopened.folders, showingHidden: false) == nil)
+        // A folder saved before folders could be hidden reads as shown.
+        let earlier = try JSONDecoder().decode(MorningFolder.self, from: Data(#"{"id": "8A0C8D58-6A44-4C8F-9C3C-1A2B3C4D5E6F", "name": "Old"}"#.utf8))
+        #expect(!earlier.isHidden)
+    }
+
     @Test func peopleFilesEvidenceAndDecisionsSurviveRelaunch() throws {
         let fixture = Fixture()
         defer { fixture.remove() }

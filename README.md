@@ -91,9 +91,11 @@ When your team’s tools can check items on a site, ask in chat: “watch these 
 
 If someone keeps watch jobs for your group in your team’s tools, they appear under **Team watches** on the same page. Turn on the ones that are yours, there or by asking in chat, such as “turn on fashion”: only those are checked and tell you. They stay as your team wrote them; turning one off is how you stop it.
 
-Each watch also has one card in Morning Files, however long its list, updated by each run: how many items aren’t as they should be, and each of them with what the check found, in its own words, with **Open job** and **Why?**. When everything is back, the card is resolved; if you resolve it yourself, it stays that way until another item goes wrong. Put `"cards": "all"` in a watch’s `watch.json` to keep its card even when all is well, or `"cards": false` for none.
+Each watch also has one card in Morning Files, however long its list, updated by each run: how many items aren’t as they should be, and each of them with what the check found, in its own words, with **Open job** and **Why?**. When everything is back, the card is resolved; if you resolve it yourself, it stays that way until another item goes wrong, or the problem goes away and comes back. Put `"cards": "all"` in a watch’s `watch.json` to keep its card even when all is well, or `"cards": false` for none.
 
 Your team’s scripts can put cards in Morning Files too, by writing a small file (see the [developer guide](docs/development/guide.md)). Such a card only opens its page or asks Noteling about it; Noteling never acts on it by itself.
+
+A folder you don’t need in Morning Files can be hidden: right-click it, or open it, and choose **Hide folder**. Nothing in it is deleted and new files still arrive; **Hidden folders · Show** at the bottom of the home brings it back.
 
 ## Your information, your control
 

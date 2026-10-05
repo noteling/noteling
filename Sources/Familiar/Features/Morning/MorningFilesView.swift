@@ -89,6 +89,7 @@ struct MorningFilesView: View {
     @State private var showingOriginal: UUID?   // the card whose original text is expanded
     @State private var undo: MorningCard?
     @State private var notice: String?
+    @State private var showingHiddenFolders = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -300,11 +301,14 @@ struct MorningFilesView: View {
                     }
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 18)], alignment: .leading, spacing: 25) {
-                    ForEach(store.folders) { item in folderTile(item) }
+                    ForEach(Self.shownFolders(store.folders, showingHidden: showingHiddenFolders)) { item in folderTile(item) }
                 }
                 HStack {
                     Button { createNote() } label: { Label("New note", systemImage: "plus") }
                     Spacer()
+                    if let line = Self.hiddenFoldersLine(store.folders, showingHidden: showingHiddenFolders) {
+                        Button(line) { showingHiddenFolders.toggle() }
+                    }
                 }.buttonStyle(.plain).font(.system(size: 12, weight: .medium)).foregroundStyle(Pad.penInk)
             }.padding(22)
         }
@@ -331,7 +335,24 @@ struct MorningFilesView: View {
             }.padding(12).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         }.buttonStyle(.plain)
             .accessibilityLabel("\(folder.name), \(count) files")
-            .contextMenu { Button("Rename folder") { navigation.route = .editFolder(folder.id) }; Button("Create a note") { createNote(folderID: folder.id) } }
+            .contextMenu {
+                Button("Rename folder") { navigation.route = .editFolder(folder.id) }
+                Button("Create a note") { createNote(folderID: folder.id) }
+                Button(folder.isHidden ? "Show folder" : "Hide folder") { perform { try store.setFolderHidden(folder.id, hidden: !folder.isHidden) } }
+            }
+            .opacity(folder.isHidden ? 0.55 : 1)
+    }
+
+    /// The folders the home shows: all but the hidden ones, unless the person asked to see those too (they come last).
+    static func shownFolders(_ folders: [MorningFolder], showingHidden: Bool) -> [MorningFolder] {
+        folders.filter { !$0.isHidden } + (showingHidden ? folders.filter(\.isHidden) : [])
+    }
+
+    /// "Hidden folders (2) · Show", or "Hide them again" while they're shown; nothing when no folder is hidden.
+    static func hiddenFoldersLine(_ folders: [MorningFolder], showingHidden: Bool) -> String? {
+        let hidden = folders.filter(\.isHidden).count
+        guard hidden > 0 else { return nil }
+        return showingHidden ? "Hide them again" : "Hidden folders (\(hidden)) · Show"
     }
 
     private func folder(_ id: UUID) -> some View {
@@ -364,6 +385,11 @@ struct MorningFilesView: View {
                 HStack {
                     Button { createNote(folderID: id) } label: { Label("Add a note", systemImage: "plus") }
                     Spacer()
+                    let hidden = store.folders.first { $0.id == id }?.isHidden == true
+                    Button(hidden ? "Show folder" : "Hide folder") {
+                        perform { try store.setFolderHidden(id, hidden: !hidden) }
+                        if !hidden { navigation.route = .folders }
+                    }
                     Button("Rename folder") { navigation.route = .editFolder(id) }
                 }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
             }.padding(22)

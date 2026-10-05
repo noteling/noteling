@@ -3,6 +3,10 @@ import Foundation
 struct MorningFolder: Codable, Identifiable, Equatable {
     var id: UUID = UUID()
     var name: String
+    /// Put out of sight by the person. Its files stay, and new ones still arrive; the home lists it under hidden folders.
+    var hidden: Bool? = nil
+
+    var isHidden: Bool { hidden == true }
 }
 
 struct MorningPerson: Codable, Identifiable, Equatable {
