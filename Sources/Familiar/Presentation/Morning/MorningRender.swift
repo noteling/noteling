@@ -208,27 +208,52 @@ enum MorningRender {
         try renderInbox(fixtures: fixtures, directory: directory)
     }
 
-    /// Cards from the cards inbox, with fictional files: a watch's card, a script's card with its own buttons, a file
-    /// that can't be read, and a card the person took whose file then went away.
+    /// The watches and the cards inbox, with fictional files: Watches, a watch's page, its card and its cards folder,
+    /// a script's card with its own buttons, a file that can't be read, and a card the person took whose file then
+    /// went away.
     @MainActor private static func renderInbox(fixtures: URL, directory: URL) throws {
         let store = MorningStore(directory: fixtures.appendingPathComponent("inbox-morning"))
         let navigation = MorningNavigation()
         let folder = fixtures.appendingPathComponent("inbox-cards")
+        let team = fixtures.appendingPathComponent("inbox-team-watches")
+        try FileManager.default.createDirectory(at: team.appendingPathComponent("holiday/oct/fashion"), withIntermediateDirectories: true)
+        try #"{"name": "Fashion (fictional)", "items": ["F-1", "F-2", "F-3"], "every_minutes": 120, "ends": "2026-10-31T23:59:00"}"#
+            .write(to: team.appendingPathComponent("holiday/oct/fashion/watch.json"), atomically: true, encoding: .utf8)
+        let watches = WatchListStore(directory: fixtures.appendingPathComponent("inbox-watches"), legacyFile: nil,
+                                     teamResults: fixtures.appendingPathComponent("inbox-team-results"), teamDirectory: { team })
+        let runner = WatchListRunner(store: watches, prepare: { _ in .unavailable("Not checked in the render.") })
+        let checked = Date().addingTimeInterval(-20 * 60)
+        func item(_ key: String, _ title: String, price: Double, expected: Double, why: [String]? = nil) -> WatchListItem {
+            var item = WatchListItem(key: key, expect: ["price": .number(expected)])
+            item.title = title
+            item.url = "https://shop.example.com/item/\(key)"
+            item.state = ["price": .number(price), "badge": .text("Deal")]
+            item.why = why
+            item.facts = #"{"seller":"Example seller"}"#
+            item.checkedAt = checked
+            item.status = price == expected ? .asExpected
+                : .notAsExpected([WatchListDifference(field: "price", now: .number(price), expected: .number(expected))])
+            return item
+        }
+        try watches.add(WatchListWatch(name: "Sale items", check: "shop__watch_item", items: ["123", "456", "789", "790"].map { WatchListItem(key: $0) }))
+        try watches.add(WatchListWatch(name: "Gift guide", check: "shop__watch_item", items: ["G-1", "G-2"].map { WatchListItem(key: $0) },
+                                       everyMinutes: 60, paused: true))
+        guard let sale = watches.watches.first(where: { $0.name == "Sale items" }) else { return }
+        try watches.change(sale.id, persist: false) { watch in
+            watch.items = [item("123", "Blue kettle (fictional)", price: 12, expected: 10, why: ["The sale price ended a day early."]),
+                           item("456", "Red mug (fictional)", price: 8, expected: 8), item("789", "Tea towel (fictional)", price: 5, expected: 5)]
+            var grey = WatchListItem(key: "790")
+            grey.checkedAt = checked
+            grey.status = .couldNotCheck("The page took longer than 60 seconds.")
+            watch.items.append(grey)
+            watch.lastRunAt = checked
+        }
+        let cards = WatchListCards(root: folder)
+        cards.reconcile(watches.watches)
+
         func file(_ source: String, _ name: String, _ text: String) throws {
             try FileManager.default.createDirectory(at: folder.appendingPathComponent(source), withIntermediateDirectories: true)
             try Data(text.utf8).write(to: folder.appendingPathComponent(source).appendingPathComponent(name))
-        }
-        var item = WatchListItem(key: "123", expect: ["price": .number(10)])
-        item.title = "Blue kettle (fictional)"
-        item.url = "https://shop.example.com/item/123"
-        item.state = ["price": .number(12), "badge": .text("Deal"), "in_stock": .flag(true)]
-        item.why = ["The sale price ended a day early."]
-        item.facts = #"{"seller":"Example seller","price":12}"#
-        item.checkedAt = Date().addingTimeInterval(-20 * 60)
-        item.status = .notAsExpected([WatchListDifference(field: "price", now: .number(12), expected: .number(10))])
-        let watch = WatchListWatch(name: "Sale items", check: "shop__watch_item", items: [item])
-        if let card = WatchListCards.card(for: item, in: watch, checkedBy: "shop__watch_item") {
-            try file("watch-sale-items", WatchListCards.fileName(for: item.key), JSONText.pretty(card, indent: ""))
         }
         try file("pack-shop", "order-123.json", """
         {"title": "Refund ready · Order 123 (fictional)", "body": "The price dropped by $10 after you paid. The shop refunds the difference if you ask within 14 days.",
@@ -238,23 +263,33 @@ enum MorningRender {
         try file("pack-shop", "order-124.json", #"{"title": "Refund for order 124 (fictional)", "severity": "low"}"#)
         try file("pack-shop", "half-written.json", #"{"title": "Cut off"#)
         let inbox = CardInbox(store: store, directory: folder)
-        inbox.folderName = { $0 == "watch-sale-items" ? "Sale items" : nil }
+        inbox.folderName = { source in watches.watches.first { WatchListCards.source(for: $0) == source }?.name }
         inbox.scan()
         try store.setDisposition(cardID: CardInboxFormat.cardID("pack-shop/order-124"), to: .mine)
         try FileManager.default.removeItem(at: folder.appendingPathComponent("pack-shop/order-124.json"))
         inbox.scan()
 
+        let panel = WatchListPanel(store: watches, runner: runner, notifier: WatchListNotifier())
         func save(_ name: String) throws {
             try image(MorningFilesView(store: store, navigation: navigation, close: {}, filed: {}, handoff: { _ in }, discussCard: { _ in },
-                                       askAboutCard: { _, _ in }),
-                size: NSSize(width: 650, height: MorningPanelController.preferredHeight(for: navigation.route, isEmpty: false)),
+                                       askAboutCard: { _, _ in }, watches: panel),
+                size: NSSize(width: MorningPanelController.preferredWidth(for: navigation.route),
+                             height: MorningPanelController.preferredHeight(for: navigation.route, isEmpty: false)),
                 to: directory.appendingPathComponent(name))
         }
         navigation.route = .folders
         try save("inbox-folders.png")
-        navigation.route = .folder(CardInboxFormat.folderID("watch-sale-items"))
+        navigation.route = .watches
+        try save("watches.png")
+        navigation.route = .watch(sale.id)
+        try save("watch-job.png")
+        if let fashion = watches.watches.first(where: \.isTeam) {
+            navigation.route = .watch(fashion.id)
+            try save("watch-job-team-off.png")
+        }
+        navigation.route = .folder(CardInboxFormat.folderID(WatchListCards.source(for: sale)))
         try save("inbox-watch-folder.png")
-        navigation.route = .card(CardInboxFormat.cardID("watch-sale-items/" + WatchListCards.fileName(for: item.key).replacingOccurrences(of: ".json", with: "")))
+        navigation.route = .card(CardInboxFormat.cardID(WatchListCards.key(for: sale)))
         try save("inbox-watch-card.png")
         navigation.route = .folder(CardInboxFormat.folderID("pack-shop"))
         try save("inbox-script-folder.png")
@@ -263,6 +298,15 @@ enum MorningRender {
         navigation.disposition = .mine
         navigation.route = .card(CardInboxFormat.cardID("pack-shop/order-124"))
         try save("inbox-gone-card.png")
+        navigation.disposition = .unreviewed
+        let empty = WatchListStore(directory: fixtures.appendingPathComponent("inbox-no-watches"), legacyFile: nil,
+                                   teamResults: fixtures.appendingPathComponent("inbox-no-team"))
+        let emptyPanel = WatchListPanel(store: empty, runner: WatchListRunner(store: empty, prepare: { _ in .unavailable("") }),
+                                        notifier: panel.notifier)
+        navigation.route = .watches
+        try image(MorningFilesView(store: store, navigation: navigation, close: {}, filed: {}, handoff: { _ in }, watches: emptyPanel),
+                  size: NSSize(width: MorningPanelController.preferredWidth(for: .watches), height: 380),
+                  to: directory.appendingPathComponent("watches-empty.png"))
     }
 
     /// Exercise the maintained reconciliation and views with clearly fictional

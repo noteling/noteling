@@ -31,7 +31,7 @@ import QuartzCore
     /// Only the little folder is shown at launch. Opening a file is always an explicit action.
     init(store: MorningStore, hideFromScreenShare: Bool, calendarSources: CalendarStore? = nil,
          calendarRunner: CalendarCollectionRunner? = nil, cardGeneration: CardGenerationService? = nil,
-         attention: AttentionLedger? = nil) {
+         attention: AttentionLedger? = nil, watches: WatchListPanel? = nil) {
         self.store = store
         self.attention = attention
         launcher = MorningPanel(title: "Morning folder", hideFromScreenShare: hideFromScreenShare)
@@ -54,7 +54,7 @@ import QuartzCore
             }, calendarSources: calendarSources, calendarRunner: calendarRunner,
             teachCalendar: { [weak self] in self?.onTeachCalendar?() }, cardGeneration: cardGeneration,
             discussCard: { [weak self] card in self?.onDiscussCard?(card) }, attention: attention,
-            askAboutCard: { [weak self] card, question in self?.onAskAboutCard?(card, question) }
+            askAboutCard: { [weak self] card, question in self?.onAskAboutCard?(card, question) }, watches: watches
         ))
         routeObservation = navigation.$route.combineLatest(store.$workspace)
             .receive(on: RunLoop.main)
@@ -91,6 +91,18 @@ import QuartzCore
         openContents(trigger)
     }
 
+    /// Watches: from the menu bar, the chat's tab, or a notification. Not part of the attention test.
+    func showWatches() {
+        navigation.route = .watches
+        openContents(nil)
+    }
+
+    /// One watch's page, such as for a notification about an item that is back to as expected.
+    func showWatch(id: UUID) {
+        navigation.route = .watch(id)
+        openContents(nil)
+    }
+
     func setHiddenForForegroundGrant(_ hidden: Bool) {
         hiddenForForegroundGrant = hidden
         if hidden {
@@ -123,14 +135,18 @@ import QuartzCore
         flight = nil
     }
 
-    private func openContents(_ trigger: AttentionOpenTrigger) {
+    /// `trigger` nil: an open the attention test doesn't record, since it isn't a look at the cards.
+    private func openContents(_ trigger: AttentionOpenTrigger?) {
         // Open already, or it would be but for a desktop grant.
         let wasOpen = contentsRequested
         contentsRequested = true
         position()
-        guard !hiddenForForegroundGrant else { heldOpen = AttentionOpen.hold(trigger, wasOpen: wasOpen, over: heldOpen); return }
+        guard !hiddenForForegroundGrant else {
+            if let trigger { heldOpen = AttentionOpen.hold(trigger, wasOpen: wasOpen, over: heldOpen) }
+            return
+        }
         panel.makeKeyAndOrderFront(nil)
-        recordOpen(trigger, wasOpen: wasOpen)
+        if let trigger { recordOpen(trigger, wasOpen: wasOpen) }
     }
 
     private func recordOpen(_ trigger: AttentionOpenTrigger, wasOpen: Bool) {
@@ -174,7 +190,7 @@ import QuartzCore
         }
         guard let anchor = filesTopLeft else { return }
         let height = Self.preferredHeight(for: navigation.route, isEmpty: store.cards.isEmpty)
-        let requested = NSRect(x: anchor.x, y: anchor.y - height, width: 650, height: height)
+        let requested = NSRect(x: anchor.x, y: anchor.y - height, width: Self.preferredWidth(for: navigation.route), height: height)
         let screen = FloatingWindowPlacement.screen(for: requested, fallback: launcherScreen) ?? launcherScreen
         panel.setFrame(FloatingWindowPlacement.clamped(requested, to: screen.visibleFrame), display: true)
     }
@@ -213,8 +229,13 @@ import QuartzCore
         case .card: return 470   // three parts: what it is, what it means for you, what you can do
         case .editCard, .editPerson, .sources, .sourceRuns, .sourceRun, .latestRun, .lessons: return 680
         case .attention: return 680   // the rest and the week
+        case .watches, .watch: return 680   // a row per watch; a watch's page with all its items
         }
     }
+
+    /// One width for every screen, the watches' too, so moving between them never shifts the panel sideways. It fits a
+    /// watch's item row: its dot, what it shows and what the check said, and Why? and Open page.
+    static func preferredWidth(for route: MorningNavigation.Route) -> CGFloat { 650 }
 
     /// The flight is a receipt: callers reach this only after the local save has succeeded.
     private func animateHandoff() {

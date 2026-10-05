@@ -29,7 +29,7 @@ final class WatchListRunner: ObservableObject {
     @Published private(set) var checking: Set<UUID> = []
     /// Something to tell the person; the app shows it as a notification.
     var onAlert: ((WatchListAlert) -> Void)?
-    /// Writes the items' card files (`WatchListCards`); nil writes none.
+    /// Writes each watch's card file (`WatchListCards`) at the end of its runs; nil writes none.
     var cards: WatchListCards?
     /// Card files changed: the app takes them into Morning Files.
     var onCardsChanged: (() -> Void)?
@@ -50,8 +50,6 @@ final class WatchListRunner: ObservableObject {
     private var waiting: [CheckedContinuation<Void, Never>] = []
     /// Couldn't-check alerts wait for the end of their run, so several for one reason go out as one.
     private var heldFailures: [UUID: [WatchListAlert]] = [:]
-    /// Watches whose run wrote or deleted a card file: the app takes them in once, at the run's end.
-    private var cardsWritten: Set<UUID> = []
 
     init(store: WatchListStore, prepare: @escaping Prepare, now: @escaping () -> Date = Date.init) {
         self.store = store
@@ -101,8 +99,9 @@ final class WatchListRunner: ObservableObject {
             run(watch.id)
         }
         checkUnchecked()
-        // A watch edited, turned off or gone since: its cards follow. The look at the inbox picks this up.
-        cards?.reconcile(store.watches)
+        // A watch edited, turned off or gone since: its card follows, except a watch being checked, whose card waits
+        // for its run's end. The look at the inbox picks this up.
+        cards?.reconcile(store.watches, running: checking)
         onTick?()
     }
 
@@ -158,7 +157,7 @@ final class WatchListRunner: ObservableObject {
         try store.setOn(id, on)
         guard on else {
             cancel(id)
-            if cards?.reconcile(store.watches) == true { onCardsChanged?() }   // a job that's off has no cards
+            if cards?.reconcile(store.watches, running: checking.subtracting([id])) == true { onCardsChanged?() }   // a job that's off has no card
             return nil
         }
         guard let watch = store.watch(id: id), watch.checking(at: now()) else { return nil }
@@ -221,8 +220,8 @@ final class WatchListRunner: ObservableObject {
             }
         }
         do { try store.save(id) } catch { Log.info("watch list: couldn't save: \(error.localizedDescription)") }
-        let wrote = cardsWritten.remove(id) != nil
-        if cards?.reconcile(store.watches) == true || wrote { onCardsChanged?() }
+        // Its card says what this run found, now that it's done.
+        if cards?.reconcile(store.watches, running: checking.subtracting([id])) == true { onCardsChanged?() }
         let failures = heldFailures.removeValue(forKey: id) ?? []
         if !Task.isCancelled { WatchListRules.grouped(failures).forEach(tell) }
     }
@@ -276,8 +275,6 @@ final class WatchListRunner: ObservableObject {
             watch.items[index] = item
             alert = kind.map { WatchListAlert(watchID: watch.id, watchName: watch.name, itemKey: key, title: item.label, kind: $0, why: item.whyNow) }
         }
-        // Its card says what this check found, right after it.
-        if let cards, let watch = store.watch(id: watchID), let item = watch.item(key), cards.update(watch, item: item) { cardsWritten.insert(watchID) }
         guard let alert else { return }
         if case .couldNotCheck = alert.kind { heldFailures[watchID, default: []].append(alert) } else { tell(alert) }
     }

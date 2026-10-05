@@ -12,6 +12,8 @@ struct CardInboxEntry: Equatable {
     var actions: [CardInboxAction] = []
     /// Longer text: shown under Show original, and part of what Noteling reads when the card is discussed.
     var details = ""
+    /// What the matter is made of, by key: a card the person resolved opens again when a later file has another.
+    var parts: [String] = []
     var modifiedAt = Date()
     var key: String { source + "/" + id }
 }
@@ -49,9 +51,11 @@ enum CardInboxFormat {
     static let actionLimit = 6
     static let labelLimit = 40
     static let askLimit = 1_000
+    static let partLimit = 1_000
+    static let partLength = 300
 
     /// Reads one card file. Only `title` is required; keys it doesn't know are left out, and so is any button that
-    /// would do more than open a web page or ask a question.
+    /// would do more than open a web page, ask a question or open a watch's page.
     static func parse(_ data: Data, source: String, id: String, modifiedAt: Date) throws -> CardInboxEntry {
         let value: Any
         do { value = try JSONSerialization.jsonObject(with: data) }
@@ -92,8 +96,12 @@ enum CardInboxFormat {
                 entry.actions.append(CardInboxAction(label: short, url: webAddress(url)))
             } else if let ask = (action["ask"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !ask.isEmpty {
                 entry.actions.append(CardInboxAction(label: short, ask: ask.count > askLimit ? String(ask.prefix(askLimit - 1)) + "…" : ask))
+            } else if let watch = (action["watch"] as? String).flatMap({ UUID(uuidString: $0.trimmingCharacters(in: .whitespaces)) }) {
+                entry.actions.append(CardInboxAction(label: short, watch: watch.uuidString))   // only ever opens that watch's page
             }
         }
+        let parts = (object["parts"] as? [Any] ?? []).compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        entry.parts = Array(parts.filter { !$0.isEmpty && $0.count <= partLength }.prefix(partLimit))
         return entry
     }
 
@@ -144,8 +152,9 @@ enum CardInboxFormat {
     /// Takes in what the inbox holds now. A new file is a new card in its source's folder; a changed file changes
     /// the card's words, page, severity and buttons, and nothing else; a deleted file means the matter went away: the
     /// card is resolved if the person hadn't decided anything about it, and otherwise keeps their decision and says
-    /// its script no longer reports it. A file that comes back opens a card its deletion resolved. Cards not from the
-    /// inbox are never touched.
+    /// its script no longer reports it. A file that comes back opens a card its deletion resolved. A card the person
+    /// resolved stays resolved until its file names a part it didn't have when they did. Cards not from the inbox are
+    /// never touched.
     static func apply(_ snapshot: CardInboxSnapshot, to workspace: inout MorningWorkspace, at: Date) -> CardInboxSummary {
         var summary = CardInboxSummary()
         for (source, name) in snapshot.folders.sorted(by: { $0.key < $1.key }) {
@@ -160,12 +169,19 @@ enum CardInboxFormat {
                 guard workspace.cards[index].inbox != nil else { continue }
                 let before = workspace.cards[index]
                 var card = before
+                rememberResolution(&card)
                 fill(&card, from: entry)
                 if var link = card.inbox, link.goneAt != nil {
                     link.goneAt = nil
                     if link.resolvedByInbox, card.disposition == .resolved { card.disposition = .unreviewed }
                     link.resolvedByInbox = false
                     card.inbox = link
+                }
+                // Resolved by the person: only a part that wasn't there then opens it again.
+                if card.disposition == .resolved, card.inbox?.resolvedByInbox == false, let seen = card.inbox?.resolvedParts,
+                   entry.parts.contains(where: { !seen.contains($0) }) {
+                    card.disposition = .unreviewed
+                    card.inbox?.resolvedParts = nil
                 }
                 guard card != before else { continue }
                 card.updatedAt = at
@@ -194,7 +210,18 @@ enum CardInboxFormat {
         return summary
     }
 
-    /// The card's words come from its file: title, body, page, severity, buttons, and the longer details. Its
+    /// A card the person resolved keeps the parts it had then, once; one they took back up forgets them.
+    private static func rememberResolution(_ card: inout MorningCard) {
+        guard var link = card.inbox else { return }
+        if card.disposition == .resolved && !link.resolvedByInbox {
+            if link.resolvedParts == nil { link.resolvedParts = link.parts ?? [] }
+        } else {
+            link.resolvedParts = nil
+        }
+        card.inbox = link
+    }
+
+    /// The card's words come from its file: title, body, page, severity, buttons, parts, and the longer details. Its
     /// decision, the person's context and its folder are theirs.
     private static func fill(_ card: inout MorningCard, from entry: CardInboxEntry) {
         card.title = entry.title
@@ -209,6 +236,7 @@ enum CardInboxFormat {
         card.sources = sources
         card.inbox?.severity = entry.severity
         card.inbox?.actions = entry.actions
+        card.inbox?.parts = entry.parts.isEmpty ? nil : entry.parts
     }
 }
 

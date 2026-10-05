@@ -36,18 +36,21 @@ struct CardInboxTests {
         #expect(try parse(#"{"title": "\#(String(repeating: "x", count: 300))"}"#).title.count == CardInboxFormat.titleLimit)
     }
 
-    @Test func aButtonOnlyEverOpensAWebPageOrAsksAQuestion() throws {
+    @Test func aButtonOnlyEverOpensAWebPageAsksAQuestionOrOpensAWatch() throws {
+        let watch = UUID()
         let entry = try parse("""
         {"title": "T", "url": "file:///etc/hosts",
          "actions": [{"label": "Run it", "run": "open -a Terminal"}, {"label": "Local file", "url": "file:///Users/me/report.pdf"},
                      {"label": "Script", "url": "javascript:alert(1)"}, {"label": "App", "url": "x-apple.systempreferences:com.apple.Keyboard"},
                      {"label": "", "url": "https://shop.example.com/a"}, {"label": "Shell", "command": "rm -rf ~", "ask": "  "},
-                     {"label": "Page", "url": "https://shop.example.com/item/1"}, {"label": "Ask", "ask": "What changed?"},
-                     {"label": "Both", "url": "ftp://shop.example.com/x", "ask": "Is this safe?"}]}
+                     {"label": "Path", "watch": "../watches/sale"}, {"label": "Page", "url": "https://shop.example.com/item/1"},
+                     {"label": "Ask", "ask": "What changed?"}, {"label": "Both", "url": "ftp://shop.example.com/x", "ask": "Is this safe?"},
+                     {"label": "Open job", "watch": "\(watch.uuidString.lowercased())"}]}
         """)
         #expect(entry.url == "")   // not a web page: no page at all
         #expect(entry.actions == [CardInboxAction(label: "Page", url: "https://shop.example.com/item/1"),
-                                  CardInboxAction(label: "Ask", ask: "What changed?"), CardInboxAction(label: "Both", ask: "Is this safe?")])
+                                  CardInboxAction(label: "Ask", ask: "What changed?"), CardInboxAction(label: "Both", ask: "Is this safe?"),
+                                  CardInboxAction(label: "Open job", watch: watch.uuidString)])
         let go = Array(repeating: #"{"label": "Go", "url": "https://shop.example.com"}"#, count: 9).joined(separator: ",")
         #expect(try parse(#"{"title": "T", "actions": ["# + go + "]}").actions.count == CardInboxFormat.actionLimit)
         #expect(CardInboxFormat.webAddress("https://shop.example.com/item/1") == "https://shop.example.com/item/1")
@@ -139,6 +142,33 @@ struct CardInboxTests {
         try FileManager.default.removeItem(at: fixture.directory.appendingPathComponent("deals"))
         fixture.inbox.scan(at: gone.addingTimeInterval(240))
         #expect(fixture.store.cards.allSatisfy { $0.inbox?.goneAt != nil })
+    }
+
+    @Test func aCardThePersonResolvedOpensAgainOnlyForAPartItDidntHave() throws {
+        let fixture = InboxFixture()
+        defer { fixture.remove() }
+        try fixture.write("deals", "refunds", #"{"title": "2 refunds to claim", "parts": ["order-1", "order-2", "", 3]}"#)
+        fixture.inbox.scan(at: at)
+        let id = CardInboxFormat.cardID("deals/refunds")
+        #expect(fixture.store.cards.first?.inbox?.parts == ["order-1", "order-2"])   // only text
+        try fixture.store.setCardResolution(cardID: id, resolved: true)
+
+        try fixture.write("deals", "refunds", #"{"title": "1 refund to claim", "parts": ["order-2"]}"#)
+        fixture.inbox.scan(at: at.addingTimeInterval(60))
+        #expect(fixture.store.cards.first?.disposition == .resolved && fixture.store.cards.first?.title == "1 refund to claim")
+        #expect(fixture.store.cards.first?.inbox?.resolvedParts == ["order-1", "order-2"])   // what it had when they resolved it
+        try fixture.write("deals", "refunds", #"{"title": "2 refunds to claim", "parts": ["order-2", "order-3"]}"#)
+        fixture.inbox.scan(at: at.addingTimeInterval(120))
+        #expect(fixture.store.cards.first?.disposition == .unreviewed)
+        #expect(fixture.store.cards.first?.inbox?.resolvedParts == nil)
+
+        // Without parts, a file never opens what the person resolved.
+        try fixture.write("deals", "plain", #"{"title": "Plain"}"#)
+        fixture.inbox.scan(at: at.addingTimeInterval(180))
+        try fixture.store.setCardResolution(cardID: CardInboxFormat.cardID("deals/plain"), resolved: true)
+        try fixture.write("deals", "plain", #"{"title": "Plain, changed"}"#)
+        fixture.inbox.scan(at: at.addingTimeInterval(240))
+        #expect(fixture.store.cards.first { $0.title == "Plain, changed" }?.disposition == .resolved)
     }
 
     @Test func aFileThatCantBeReadIsSaidOnceAndNeverResolvesOrDeletesAnything() throws {
