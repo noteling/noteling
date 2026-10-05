@@ -5,18 +5,31 @@ import Foundation
 /// watch's folder of the inbox, written by Noteling at the end of each run with what that run found, as it found it.
 /// No model writes any of it, so a job holding a long list is one card to manage, not one per item. A run with nothing
 /// wrong deletes the file, so the card resolves; problems coming back write it again. With `"cards": "all"` the card
-/// is always there; with `"cards": false`, and for a team job that's off, there is none. Noteling's file in a watch's
-/// folder is `job.json`: anything else a check writes there is the check's own and left alone, except the per-item
-/// files earlier versions wrote (`item-…json`), which are deleted so their cards resolve.
+/// is always there; with `"cards": false`, and for a team job that's off, there is none. The card carries the run's
+/// full results as the CSV files its watch's `files` name (`WatchListExport`), written beside `job.json` before it and
+/// listed in it, so the inbox takes them with the card. Noteling's files in a watch's folder are `job.json`,
+/// `problems.csv` and `all.csv` (and their numbered parts): anything else a check writes there is the check's own and
+/// left alone, except the per-item files earlier versions wrote (`item-…json`), which are deleted so their cards
+/// resolve.
 @MainActor
 final class WatchListCards {
     /// The cards inbox; nil writes no cards.
     let root: URL?
     /// Which check a watch uses, as a card's first line says it.
     var checkLabel: (WatchListWatch) -> String = { $0.check }
+    /// Items in one CSV file before the next one starts: what Excel opens.
+    var rowLimit = WatchListExport.rowLimit
+    /// The time zone of the CSV files' checked_at: this Mac's, as the card's title.
+    var timeZone = TimeZone.autoupdatingCurrent
     /// What Noteling last wrote, by `<source>/<file name>`, so an unchanged card isn't written again.
     private var written: [String: String] = [:]
-    /// Card files of Noteling's that are there, by `<source>/<file name>`: job.json, and earlier versions' item files.
+    /// A digest of each CSV file Noteling last wrote, by `<source>/<file name>`.
+    private var digests: [String: Data] = [:]
+    /// Watches' folders whose CSV files changed since their job.json was last written: it is written again, so the
+    /// inbox takes them.
+    private var stale: Set<String> = []
+    /// Files of Noteling's that are there, by `<source>/<file name>`: job.json and its CSV files, and earlier versions'
+    /// item files.
     private var present: Set<String> = []
     private var listed = false
 
@@ -45,18 +58,28 @@ final class WatchListCards {
     ///   item's one line. Up to 50 items, within what the inbox shows of a body; the rest are counted.
     /// - details: the facts of the problem items it lists; parts: which items are wrong, so a card the person resolved
     ///   opens again only for an item that wasn't wrong then;
-    /// - buttons: Open job, and Why?, which asks the chat about the job.
-    static func card(for watch: WatchListWatch, checkedBy: String) -> [String: Any]? {
+    /// - buttons: Open job, and Why?, which asks the chat about the job;
+    /// - files: the CSV files its watch's `files` name, those with items, split at `rowLimit` items, and a line after
+    ///   the summary for each kind that is split ("All results are in 2 files: …").
+    static func card(for watch: WatchListWatch, checkedBy: String, rowLimit: Int = WatchListExport.rowLimit) -> [String: Any]? {
+        card(for: watch, checkedBy: checkedBy, files: WatchListExport.parts(for: watch, rowLimit: rowLimit))
+    }
+
+    /// The card, listing `files`, the CSV files written beside it.
+    static func card(for watch: WatchListWatch, checkedBy: String, files: [WatchListExport.Part]) -> [String: Any]? {
+        let split = WatchListExport.splitLines(files)
         var budget = CardInboxFormat.bodyLimit, details = CardInboxFormat.detailsLimit
         while true {
-            guard let card = card(for: watch, checkedBy: checkedBy, budget: budget, details: details) else { return nil }
+            guard var card = card(for: watch, checkedBy: checkedBy, split: split, budget: budget, details: details) else { return nil }
+            if !files.isEmpty { card["files"] = files.map(\.name) }
             // Well inside the inbox's 64 KB, whatever the words are made of.
             if JSONText.pretty(card, indent: "").utf8.count < CardInboxFormat.fileLimit - 1_024 || budget < 1_000 { return card }
             if details > 0 { details = 0 } else { budget /= 2 }
         }
     }
 
-    private static func card(for watch: WatchListWatch, checkedBy: String, budget: Int, details detailsLimit: Int) -> [String: Any]? {
+    private static func card(for watch: WatchListWatch, checkedBy: String, split: [String], budget: Int,
+                             details detailsLimit: Int) -> [String: Any]? {
         guard watch.cards != .off, watch.on else { return nil }
         let items = watch.items
         let red = items.filter(\.isRed)
@@ -79,6 +102,7 @@ final class WatchListCards {
                       (unchecked.count, "not checked yet")].filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }
         var body = (counts.isEmpty ? ["no items"] : counts).joined(separator: " · ")
             + (checked.map { " · checked \(time($0)) by \(checkedBy)" } ?? "")
+        for line in split { body += "\n" + line }   // the files it carries, when they are split for Excel
         // Red first, then grey, each a block of its own; with "all", then every other item's one line.
         let entries = problems.map { (text: block($0), block: true) }
             + (watch.cards == .all ? (green + unchecked).map { (text: line($0), block: false) } : [])
@@ -152,32 +176,46 @@ final class WatchListCards {
         return formatter.string(from: date)
     }
 
-    /// Every watch's card as it should be, and none for watches that are gone, turned off or have cards off: at
-    /// launch, at each tick, at the end of each run, and when a team job is turned on or off. A watch being checked
-    /// keeps its card as it is until its run ends. Earlier versions' per-item files are deleted. Cheap when nothing
-    /// changed: it remembers what it wrote.
+    /// Every watch's card as it should be, with its CSV files, and none for watches that are gone, turned off or have
+    /// cards off: at launch, at each tick, at the end of each run, and when a team job is turned on or off. A watch
+    /// being checked keeps its card and files as they are until its run ends. Earlier versions' per-item files are
+    /// deleted. Cheap when nothing changed: it remembers what it wrote.
     @discardableResult
     func reconcile(_ watches: [WatchListWatch], running: Set<UUID> = []) -> Bool {
         guard let root else { return false }
         if !listed { list(root) }
         var wanted: [String: [String: Any]] = [:]
-        var kept: Set<String> = []
+        var tables: [String: Data] = [:]
+        var kept: Set<String> = []   // the folders of watches being checked
         for watch in watches {
-            let file = Self.source(for: watch) + "/" + Self.fileName
-            if running.contains(watch.id) { kept.insert(file); continue }
-            if let card = Self.card(for: watch, checkedBy: checkLabel(watch)) { wanted[file] = card }
+            let source = Self.source(for: watch)
+            if running.contains(watch.id) { kept.insert(source); continue }
+            let label = checkLabel(watch)
+            let parts = WatchListExport.parts(for: watch, rowLimit: rowLimit)
+            guard let card = Self.card(for: watch, checkedBy: label, files: parts) else { continue }
+            wanted[source + "/" + Self.fileName] = card
+            let columns = WatchListExport.columns(for: watch)
+            for part in parts {
+                tables[source + "/" + part.name] = WatchListExport.csv(part, columns: columns, check: label, timeZone: timeZone)
+            }
         }
         var changed = false
+        // The CSV files first, so that a card file that lists them always finds them whole.
+        for (file, data) in tables.sorted(by: { $0.key < $1.key }) {
+            guard write(data, to: file) else { continue }
+            changed = true
+            stale.insert(Self.folder(of: file))
+        }
         for (file, card) in wanted.sorted(by: { $0.key < $1.key }) {
             changed = write(card, to: file) || changed
         }
-        for file in present.subtracting(wanted.keys).subtracting(kept).sorted() {
+        for file in present.subtracting(wanted.keys).subtracting(tables.keys).sorted() where !kept.contains(Self.folder(of: file)) {
             changed = delete(file) || changed
         }
         return changed
     }
 
-    /// The card files of Noteling's already in the inbox, once: what an earlier launch wrote, and the per-item files of
+    /// The files of Noteling's already in the inbox, once: what an earlier launch wrote, and the per-item files of
     /// earlier versions. Files are known by `<source>/<name>`, never by a full path, which can be spelled more than one way.
     private func list(_ root: URL) {
         listed = true
@@ -185,10 +223,15 @@ final class WatchListCards {
         let folders = ((try? manager.contentsOfDirectory(atPath: root.path)) ?? []).filter { $0.hasPrefix("watch-") }
         for folder in folders {
             for name in (try? manager.contentsOfDirectory(atPath: root.appendingPathComponent(folder).path)) ?? []
-            where name == Self.fileName || name.hasPrefix("item-") && name.hasSuffix(".json") {
+            where name == Self.fileName || name.hasPrefix("item-") && name.hasSuffix(".json") || WatchListExport.isOwn(name) {
                 present.insert(folder + "/" + name)
             }
         }
+    }
+
+    /// A watch's folder in the inbox, from `<source>/<name>`.
+    private static func folder(of file: String) -> String {
+        String(file.split(separator: "/", maxSplits: 1).first ?? "")
     }
 
     private func url(_ file: String) -> URL? {
@@ -198,17 +241,21 @@ final class WatchListCards {
         return root.appendingPathComponent(parts[0]).appendingPathComponent(parts[1])
     }
 
+    /// A card file, unless it is already there as it should be. One whose CSV files changed is written again even when
+    /// its words didn't, since the inbox takes a card's files when its card file changes.
     private func write(_ card: [String: Any], to file: String) -> Bool {
         guard let url = url(file) else { return false }
         let text = JSONText.pretty(card, indent: "") + "\n"
-        if written[file] == text, FileManager.default.fileExists(atPath: url.path) { return false }
+        let renew = stale.contains(Self.folder(of: file))
+        if !renew, written[file] == text, FileManager.default.fileExists(atPath: url.path) { return false }
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
                                                     attributes: [.posixPermissions: 0o700])
-            let same = (try? String(contentsOf: url, encoding: .utf8)) == text
+            let same = !renew && (try? String(contentsOf: url, encoding: .utf8)) == text
             if !same { try WatchListFiles.write(text, to: url) }
             written[file] = text
             present.insert(file)
+            stale.remove(Self.folder(of: file))
             return !same
         } catch {
             Log.info("watch list: couldn't write the card \(file): \(error.localizedDescription)")
@@ -216,8 +263,28 @@ final class WatchListCards {
         }
     }
 
+    /// A CSV file, unless it is already there as it should be.
+    private func write(_ data: Data, to file: String) -> Bool {
+        guard let url = url(file) else { return false }
+        let digest = Data(SHA256.hash(data: data))
+        if digests[file] == digest, FileManager.default.fileExists(atPath: url.path) { return false }
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            let same = (try? Data(contentsOf: url)) == data
+            if !same { try WatchListFiles.write(data, to: url) }
+            digests[file] = digest
+            present.insert(file)
+            return !same
+        } catch {
+            Log.info("watch list: couldn't write \(file): \(error.localizedDescription)")
+            return false
+        }
+    }
+
     private func delete(_ file: String) -> Bool {
         written[file] = nil
+        digests[file] = nil
         present.remove(file)
         guard let url = url(file), FileManager.default.fileExists(atPath: url.path) else { return false }
         do {
