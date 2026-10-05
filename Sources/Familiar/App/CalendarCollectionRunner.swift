@@ -217,7 +217,7 @@ final class CalendarCollectionRunner: ObservableObject {
                         continue
                     }
                     guard self.desktopAvailable else {
-                        self.markWaitingNotRun("Another desktop task is active. Run all sources again when it finishes.")
+                        self.markWaitingNotRun("Another desktop task is active. Run all reading jobs again when it finishes.")
                         break
                     }
                     do { try self.persistEntry(request, state: .reading, message: "Reading fresh source information.") }

@@ -5,15 +5,38 @@ import SwiftUI
         case folders, folder(UUID), card(UUID), people, person(UUID), editPerson(UUID?), editCard(UUID?), editFolder(UUID?), sources
         case sourceRuns, sourceRun(runID: UUID, sourceID: UUID?), latestRun, lessons
         case attention(AttentionScreen)
-        /// Every watch, and one watch's page.
+        /// Every job in one list (`JobsPage`), and a reading job's page; a watch's page is `.watch`.
+        case jobs, sourceJob(UUID)
+        /// Every watch, which is Jobs now, and one watch's page.
         case watches, watch(UUID)
     }
-    @Published var route: Route = .folders
+    /// Where Back goes from a screen opened from somewhere other than its usual place, such as a card or a run opened
+    /// from a job's page.
+    struct Return: Equatable {
+        var from: Route
+        var to: Route
+    }
+    /// Any other way off the screen forgets where Back would have gone; leaving Jobs forgets a removed job's Undo.
+    @Published var route: Route = .folders {
+        didSet {
+            if let returning, route != returning.from { self.returning = nil }
+            if removedJob != nil, route != .jobs { removedJob = nil }
+        }
+    }
+    @Published private(set) var returning: Return?
+    /// A reading job just removed on its page: Jobs says so, with Undo, until the person leaves Jobs.
+    @Published var removedJob: UUID?
     @Published var disposition: MorningCardDisposition = .unreviewed
     @Published var newCardFolderID: UUID?
     @Published var calendarSourceID: UUID?
     /// Where What you've taught was opened from, so Back goes there.
     @Published var lessonsReturn: Route?
+
+    /// Opens `route` so that Back from it comes back to `origin`.
+    func open(_ route: Route, returningTo origin: Route) {
+        returning = Return(from: route, to: origin)
+        self.route = route
+    }
 }
 
 struct MorningLauncherView: View {
@@ -83,10 +106,12 @@ struct MorningFilesView: View {
     var attention: AttentionLedger? = nil
     /// An inbox card's question button: asks Noteling about the card in chat.
     var askAboutCard: ((MorningCard, String) -> Void)? = nil
-    /// The watches, with their pages here: Watches, one watch's page, and the line on a watch's cards folder.
+    /// The watches, with their pages here: among the jobs, one watch's page, and the line on a watch's cards folder.
     var watches: WatchListPanel? = nil
     /// What a card's Files section does with a file: open it, save a copy, show it in Finder.
     var cardFiles = CardFileActions()
+    /// What only the app knows about the jobs: secrets they still need, whether control is on, and Settings.
+    var jobs: JobsSetup = JobsSetup()
     @State private var localError: String?
     @State private var showingOriginal: UUID?   // the card whose original text is expanded
     @State private var undo: MorningCard?
@@ -152,14 +177,7 @@ struct MorningFilesView: View {
                 }
                 .frame(height: 24)
             Menu {
-                if calendarSources != nil {
-                    Button("Manage sources") { navigation.route = .sources }
-                    Button("Run history") { navigation.route = .sourceRuns }
-                }
-                if watches != nil { Button("Watches") { navigation.route = .watches } }
-                Button("Create a note") { createNote() }
-                Button("Who’s Who") { navigation.route = .people }
-                Button("Add folder") { navigation.route = .editFolder(nil) }
+                ForEach(menuItems()) { item in Button(item.title, action: item.action) }
                 Divider()
                 Button("Try sample files") { perform { try store.loadSamples() }; navigation.route = .folders }
             } label: { Image(systemName: "ellipsis.circle").font(.system(size: 16)) }
@@ -168,13 +186,31 @@ struct MorningFilesView: View {
         }.padding(.horizontal, 18).padding(.vertical, 15)
     }
 
+    /// The ⋯ menu, above Try sample files: Jobs (when there are jobs to show), a new note, Who's Who and a new folder.
+    /// Run history and Manage sources are on the Jobs page and the jobs' own pages.
+    func menuItems() -> [MorningMenuItem] {
+        (hasJobs ? [MorningMenuItem(title: "Jobs") { navigation.route = .jobs }] : []) + [
+            MorningMenuItem(title: "Create a note") { createNote() },
+            MorningMenuItem(title: "Who’s Who") { navigation.route = .people },
+            MorningMenuItem(title: "Add folder") { navigation.route = .editFolder(nil) },
+        ]
+    }
+
+    /// Jobs has something to show: reading jobs, watches, or both.
+    private var hasJobs: Bool { calendarSources != nil || watches != nil }
+
     private var heading: String {
-        Self.title(for: navigation.route, folderName: { id in store.folders.first { $0.id == id }?.name },
-                   watchName: { id in watches?.store.watch(id: id)?.name })
+        Self.title(for: navigation.route, folderName: { id in store.folders.first { $0.id == id }?.name }, jobName: jobName)
+    }
+
+    /// A job's name: a watch's, or a reading job's.
+    private func jobName(_ id: UUID) -> String? {
+        watches?.store.watch(id: id)?.name ?? calendarSources?.readingSources.first { $0.id == id }?.name
+            ?? calendarSources?.sources.first { $0.id == id }?.name
     }
 
     /// Each screen's heading.
-    static func title(for route: MorningNavigation.Route, folderName: (UUID) -> String?, watchName: (UUID) -> String?) -> String {
+    static func title(for route: MorningNavigation.Route, folderName: (UUID) -> String?, jobName: (UUID) -> String?) -> String {
         switch route {
         case .folders: return "A little room for your day"
         case .sources: return "Manage sources"
@@ -189,8 +225,8 @@ struct MorningFilesView: View {
         case .editPerson(let id): return id == nil ? "Someone you work with" : "Edit person"
         case .editCard(let id): return id == nil ? "A new note" : "Edit note"
         case .editFolder(let id): return id == nil ? "A new folder" : "Rename folder"
-        case .watches: return "Watches"
-        case .watch(let id): return watchName(id) ?? "Watch"
+        case .jobs, .watches: return "Jobs"
+        case .sourceJob(let id), .watch(let id): return jobName(id) ?? "Job"
         }
     }
 
@@ -220,15 +256,25 @@ struct MorningFilesView: View {
                               teaching: teaching)
             } else { empty("Run results are unavailable.") }
         case .lessons: LessonsView(morning: store, attention: attention)
-        case .watches:
-            if let watches {
-                WatchesPage(store: watches.store, runner: watches.runner, notifier: watches.notifier, open: { navigation.route = .watch($0) })
-            } else { empty("Watches are unavailable.") }
+        case .jobs, .watches:
+            if hasJobs {
+                JobsPage(morning: store, sources: calendarSources, runner: calendarRunner, watches: watches, setup: jobs,
+                         navigation: navigation, teach: teachCalendar)
+            } else { empty("Jobs are unavailable.") }
+        case .sourceJob(let id):
+            if let calendarSources, let calendarRunner {
+                SourceJobPage(store: calendarSources, runner: calendarRunner, morning: store, id: id, setup: jobs, teaching: teaching,
+                              openCard: { navigation.open(.card($0), returningTo: .sourceJob(id)) },
+                              openRun: { runID, sourceID in navigation.open(.sourceRun(runID: runID, sourceID: sourceID), returningTo: .sourceJob(id)) },
+                              openHistory: { navigation.open(.sourceRuns, returningTo: .sourceJob(id)) },
+                              removed: { navigation.removedJob = $0; navigation.route = .jobs }).id(id)
+            } else { empty("Jobs are unavailable.") }
         case .watch(let id):
             if let watches {
                 WatchJobPage(store: watches.store, runner: watches.runner, notifier: watches.notifier, morning: store, id: id,
-                             why: watches.why, openCards: openCards, stopped: { navigation.route = .watches })
-            } else { empty("Watches are unavailable.") }
+                             why: watches.why, openCards: openCards, stopped: { navigation.route = .jobs },
+                             openCard: { navigation.open(.card($0), returningTo: .watch(id)) }, setup: jobs).id(id)
+            } else { empty("Jobs are unavailable.") }
         case .attention(let screen):
             if let attention {
                 AttentionScreenView(ledger: attention, store: store, navigation: navigation, screen: screen,
@@ -261,25 +307,10 @@ struct MorningFilesView: View {
     private var folders: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                if let calendarSources, let calendarRunner {
-                    CalendarBatchHost(store: calendarSources, runner: calendarRunner,
-                                      openSources: { navigation.route = .sources }, openLatest: { navigation.route = .latestRun },
-                                      openHistory: { navigation.route = .sourceRuns })
-                } else if calendarSources != nil {
-                    Button { navigation.route = .sources } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "tray.full").font(.system(size: 23))
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Read your sources").font(.system(size: 14, weight: .semibold))
-                                Text("Teach Noteling where your information lives, then read it again.")
-                                    .font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                        }.padding(14).background(Pad.paperTop.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
-                    }.buttonStyle(.plain)
+                if hasJobs {
+                    JobsEntry(morning: store, sources: calendarSources, runner: calendarRunner, watches: watches, setup: jobs,
+                              open: { navigation.route = .jobs })
                 }
-                if let watches { WatchesEntry(store: watches.store, open: { navigation.route = .watches }) }
                 if let attention {
                     AttentionDailyLine(ledger: attention, readsScript: { calendarSources?.readingSources.contains(where: \.readsThroughScript) == true },
                                        open: { navigation.route = .attention(.rest(day: $0)) })
@@ -352,10 +383,10 @@ struct MorningFilesView: View {
         let cards = store.cards.filter { $0.folderID == id && $0.displayDisposition == navigation.disposition }
         return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                // A watch's cards: when it last checked, Check now, and its page.
+                // A watch's cards: when it last checked, Run now, and its job's page, from which Back comes here.
                 if let watches, let watch = WatchListWords.watch(forFolder: id, in: watches.store.watches) {
                     WatchCardsFolderLine(store: watches.store, runner: watches.runner, watchID: watch.id,
-                                         openJob: { navigation.route = .watch(watch.id) })
+                                         openJob: { navigation.open(.watch(watch.id), returningTo: .folder(id)) })
                 }
                 HStack {
                     Text("Pick up a file. Put it back whenever you like.").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
@@ -706,18 +737,25 @@ struct MorningFilesView: View {
         navigation.disposition = link.disposition
         navigation.route = .folder(link.folderID)
     }
+    /// A run's Open job: the job's page, and Back comes back to the run.
     private func manageSource(_ id: UUID) {
-        navigation.calendarSourceID = id
-        navigation.route = .sources
+        navigation.open(.sourceJob(id), returningTo: navigation.route)
     }
-    /// Run results teach through the morning store, and tell the attention test too.
+    /// Run results teach through the morning store, and tell the attention test too. A card opened from them comes
+    /// back to them.
     private var teaching: RunTeaching {
         RunTeaching(morning: store, attention: attention,
                     openLessons: { navigation.lessonsReturn = navigation.route; navigation.route = .lessons },
-                    openCard: { navigation.route = .card($0) })
+                    openCard: { navigation.open(.card($0), returningTo: navigation.route) })
     }
 
+    /// Back: where the screen was opened from, when that was somewhere else than its usual place; otherwise one level
+    /// up. Jobs' pages, runs and Run history are in Jobs, which is on the home.
     func back() {
+        if let returning = navigation.returning, returning.from == navigation.route {
+            navigation.route = returning.to
+            return
+        }
         switch navigation.route {
         case .sourceRun: navigation.route = .sourceRuns
         case .lessons: navigation.route = navigation.lessonsReturn ?? .latestRun
@@ -727,7 +765,7 @@ struct MorningFilesView: View {
                 navigation.route = .folder(card.folderID)
             } else { navigation.route = .folders }
         case .person, .editPerson: navigation.route = .people
-        case .watch: navigation.route = .watches
+        case .watch, .sourceJob, .sources, .sourceRuns, .latestRun: navigation.route = hasJobs ? .jobs : .folders
         default: navigation.route = .folders
         }
     }
@@ -763,15 +801,33 @@ struct MorningFilesView: View {
     }
 }
 
+/// One item of the panel's ⋯ menu.
+struct MorningMenuItem: Identifiable {
+    let title: String
+    let action: () -> Void
+    var id: String { title }
+}
+
 struct MorningActionButton: ButtonStyle {
     var primary = false
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 12, weight: .medium))
-            .padding(.horizontal, 12).padding(.vertical, 9)
-            .foregroundStyle(primary ? Color.white : Pad.ink)
-            .background(primary ? Pad.penInk : Color.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 7))
-            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(primary ? Color.clear : Pad.tabEdge.opacity(0.7)))
-            .opacity(configuration.isPressed ? 0.7 : 1)
+        Face(configuration: configuration, primary: primary)
+    }
+
+    /// A button that can't be used now looks it.
+    private struct Face: View {
+        let configuration: ButtonStyleConfiguration
+        let primary: Bool
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label.font(.system(size: 12, weight: .medium))
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .foregroundStyle(primary ? Color.white : Pad.ink)
+                .background(primary ? Pad.penInk : Color.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(primary ? Color.clear : Pad.tabEdge.opacity(0.7)))
+                .opacity(configuration.isPressed ? 0.7 : isEnabled ? 1 : 0.45)
+        }
     }
 }
 

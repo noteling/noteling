@@ -386,7 +386,7 @@ struct ReadingCollectionRunnerTests {
         #expect(lines.contains { $0.hasPrefix("run: “Mail app inbox” failed after") })
         let message = try #require(fixture.store.runStore.runs.first?.entries.first { $0.sourceName == "Mail inbox" }?.message)
         #expect(message.hasPrefix("Noteling didn't start this source. Its reading rules are empty"))
-        #expect(message.hasSuffix("Fix it in Manage sources (Edit source), or say what to change in chat."))
+        #expect(message.hasSuffix("Fix it in Jobs (Edit, on the job's page), or say what to change in chat."))
 
         lines = []
         #expect(runner.collect(source: noRules) == nil)

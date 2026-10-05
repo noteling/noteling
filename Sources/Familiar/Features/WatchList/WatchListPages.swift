@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// What Morning Files needs to show the watches: where they are kept, what checks them, whether notifications are on,
-/// and what Why? on an item does (the chat explains it).
+/// What Morning Files needs to show the watches among the jobs: where they are kept, what checks them, whether
+/// notifications are on, and what Why? on an item does (the chat explains it).
 @MainActor
 struct WatchListPanel {
     let store: WatchListStore
@@ -17,22 +17,14 @@ struct WatchCardsLink: Equatable {
     var folderID: UUID
     var open: Int
     var disposition: MorningCardDisposition
-    var label: String { "Cards (\(open))" }
+    var label: String { "Cards folder (\(open))" }
 }
 
 /// The watch pages' words, apart from the views so they can be tested: each item in plain words, each watch's
 /// schedule, when it last checked and how its items stand, what's wrong with its files, and where its cards are.
 @MainActor
 enum WatchListWords {
-    static let empty = "Nothing is being watched. Ask in chat: “watch these items: …”"
     static let fromTeam = "From your team's tools"
-    static let teamIntro = "Turn on the ones that are yours: only those are checked and tell you."
-
-    /// Under the empty Watches page: where your team's jobs come from.
-    static func emptyTeam(linked: Bool) -> String {
-        linked ? "Your team's tools have no watch jobs yet."
-            : "Your team's watch jobs show here once your team's tools are linked in Settings."
-    }
 
     // MARK: items
 
@@ -136,12 +128,7 @@ enum WatchListWords {
         checked(watch, checking: checking, now: now) + " · " + (watch.isTeam && !watch.on ? itemCount(watch.items.count) : counts(watch))
     }
 
-    /// The lines under a watch's name on its page: a team job's path, its schedule, and how it stands.
-    static func jobLines(_ watch: WatchListWatch, checking: Bool, now: Date) -> [String] {
-        (watch.isTeam ? [watch.path + " · " + fromTeam] : []) + [schedule(watch, now: now), status(watch, checking: checking, now: now)]
-    }
-
-    /// The line on a watch's cards folder, before Check now and Open job: "Checked 6:31 PM · every 15 minutes".
+    /// The line on a watch's cards folder, before Run now and Open job: "Checked 6:31 PM · every 15 minutes".
     static func cardsFolderLine(_ watch: WatchListWatch, checking: Bool, now: Date) -> String {
         checked(watch, checking: checking, now: now) + " · " + watch.everyWords
     }
@@ -151,23 +138,6 @@ enum WatchListWords {
     static func canCheckNow(_ watch: WatchListWatch, checking: Bool, now: Date) -> Bool {
         guard !checking else { return false }
         return watch.isTeam ? watch.checking(at: now) : !watch.notStarted(at: now) && !watch.ended(at: now)
-    }
-
-    /// Morning Files' home line about the watches: how many are on and how their items stand.
-    static func summary(_ watches: [WatchListWatch]) -> String {
-        let active = watches.filter(\.on)
-        guard !active.isEmpty else {
-            let off = watches.count
-            return off == 0 ? "Nothing is being watched yet." : "\(off) team job\(off == 1 ? "" : "s") you can turn on."
-        }
-        let items = active.flatMap(\.items)
-        let red = items.filter(\.isRed).count
-        let grey = items.filter { if case .couldNotCheck? = $0.status { return true }; return false }.count
-        var parts = ["\(active.count) \(active.count == 1 ? "watch" : "watches")"]
-        if red > 0 { parts.append("\(red) not as expected") }
-        if grey > 0 { parts.append("\(grey) couldn't check") }
-        if red == 0, grey == 0, !items.isEmpty, items.allSatisfy({ $0.status == .asExpected }) { parts.append("all as expected") }
-        return parts.joined(separator: " · ")
     }
 
     /// What to know about a watch's files: its items file, the rows it leaves out, columns the check doesn't report,
@@ -186,7 +156,7 @@ enum WatchListWords {
 
     /// A watch whose watch.json or items file can't be read keeps its last good definition: the problem, said so.
     static func problem(_ reason: String?) -> String? {
-        reason.map { $0 + " Until it's fixed, the watch keeps what it had." }
+        reason.map { $0 + " Until it's fixed, the job keeps what it had." }
     }
 
     // MARK: cards
@@ -245,148 +215,10 @@ struct WatchListActions {
     }
 }
 
-/// Check now, and Pause or Resume for a watch of your own, or the on/off switch for a team job.
-private struct WatchControls: View {
-    let watch: WatchListWatch
-    let checking: Bool
-    let actions: WatchListActions
-    let problem: (String?) -> Void
-    var now: Date
-
-    var body: some View {
-        HStack(spacing: 8) {
-            if !watch.isTeam || watch.on {
-                Button(checking ? "Checking…" : "Check now") { actions.checkNow(watch) }
-                    .buttonStyle(MorningActionButton())
-                    .disabled(!WatchListWords.canCheckNow(watch, checking: checking, now: now))
-            }
-            if watch.isTeam {
-                Toggle("On", isOn: Binding(get: { watch.on }, set: { problem(actions.turn(watch, on: $0)) }))
-                    .toggleStyle(.switch).controlSize(.small).labelsHidden()
-                    .help(watch.on ? "On: checked for you. Turn it off to stop." : "Off. Turn it on to have it checked for you.")
-                    .accessibilityLabel(watch.on ? "Turn off \(watch.name)" : "Turn on \(watch.name)")
-            } else {
-                Button(watch.paused ? "Resume" : "Pause") { problem(actions.setPaused(watch, !watch.paused)) }
-                    .buttonStyle(MorningActionButton())
-            }
-        }
-    }
-}
-
-/// Every watch, in Morning Files: yours first, then your team's jobs, each with how often it runs, when it last
-/// checked and how its items stand, Check now, and Pause or the on/off switch. A row opens the watch's page.
-struct WatchesPage: View {
-    @ObservedObject var store: WatchListStore
-    @ObservedObject var runner: WatchListRunner
-    @ObservedObject var notifier: WatchListNotifier
-    let open: (UUID) -> Void
-    var now: () -> Date = Date.init
-    @State private var problem: String?
-
-    private var own: [WatchListWatch] { store.watches.filter { !$0.isTeam } }
-    private var team: [WatchListWatch] { store.watches.filter(\.isTeam) }
-    private var actions: WatchListActions { WatchListActions(store: store, runner: runner, notifier: notifier) }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                notices
-                if store.watches.isEmpty && store.unreadable.isEmpty && store.teamUnreadable.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(WatchListWords.empty).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
-                        Text(WatchListWords.emptyTeam(linked: store.teamDirectory() != nil))
-                            .font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
-                    }.padding(.top, 8)
-                } else {
-                    if !team.isEmpty, !own.isEmpty || !store.unreadable.isEmpty { title("Your watches") }
-                    ForEach(store.unreadable.keys.sorted(), id: \.self) { folder in
-                        unreadableRow("Not watching the “\(folder)” folder. \(store.unreadable[folder] ?? "")",
-                                      folder: store.directory.appendingPathComponent(folder))
-                    }
-                    ForEach(own) { watch in row(watch) }
-                    if !team.isEmpty || !store.teamUnreadable.isEmpty {
-                        VStack(alignment: .leading, spacing: 3) {
-                            title("Team watches")
-                            Text(WatchListWords.fromTeam + ". " + WatchListWords.teamIntro).font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }.padding(.top, own.isEmpty ? 0 : 8)
-                        ForEach(store.teamUnreadable.keys.sorted(), id: \.self) { path in
-                            unreadableRow("Not listing \(path). \(store.teamUnreadable[path] ?? "")", folder: nil)
-                        }
-                        ForEach(team) { watch in row(watch) }
-                    }
-                }
-            }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .task { await notifier.refresh() }
-    }
-
-    @ViewBuilder private var notices: some View {
-        if let off = notifier.offReason {
-            Label(off, systemImage: "bell.slash").font(.system(size: 12)).foregroundStyle(Pad.redInk).fixedSize(horizontal: false, vertical: true)
-        }
-        if let notice = store.notice { Text(notice).font(.system(size: 12)).foregroundStyle(Pad.inkSoft).textSelection(.enabled) }
-        if let problem { Text(problem).font(.system(size: 12)).foregroundStyle(Pad.redInk).textSelection(.enabled) }
-    }
-
-    private func title(_ text: String) -> some View {
-        Text(text).font(.system(size: 13, weight: .semibold))
-    }
-
-    /// A row: what it is and how it stands, which opens its page; its controls; and what's wrong with its files.
-    private func row(_ watch: WatchListWatch) -> some View {
-        let checking = runner.checking.contains(watch.id)
-        let red = watch.on && watch.items.contains(where: \.isRed)
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 10) {
-                Button { open(watch.id) } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(watch.name).font(.system(size: 13, weight: .semibold)).lineLimit(2)
-                            if watch.isTeam { Text(watch.path).font(.system(size: 11)).foregroundStyle(Pad.inkSoft).lineLimit(1) }
-                        }
-                        Text(WatchListWords.schedule(watch, now: now())).font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
-                        Text(WatchListWords.status(watch, checking: checking, now: now())).font(.system(size: 11))
-                            .foregroundStyle(red ? Pad.redInk : Pad.inkSoft)
-                    }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                }.buttonStyle(.plain).help("Open this watch’s items").accessibilityLabel("Open \(watch.name)")
-                WatchControls(watch: watch, checking: checking, actions: actions, problem: { problem = $0 }, now: now())
-            }
-            WatchFileNotes(watch: watch, problem: store.problems[watch.id])
-        }.padding(11).background(Color.white.opacity(0.5), in: RoundedRectangle(cornerRadius: 7))
-    }
-
-    private func unreadableRow(_ text: String, folder: URL?) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Label(text, systemImage: "exclamationmark.triangle").font(.system(size: 12)).foregroundStyle(Pad.redInk)
-                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-            Spacer(minLength: 8)
-            if let folder {
-                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }.buttonStyle(MorningActionButton())
-            }
-        }.padding(11).background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 7))
-    }
-}
-
-/// What's wrong with a watch's files, and what to know about them, on its row and its page.
-private struct WatchFileNotes: View {
-    let watch: WatchListWatch
-    let problem: String?
-
-    var body: some View {
-        if let problem = WatchListWords.problem(problem) {
-            Label(problem, systemImage: "exclamationmark.triangle").font(.system(size: 12)).foregroundStyle(Pad.redInk)
-                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-        }
-        ForEach(WatchListWords.notes(watch), id: \.self) { note in
-            Text(note).font(.system(size: 11)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-        }
-    }
-}
-
-/// One watch, in Morning Files: its name, schedule and how its items stand; Check now, Pause or the on/off switch,
-/// and for a watch of your own Show in Finder and Stop watching; what's wrong with its files; a link to its cards; and
-/// every item with its dot, what it shows, what the check said, when it was checked, and Why? and Open page.
+/// A watch's page among the jobs: the header every job's page has (its name, what it checks and how often, its last
+/// run and how it stands, Run now, Pause or the on/off switch, and its card); for a watch of your own Show in Finder
+/// and Stop watching; what's wrong with its files; its cards folder; and every item with its dot, what it shows, what
+/// the check said, when it was checked, and Why? and Open page.
 struct WatchJobPage: View {
     @ObservedObject var store: WatchListStore
     @ObservedObject var runner: WatchListRunner
@@ -395,35 +227,37 @@ struct WatchJobPage: View {
     let id: UUID
     let why: (UUID, String) -> Void
     let openCards: (WatchCardsLink) -> Void
-    /// Stop watching moved its folder to the Trash: back to Watches.
+    /// Stop watching moved its folder to the Trash: back to Jobs.
     let stopped: () -> Void
+    /// Opens its card, from the header.
+    var openCard: (UUID) -> Void = { _ in }
+    var setup = JobsSetup()
     var now: () -> Date = Date.init
     @State private var problem: String?
     @State private var confirmingStop = false
 
     private var actions: WatchListActions { WatchListActions(store: store, runner: runner, notifier: notifier) }
+    private var panel: WatchListPanel { WatchListPanel(store: store, runner: runner, notifier: notifier) }
+    private var input: Jobs.Input { Jobs.Input(sources: nil, watches: panel, morning: morning, setup: setup, now: now()) }
 
     var body: some View {
         if let watch = store.watch(id: id) {
-            page(watch)
+            page(watch, job: Jobs.watchJob(watch, input))
         } else {
-            Text("This watch is no longer here.").font(.system(size: 14)).foregroundStyle(Pad.inkSoft).padding(24)
+            Text("This job is no longer here.").font(.system(size: 14)).foregroundStyle(Pad.inkSoft).padding(24)
         }
     }
 
-    private func page(_ watch: WatchListWatch) -> some View {
+    private func page(_ watch: WatchListWatch, job: Job) -> some View {
         let checking = runner.checking.contains(watch.id)
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(watch.name).font(HandFont.font(size: 26)).fixedSize(horizontal: false, vertical: true)
-                    ForEach(WatchListWords.jobLines(watch, checking: checking, now: now()), id: \.self) { line in
-                        Text(line).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
-                    }
-                }
-                HStack(spacing: 8) {
-                    WatchControls(watch: watch, checking: checking, actions: actions, problem: { problem = $0 }, now: now())
-                    if !watch.isTeam {
+                JobHeader(job: job,
+                          controls: JobControls(job: job, actions: JobActions(watches: panel, now: now), openSettings: setup.openSettings,
+                                                problem: { problem = $0 }),
+                          card: JobCardLink(cards: Jobs.cards(for: job, input), open: openCard))
+                if !watch.isTeam {
+                    HStack(spacing: 8) {
                         if let folder = store.folder(for: watch.id) {
                             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }.buttonStyle(MorningActionButton())
                         }
@@ -432,11 +266,17 @@ struct WatchJobPage: View {
                 }
                 if confirmingStop { stopConfirmation(watch) }
                 if let problem { Text(problem).font(.system(size: 12)).foregroundStyle(Pad.redInk).textSelection(.enabled) }
-                WatchFileNotes(watch: watch, problem: store.problems[watch.id])
+                ForEach(job.problems, id: \.self) { line in
+                    Label(line, systemImage: "exclamationmark.triangle").font(.system(size: 12)).foregroundStyle(Pad.redInk)
+                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                }
+                ForEach(job.notes, id: \.self) { note in
+                    Text(note).font(.system(size: 11)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                }
                 if let link = WatchListWords.cardsLink(for: watch, folders: morning.folders, cards: morning.cards) {
                     Button { openCards(link) } label: { Label(link.label, systemImage: "folder") }
                         .buttonStyle(.plain).font(.system(size: 12, weight: .medium)).foregroundStyle(Pad.penInk)
-                        .help("Open this watch’s cards in Morning Files")
+                        .help("Open the folder with this job’s cards in Morning Files")
                 }
                 if watch.isTeam && !watch.on {
                     Text("Turn it on to check its \(WatchListWords.itemCount(watch.items.count)) and hear about them.")
@@ -523,7 +363,7 @@ struct WatchItemsList: View {
     }
 }
 
-/// The line on a watch's cards folder in Morning Files: when it last checked and how often, Check now, and Open job.
+/// The line on a watch's cards folder in Morning Files: when it last checked and how often, Run now, and Open job.
 struct WatchCardsFolderLine: View {
     @ObservedObject var store: WatchListStore
     @ObservedObject var runner: WatchListRunner
@@ -539,32 +379,12 @@ struct WatchCardsFolderLine: View {
                 Text(WatchListWords.cardsFolderLine(watch, checking: checking, now: now())).foregroundStyle(Pad.inkSoft)
                 if WatchListWords.canCheckNow(watch, checking: checking, now: now()) {
                     Text("·").foregroundStyle(Pad.inkSoft)
-                    Button("Check now") { runner.run(watch.id) }
+                    Button("Run now") { runner.run(watch.id) }
                 }
                 Text("·").foregroundStyle(Pad.inkSoft)
-                Button("Open job", action: openJob).help("Open this watch’s items")
+                Button("Open job", action: openJob).help("Open this job’s page, with all its items")
                 Spacer(minLength: 0)
             }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
         }
-    }
-}
-
-/// The Watches entry on Morning Files' home, under the sources: how many watches there are and how their items stand.
-struct WatchesEntry: View {
-    @ObservedObject var store: WatchListStore
-    let open: () -> Void
-
-    var body: some View {
-        Button(action: open) {
-            HStack(spacing: 12) {
-                Image(systemName: "eye").font(.system(size: 20))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Watches").font(.system(size: 14, weight: .semibold))
-                    Text(WatchListWords.summary(store.watches)).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-            }.padding(14).background(Pad.paperTop.opacity(0.6), in: RoundedRectangle(cornerRadius: 8)).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityLabel("Watches, " + WatchListWords.summary(store.watches))
     }
 }

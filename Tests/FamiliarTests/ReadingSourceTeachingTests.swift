@@ -28,7 +28,7 @@ struct ReadingSourceTeachingTests {
         #expect(draft.readingSource?.meaning == "My incoming mail")
         #expect(draft.readingSource?.scope == "Only unread emails from the last 2 days, up to 25 matching messages")
         #expect(review.contains("**Reading rules:** Only unread emails from the last 2 days"))
-        #expect(review.contains("Run all sources"))
+        #expect(review.contains("Keep adds it to Jobs, where Run now and Run all reading jobs read it."))
         #expect(!review.contains("This draft can keep the workflow only"))
     }
 
@@ -113,7 +113,7 @@ struct ReadingSourceTeachingTests {
         try source.validateForRead()
         let review = Assistant.draftBody(withImages, root: URL(fileURLWithPath: "/unused-tools"))
         #expect(review.contains("**Assuming:** The address read from a screenshot is right"))
-        #expect(review.contains("Keep adds this source to Sources for Run all sources."))
+        #expect(review.contains("Keep adds it to Jobs, where Run now and Run all reading jobs read it."))
 
         profile.removeValue(forKey: "url_evidence")
         json["reading_source"] = profile
@@ -151,7 +151,7 @@ struct ReadingSourceTeachingTests {
         #expect(review.contains("**Account:** Whichever one it shows when it runs"))
         #expect(review.contains("**Location:** The Mail app"))
         #expect(review.contains("**Assuming:** today means this Mac's time zone"))
-        #expect(review.contains("Keep adds this source to Sources for Run all sources."))
+        #expect(review.contains("Keep adds it to Jobs, where Run now and Run all reading jobs read it."))
         #expect(!review.contains("Not established"))
         #expect(Assistant.sourceReceipt(draft).contains("Each run reads fresh information within the saved scope."))
 
@@ -161,7 +161,7 @@ struct ReadingSourceTeachingTests {
         let missing = try #require(empty.readingSource?.missingSetup)
         #expect(missing.hasPrefix("Its reading rules are empty"))
         #expect(Assistant.draftBody(empty, root: URL(fileURLWithPath: "/unused-tools"))
-            .contains("**Before it can run:** " + missing + " Tell me here and I'll write it again, or keep it and add it later in Manage sources."))
+            .contains("**Before it can run:** " + missing + " Tell me here and I'll write it again, or keep it and add it later on its page in Jobs."))
         #expect(Assistant.draftDocument(empty, root: URL(fileURLWithPath: "/unused-tools")).contains("**Before it can run:** " + missing))
         #expect(Assistant.sourceReceipt(empty).contains("It can't run yet: " + missing))
     }

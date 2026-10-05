@@ -1,6 +1,6 @@
 import Foundation
 
-/// Findings and collection evidence are presented separately. Source rules belong in Manage sources.
+/// Findings and collection evidence are presented separately. Source rules belong on the job's page.
 struct SourceResultPresentation: Equatable {
     struct Item: Identifiable, Equatable {
         var id: String
@@ -46,8 +46,8 @@ struct SourceResultPresentation: Equatable {
         }
         emptyMessage = entry.state == .complete ? "No items were found in the verified collection."
             : entry.state == .partial ? "No items were collected. This does not establish an empty source."
-            : entry.state == .reading || entry.state == .waiting ? "Findings will appear here as this source finishes."
-            : "No new findings were saved for this source in this run."
+            : entry.state == .reading || entry.state == .waiting ? "Findings will appear here as this job finishes."
+            : "No new findings were saved for this job in this run."
         items = []
         calendarFacts = []
         details = []

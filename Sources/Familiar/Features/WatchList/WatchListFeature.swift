@@ -1,7 +1,8 @@
 import Foundation
 
 /// The watch list, put together once by the app: where watches are kept, what checks them on schedule, how alerts
-/// reach the person, and the chat's tools. Its pages are in Morning Files (`WatchesPage`, `WatchJobPage`).
+/// reach the person, and the chat's tools. Its pages are in Morning Files: among the jobs (`JobsPage`), and each
+/// watch's own (`WatchJobPage`).
 @MainActor
 final class WatchListFeature {
     let store: WatchListStore
@@ -9,9 +10,9 @@ final class WatchListFeature {
     let notifier: WatchListNotifier
     let conversation: WatchListConversation
     let checker: WatchListChecker
-    /// The ways into the watch pages, which the app points at Morning Files: Watches, one watch's page, and the
-    /// chat's explanation of an item.
-    var showWatches: () -> Void = {}
+    /// The ways into the watch pages, which the app points at Morning Files: Jobs, one watch's page, and the chat's
+    /// explanation of an item.
+    var showJobs: () -> Void = {}
     var showWatch: (UUID) -> Void = { _ in }
     var explain: (UUID, String) -> Void = { _, _ in }
 
@@ -44,18 +45,15 @@ final class WatchListFeature {
         WatchListPanel(store: store, runner: runner, notifier: notifier, why: { [weak self] watchID, key in self?.explain(watchID, key) })
     }
 
-    /// The menu bar's Watches… and the chat's Open Watches tab.
-    func openWatches() { showWatches() }
-
     /// A clicked notification: the chat explains an item that is still red or grey; anything else, such as an item
     /// back to as expected or a notification about several items, opens its watch's page.
     func openNotification(watchID: UUID, key: String) {
         if store.watch(id: watchID)?.item(key)?.needsExplaining == true { explain(watchID, key) } else { open(watchID) }
     }
 
-    /// A watch's page, or Watches once the watch is gone.
+    /// A watch's page, or Jobs once the watch is gone.
     func open(_ id: UUID) {
-        if store.watch(id: id) != nil { showWatch(id) } else { showWatches() }
+        if store.watch(id: id) != nil { showWatch(id) } else { showJobs() }
     }
 
     /// Starts the schedule. With watches kept from before, macOS is asked again for notifications, which only prompts

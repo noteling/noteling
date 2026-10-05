@@ -96,7 +96,7 @@ struct AttentionScreenTests {
     }
 
     /// A mail job read from the screen ran in Wednesday's card step. It is named at the top of Wednesday's rest and
-    /// among the week's footnotes, and removing it is suggested only while it is still in Manage sources.
+    /// among the week's footnotes, and removing it is suggested only while it is still in Jobs.
     @Test func aScreenReadMailJobIsNamedWhereItsDayIsCounted() throws {
         let gmail = LearnedReadingSource(kind: .mail, name: "Gmail inbox – today’s unread", meaning: "My personal inbox",
             application: "Google Chrome", url: "https://mail.google.com/mail/u/0/#inbox", scope: "Today's unread messages")
@@ -105,7 +105,7 @@ struct AttentionScreenTests {
         let sources = CalendarStore(directory: fixture.root.appendingPathComponent("calendar"))
         try sources.saveReadingSource(gmail)
         let ran = "Your screen-read mail job “Gmail inbox – today’s unread” also ran today."
-        let remove = " If it reads the same inbox, a message shown on its card can land in the rest here, and removing it in Manage sources"
+        let remove = " If it reads the same inbox, a message shown on its card can land in the rest here, and removing it in Jobs"
             + " keeps the numbers clean."
         let numbers = fixture.ledger.numbers, days = try #require(numbers.week)
         let rest = try fixture.restView(sources: sources), week = try fixture.weekView(sources: sources)
@@ -460,7 +460,7 @@ struct AttentionScreenTests {
         }
 
         /// The pack on `route`, as the panel builds it, with the ledger unless `attention` is false, and with the jobs
-        /// in Manage sources when `sources` gives them.
+        /// in Jobs when `sources` gives them.
         func view(_ route: MorningNavigation.Route? = nil, attention: Bool = true, sources: CalendarStore? = nil) -> MorningFilesView {
             if let route { navigation.route = route }
             return MorningFilesView(store: store, navigation: navigation, close: {}, filed: {}, handoff: { _ in },

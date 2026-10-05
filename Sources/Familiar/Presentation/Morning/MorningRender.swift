@@ -206,11 +206,12 @@ enum MorningRender {
         try renderLatestRun(fixtures: fixtures, directory: directory)
         try renderAttention(fixtures: fixtures, directory: directory)
         try renderInbox(fixtures: fixtures, directory: directory)
+        try renderJobs(fixtures: fixtures, directory: directory)
     }
 
-    /// The watches and the cards inbox, with fictional files: Watches, a watch's page, its card and its cards folder,
-    /// a script's card with its own buttons, a file that can't be read, and a card the person took whose file then
-    /// went away.
+    /// The watches and the cards inbox, with fictional files: the watches in Jobs, a watch's page, its card and its
+    /// cards folder, a script's card with its own buttons, a file that can't be read, and a card the person took whose
+    /// file then went away.
     @MainActor private static func renderInbox(fixtures: URL, directory: URL) throws {
         let store = MorningStore(directory: fixtures.appendingPathComponent("inbox-morning"))
         let navigation = MorningNavigation()
@@ -279,8 +280,8 @@ enum MorningRender {
         }
         navigation.route = .folders
         try save("inbox-folders.png")
-        navigation.route = .watches
-        try save("watches.png")
+        navigation.route = .jobs
+        try save("jobs-watches.png")
         navigation.route = .watch(sale.id)
         try save("watch-job.png")
         if let fashion = watches.watches.first(where: \.isTeam) {
@@ -303,10 +304,10 @@ enum MorningRender {
                                    teamResults: fixtures.appendingPathComponent("inbox-no-team"))
         let emptyPanel = WatchListPanel(store: empty, runner: WatchListRunner(store: empty, prepare: { _ in .unavailable("") }),
                                         notifier: panel.notifier)
-        navigation.route = .watches
+        navigation.route = .jobs
         try image(MorningFilesView(store: store, navigation: navigation, close: {}, filed: {}, handoff: { _ in }, watches: emptyPanel),
-                  size: NSSize(width: MorningPanelController.preferredWidth(for: .watches), height: 380),
-                  to: directory.appendingPathComponent("watches-empty.png"))
+                  size: NSSize(width: MorningPanelController.preferredWidth(for: .jobs), height: 380),
+                  to: directory.appendingPathComponent("jobs-empty.png"))
     }
 
     /// Exercise the maintained reconciliation and views with clearly fictional

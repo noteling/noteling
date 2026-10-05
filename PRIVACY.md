@@ -12,8 +12,8 @@ The app stores its data in `~/.noteling`, or in `$NOTELING_HOME` if you set it. 
 | Pack secrets in developer builds (signed builds use the macOS Keychain instead) | `secrets.json` |
 | Tool packs | `tools/` |
 | The notes you leave on pages and controls, one file each: the note, who left it and when, and where it is stuck (the page's address as its key, the control's name and the page's own id for it) | `notes/` |
-| Sources you set up, run history and findings, including everything a script read returned | `calendar/`, `runs/` |
-| Your watch lists, one folder each: what to watch, what the latest check found and what you were last told, and any items file or check of its own (see Watch lists below) | `watches/` |
+| The jobs you set up that read your mail, a page or a calendar (shown in Jobs), their run history and findings, including everything a script read returned | `calendar/`, `runs/` |
+| Your watch lists, which are jobs in Jobs too, one folder each: what to watch, what the latest check found and what you were last told, and any items file or check of its own (see Watch lists below) | `watches/` |
 | Your team's watches: which ones you turned on, and what each one you turned on found (see Watch lists below) | `team-watches/` |
 | Cards that tool-pack scripts and watch lists write for Morning Files, one file each, and the files they list, such as a watch's results as CSV (see The cards inbox below) | `cards/inbox/` |
 | A copy of the files each card carries, only those its latest card file listed (see The cards inbox below) | `cards/files/` |
@@ -92,7 +92,7 @@ This is off until you link a repository in **Settings → Team tools from GitHub
 
 **Notifications go through macOS.** An alert shows the item's title, the watch's name, what isn't as expected, and the check's own words about it if it gave any. macOS keeps it in Notification Center, and shows it on your lock screen if your notification settings allow that. You can turn Noteling's notifications off in System Settings → Notifications.
 
-**What goes to Claude.** When you create, list, check, change, or turn on or off a watch in chat, what the checks found, including the check's own words, and where a watch of yours is kept or a team watch's path, becomes part of that conversation. When you ask why an item isn't as expected, from a notification or a watch's page, the request includes the item's address and title, what counts as right, what the latest check found and said and when, its facts, and the tool pack for that page.
+**What goes to Claude.** When you create, list, check, change, or turn on or off a watch in chat, what the checks found, including the check's own words, and where a watch of yours is kept or a team watch's path, becomes part of that conversation. When you ask why an item isn't as expected, from a notification or a watch's page in Jobs, the request includes the item's address and title, what counts as right, what the latest check found and said and when, its facts, and the tool pack for that page.
 
 ## The cards inbox
 
@@ -100,7 +100,7 @@ This is off until you link a repository in **Settings → Team tools from GitHub
 
 **Card files.** A card file can list other files its script wrote beside it, such as a table of results, a PDF or a picture. Beside each watch's card file, Noteling writes the run's results as CSV files, as its `watch.json` asks (`problems.csv` unless it says otherwise): for each item, its key, title and address, how it stands and which fields differ, the values its latest check reported, what counts as right, the check's own words or why it couldn't check, when it was checked, and which check ran. When Noteling takes in a card file, it copies the files it lists into `cards/files/` in its folder, one folder per card, readable only by your macOS user account, in place of that card's earlier files: only the latest run's files are kept. Their contents are never sent anywhere. When you discuss a card, the names, sizes and dates of its files go with it, as part of the card; Noteling doesn't read what they hold. **Open** opens a file in the app your Mac uses for it, **Save as…** saves a copy where you choose, and **Show in Finder** shows it.
 
-**Cards never run anything.** A card's buttons only open a web page in your browser, ask Noteling about the card in chat, or open a watch's page in Morning Files. Noteling doesn't work on these cards, whatever their files say.
+**Cards never run anything.** A card's buttons only open a web page in your browser, ask Noteling about the card in chat, or open a watch's page in Jobs, in Morning Files. A job's Card link only opens its card. Noteling doesn't work on these cards, whatever their files say.
 
 **What goes to Claude.** Nothing, until you ask. When you choose a card's question button or **Discuss or adjust**, the card, with its title, text, address, details, buttons, the names, sizes and dates of its files (never what they hold) and the context you added, becomes part of that conversation, with the question. A watch card's **Why?** asks about the watch in chat, by its name: the chat can then look up what its checks found, as in Watch lists. The card step never sees these cards.
 

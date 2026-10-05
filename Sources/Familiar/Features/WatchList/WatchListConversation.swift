@@ -3,7 +3,7 @@ import FamiliarContracts
 import FamiliarRuntime
 
 /// The watch list in general chat: tools to watch items, list the watches, check one now, change one or stop it.
-/// Changes go through the same store as the Watches page in Morning Files, so they show there at once. Checks the chat starts are
+/// Changes go through the same store as Jobs in Morning Files, so they show there at once. Checks the chat starts are
 /// waited for (at most `waitLimit`) and their results returned, so the chat shows what each item looks like now.
 @MainActor
 final class WatchListConversation {
@@ -21,7 +21,7 @@ final class WatchListConversation {
     var onOfferConnect: ((String) -> Void)?
     /// Whether a watch's check takes all its items in one call (a list check), so it can hold up to 200 of them.
     var takesList: (WatchListWatch) async -> Bool = { _ in false }
-    /// Checks still running after this carry on; the Watches page shows them when they finish.
+    /// Checks still running after this carry on; Jobs shows them when they finish.
     var waitLimit: Double = 90
     var now: () -> Date = Date.init
 
@@ -331,7 +331,7 @@ final class WatchListConversation {
         return file.columns.filter { !$0.isEmpty && WatchListRules.field(for: $0, in: reported) == nil }
     }
 
-    static let stillChecking = "Some items are still being checked. The Watches page in Morning Files shows them when they are done, and a notification comes only if one is not as expected later."
+    static let stillChecking = "Some items are still being checked. Jobs, in Morning Files, shows them when they are done, and a notification comes only if one is not as expected later."
 
     /// A team watch that is off, as the chat lists it: what it is, and that it's off.
     private func brief(_ watch: WatchListWatch) -> [String: Any] {

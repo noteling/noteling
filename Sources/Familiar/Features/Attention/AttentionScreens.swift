@@ -63,7 +63,7 @@ struct AttentionScreenView: View {
     @ObservedObject var store: MorningStore
     @ObservedObject var navigation: MorningNavigation
     let screen: AttentionScreen
-    /// The jobs still in Manage sources, asked each time a screen is drawn; nil when that is not known.
+    /// The reading jobs still in Jobs, asked each time a screen is drawn; nil when that is not known.
     var activeSources: (() -> Set<UUID>)? = nil
 
     var body: some View {
@@ -86,7 +86,7 @@ struct AttentionRestView: View {
     @ObservedObject var navigation: MorningNavigation
     /// "yyyy-MM-dd".
     let day: String
-    /// The jobs still in Manage sources; nil when that is not known.
+    /// The reading jobs still in Jobs; nil when that is not known.
     var activeSources: (() -> Set<UUID>)? = nil
     @State private var appeared: Date?
     @State private var reachedTheEnd = false
@@ -359,7 +359,7 @@ struct AttentionRowExplainField: View {
 struct AttentionWeekView: View {
     @ObservedObject var ledger: AttentionLedger
     @ObservedObject var navigation: MorningNavigation
-    /// The jobs still in Manage sources; nil when that is not known.
+    /// The reading jobs still in Jobs; nil when that is not known.
     var activeSources: (() -> Set<UUID>)? = nil
 
     private static let widths: [CGFloat] = [62, 42, 52, 84, 30, 50, 62, 52]

@@ -316,7 +316,7 @@ struct AttentionNumbers {
             + "a message shown on \(one ? "its card" : "one of their cards") can land in the rest here"
         if !removable.isEmpty {
             text += ", and removing \(removable.count == jobs.count ? one ? "it" : "them" : Self.list(removable.map(\.value)))"
-                + " in Manage sources keeps the numbers clean"
+                + " in Jobs keeps the numbers clean"
         }
         return text + "."
     }

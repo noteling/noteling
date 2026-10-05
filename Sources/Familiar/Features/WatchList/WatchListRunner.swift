@@ -415,6 +415,17 @@ struct WatchListChecker {
         return WatchListResolvedCheck(script: script, secrets: pack.requires, missing: pack.requires.filter { !hasSecret($0) }, toolDir: nil)
     }
 
+    /// The secrets a watch's check still needs in Settings, found as `resolve` finds its check but without reading its
+    /// check.py: those its watch.json lists for its own check, or its pack's. Jobs says so before it runs.
+    func missingSecrets(_ watch: WatchListWatch) -> [String] {
+        if let folder = folder(watch.id), FileManager.default.fileExists(atPath: folder.appendingPathComponent(WatchListFiles.ownCheck).path) {
+            return watch.requires.filter { $0 != LinkedTools.tokenKey && !hasSecret($0) }
+        }
+        let checks = registry.packs.compactMap { pack in registry.script(pack.watch, in: pack).map { (pack, $0) } }
+        let chosen = watch.check.isEmpty ? (checks.count == 1 ? checks.first : nil) : checks.first { $0.1.id == watch.check }
+        return chosen.map { pack, _ in pack.requires.filter { !hasSecret($0) } } ?? []
+    }
+
     func plan(_ watch: WatchListWatch) async -> WatchListPlan {
         let check: WatchListResolvedCheck
         do { check = try await resolve(watch) } catch { return .unavailable(WatchListStore.reason(error)) }
