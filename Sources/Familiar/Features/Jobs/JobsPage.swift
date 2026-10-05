@@ -469,12 +469,17 @@ struct JobsEntry: View {
         let jobs = Jobs.list(Jobs.Input(sources: sources, watches: watches, morning: morning, setup: setup, now: now()))
         let summary = Jobs.summary(jobs, demonstrations: sources.map { Jobs.demonstrations($0).count } ?? 0, now: now())
         let attention = jobs.contains { $0.needsAttention && $0.status != .off }
+        // Saved runs or reading jobs that can't be opened or saved: said on the home, as the sources' box did.
+        let stored = sources?.runStore.error ?? sources?.error
         return Button(action: open) {
             HStack(spacing: 12) {
                 Image(systemName: "checklist").font(.system(size: 21))
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Jobs").font(.system(size: 14, weight: .semibold))
                     Text(summary).font(.system(size: 12)).foregroundStyle(attention ? Pad.redInk : Pad.inkSoft)
+                    if let stored {
+                        Text(stored).font(.system(size: 12)).foregroundStyle(Pad.redInk).lineLimit(3).multilineTextAlignment(.leading)
+                    }
                 }
                 Spacer()
                 Image(systemName: "chevron.right")

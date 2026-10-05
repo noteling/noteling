@@ -240,8 +240,8 @@ struct JobsPageTests {
         let pack = fixture.root.appendingPathComponent("tools/sample")
         try FileManager.default.createDirectory(at: pack.appendingPathComponent("docs/workflows"), withIntermediateDirectories: true)
         try "# Sample\nLearned by watching.".write(to: pack.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
-        try "# Read Primary\nRead the Primary inbox in Google Chrome at `mail.google.com/mail/u/0/#inbox`."
-            .write(to: pack.appendingPathComponent("docs/workflows/inbox.md"), atomically: true, encoding: .utf8)
+        try "# Read the class page\nRead the new posts at `school.example.test/news` in the browser."
+            .write(to: pack.appendingPathComponent("docs/workflows/class.md"), atomically: true, encoding: .utf8)
         fixture.sources.refreshSavedWorkflows(root: fixture.root.appendingPathComponent("tools"))
         #expect(Jobs.demonstrations(fixture.sources).count == 1)
 

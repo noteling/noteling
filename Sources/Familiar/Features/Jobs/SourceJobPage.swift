@@ -26,9 +26,11 @@ struct SourceJobPage: View {
     @State private var problem: String?
     @State private var feedback: String?
 
+    /// `editing` opens it with its editor showing.
     init(store: CalendarStore, runner: CalendarCollectionRunner, morning: MorningStore, id: UUID, setup: JobsSetup = JobsSetup(),
          teaching: RunTeaching? = nil, openCard: @escaping (UUID) -> Void, openRun: @escaping (UUID, UUID?) -> Void,
-         openHistory: @escaping () -> Void, removed: @escaping (UUID) -> Void, now: @escaping () -> Date = Date.init) {
+         openHistory: @escaping () -> Void, removed: @escaping (UUID) -> Void, now: @escaping () -> Date = Date.init,
+         editing: Bool = false) {
         self.store = store
         self.runner = runner
         self.runs = store.runStore
@@ -41,6 +43,7 @@ struct SourceJobPage: View {
         self.openHistory = openHistory
         self.removed = removed
         self.now = now
+        _editing = State(initialValue: editing)
     }
 
     private var input: Jobs.Input { Jobs.Input(sources: store, watches: nil, morning: morning, setup: setup, now: now()) }

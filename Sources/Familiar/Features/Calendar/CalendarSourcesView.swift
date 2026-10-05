@@ -500,15 +500,15 @@ struct ReadingSourceEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
-            Text(draft.requiresReview ? "Review source" : "Edit source").font(HandFont.font(size: 23))
-            Text(draft.kind == .mail ? "Mail source" : "Web source").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
+            Text(draft.requiresReview ? "Review job" : "Edit job").font(HandFont.font(size: 23))
+            Text(draft.kind == .mail ? "Reads mail" : "Reads a web page").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
             if draft.requiresReview {
-                Label("Review the address, account and scope before enabling this source.", systemImage: "exclamationmark.circle")
+                Label("Review the address, account and scope before this job runs.", systemImage: "exclamationmark.circle")
                     .font(.system(size: 12)).foregroundStyle(Pad.redInk)
             }
-            field("Source name", text: $draft.name)
+            field("Name", text: $draft.name)
             field("Meaning", text: $draft.meaning)
-            Text("Why this source matters to you. Keep this context separate from the reading rules below.")
+            Text("Why this job matters to you. Keep this context separate from the reading rules below.")
                 .font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
             if draft.readsThroughScript {
                 Text("Reads through \(draft.script ?? "a script") (\(draft.application)) with the account connected in Settings. To read another account, change it there.")
@@ -518,13 +518,13 @@ struct ReadingSourceEditor: View {
                 DisclosureGroup("Application details") {
                     field("Native app identifier", text: $draft.bundleID)
                 }.font(.system(size: 12))
-                field("Exact source address (if used)", text: $draft.url)
+                field("Exact page address (if used)", text: $draft.url)
                 field("Account shown in the app (optional)", text: $draft.account)
                 Text("If you leave the account blank, Noteling reads the account the app or page shows and records it each time.")
                     .font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
             }
             notes("Reading rules", text: $draft.scope)
-            Text("Describe what to collect and where to stop, using the views and information this source makes available. These instructions guide future reads.")
+            Text("Describe what to collect and where to stop, using the views and information it can read. These instructions guide future reads.")
                 .font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
             if !draft.readsThroughScript {
                 notes("How to recognize and read this source", text: $draft.navigationHints)
@@ -537,7 +537,7 @@ struct ReadingSourceEditor: View {
             HStack {
                 Button("Cancel", action: cancel).buttonStyle(MorningActionButton())
                 Spacer()
-                Button(draft.requiresReview ? "Confirm & add source" : "Save source") {
+                Button(draft.requiresReview ? "Confirm & add job" : "Save job") {
                     guard !isRunning else { return }
                     do {
                         var confirmed = draft
@@ -584,8 +584,8 @@ struct CalendarSourceEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
-            Text("Edit calendar source").font(HandFont.font(size: 23))
-            field("Source name", text: $draft.name)
+            Text("Edit calendar job").font(HandFont.font(size: 23))
+            field("Name", text: $draft.name)
             field("Meaning", text: $draft.meaning)
             field("Application", text: $draft.application)
             DisclosureGroup("Application details") {
@@ -608,7 +608,7 @@ struct CalendarSourceEditor: View {
             HStack {
                 Button("Cancel", action: cancel).buttonStyle(MorningActionButton())
                 Spacer()
-                Button("Save source") {
+                Button("Save job") {
                     guard !isRunning else { return }
                     do { try save(draft) } catch { self.error = error.localizedDescription }
                 }.buttonStyle(MorningActionButton(primary: true))

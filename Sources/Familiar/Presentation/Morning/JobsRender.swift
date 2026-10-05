@@ -143,5 +143,10 @@ extension MorningRender {
         try save("job-calendar.png", .sourceJob(calendar.id))
         try save("job-needs-review.png", .sourceJob(review.id))
         try save("job-needs-settings.png", .sourceJob(bank.id))
+        // Edit on a reading job's page: its editor, in place of its definition and results.
+        try image(SourceJobPage(store: sources, runner: runner, morning: store, id: mail.id, setup: setup, openCard: { _ in },
+                                openRun: { _, _ in }, openHistory: {}, removed: { _ in }, editing: true)
+            .foregroundStyle(Pad.ink).background(Pad.fieldPaper), size: NSSize(width: 650, height: 1_200),
+            to: directory.appendingPathComponent("job-editing.png"))
     }
 }
