@@ -51,6 +51,11 @@ The tooling is not the bottleneck. Big tasks, hot files that every feature touch
     - A watch's card can appear after one failed check, while the notification waits for two failures in a row.
       Consider making the card wait too.
 
+12. **Card files at scale.** Copying a card's files, writing a watch's CSVs and Save as… all run on the main thread.
+    That's fine at today's 200-item cap; a run of millions of rows needs streaming writes off the main thread. A wide CSV
+    past 500 MB is refused rather than split by size. Files of resolved cards are kept forever, so `cards/files/` only
+    grows.
+
 ## Working with agents on this code
 
 - Start a fresh agent for each task, with a short brief. An agent resumed round after round carries every earlier
