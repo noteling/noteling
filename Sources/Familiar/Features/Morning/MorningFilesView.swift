@@ -327,20 +327,11 @@ struct MorningFilesView: View {
 
     private func folderTile(_ folder: MorningFolder) -> some View {
         let count = store.cards.filter { $0.folderID == folder.id && $0.displayDisposition == navigation.disposition }.count
-        return Button { navigation.route = .folder(folder.id) } label: {
-            VStack(alignment: .leading, spacing: 7) {
-                MorningFolderDrawing().frame(height: 100).padding(.horizontal, 12)
-                Text(folder.name).font(HandFont.font(size: 19)).lineLimit(2)
-                Text("\(count) \(count == 1 ? "file" : "files")").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
-            }.padding(12).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-        }.buttonStyle(.plain)
-            .accessibilityLabel("\(folder.name), \(count) files")
-            .contextMenu {
-                Button("Rename folder") { navigation.route = .editFolder(folder.id) }
-                Button("Create a note") { createNote(folderID: folder.id) }
-                Button(folder.isHidden ? "Show folder" : "Hide folder") { perform { try store.setFolderHidden(folder.id, hidden: !folder.isHidden) } }
-            }
-            .opacity(folder.isHidden ? 0.55 : 1)
+        return MorningFolderTile(folder: folder, count: count,
+                                 open: { navigation.route = .folder(folder.id) },
+                                 rename: { navigation.route = .editFolder(folder.id) },
+                                 createNote: { createNote(folderID: folder.id) },
+                                 toggleHidden: { perform { try store.setFolderHidden(folder.id, hidden: !folder.isHidden) } })
     }
 
     /// The folders the home shows: all but the hidden ones, unless the person asked to see those too (they come last).
@@ -760,5 +751,49 @@ struct MorningActionButton: ButtonStyle {
             .background(primary ? Pad.penInk : Color.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 7))
             .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(primary ? Color.clear : Pad.tabEdge.opacity(0.7)))
             .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
+/// A folder on the home: a click opens it, hovering shows Hide (or Show), and a right-click offers the rest. A plain view
+/// with a tap rather than a Button, whose own click handling can keep a right-click menu from opening in the floating panel.
+private struct MorningFolderTile: View {
+    let folder: MorningFolder
+    let count: Int
+    let open: () -> Void
+    let rename: () -> Void
+    let createNote: () -> Void
+    let toggleHidden: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            MorningFolderDrawing().frame(height: 100).padding(.horizontal, 12)
+            Text(folder.name).font(HandFont.font(size: 19)).lineLimit(2)
+            Text("\(count) \(count == 1 ? "file" : "files")").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+        .overlay(alignment: .topTrailing) {
+            if hovering || folder.isHidden {
+                Button(action: toggleHidden) {
+                    Image(systemName: folder.isHidden ? "eye" : "eye.slash").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
+                        .padding(6).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).help(folder.isHidden ? "Show folder" : "Hide folder")
+                .accessibilityLabel(folder.isHidden ? "Show \(folder.name)" : "Hide \(folder.name)")
+                .padding(4)
+            }
+        }
+        .onHover { hovering = $0 }
+        .onTapGesture(perform: open)
+        .contextMenu {
+            Button("Rename folder", action: rename)
+            Button("Create a note", action: createNote)
+            Button(folder.isHidden ? "Show folder" : "Hide folder", action: toggleHidden)
+        }
+        .opacity(folder.isHidden ? 0.55 : 1)
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("\(folder.name), \(count) files")
+        .accessibilityAction(.default, open)
     }
 }
