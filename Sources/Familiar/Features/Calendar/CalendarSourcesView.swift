@@ -26,63 +26,6 @@ struct CalendarSourcesHost: View {
     }
 }
 
-/// The Morning Files entry observes both stores, including work started from the sources screen. The latest run has
-/// its own screen; its link here says when a source didn't finish, so the main screen stays clean without hiding it.
-struct CalendarBatchHost: View {
-    @ObservedObject var store: CalendarStore
-    @ObservedObject var runner: CalendarCollectionRunner
-    @ObservedObject private var runs: SourceRunStore
-    let openSources: () -> Void
-    let openLatest: () -> Void
-    let openHistory: () -> Void
-
-    init(store: CalendarStore, runner: CalendarCollectionRunner, openSources: @escaping () -> Void,
-         openLatest: @escaping () -> Void, openHistory: @escaping () -> Void) {
-        self.store = store
-        self.runner = runner
-        self.runs = store.runStore
-        self.openSources = openSources
-        self.openLatest = openLatest
-        self.openHistory = openHistory
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack(spacing: 10) {
-                Image(systemName: "tray.full").font(.system(size: 22))
-                Text("Your sources").font(.system(size: 14, weight: .semibold))
-                Spacer()
-                Button("Manage sources", action: openSources).buttonStyle(.plain)
-                    .font(.system(size: 12)).foregroundStyle(Pad.penInk)
-            }
-            CalendarBatchControls(sourceCount: store.sources.count + store.readingSources.count, isRunning: runner.isRunning,
-                                  isBatchRunning: runner.isBatchRunning, status: runner.status,
-                                  runAll: { if runner.collectAll() != nil { openLatest() } },
-                                  stop: { _ = runner.stopActive() })
-            HStack(spacing: 16) {
-                if let latest = runs.runs.first {
-                    Button(action: openLatest) {
-                        HStack(spacing: 0) {
-                            Text("Latest run")
-                            if let note = LatestRunNote(run: latest) {
-                                Text(" · " + note.text).foregroundStyle(note.isProblem ? Pad.redInk : Pad.inkSoft)
-                            }
-                        }
-                    }.help("Open the newest run’s results")
-                }
-                Button("Run history", action: openHistory)
-            }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
-            if !store.savedReadingWorkflows.isEmpty {
-                Button("Review saved demonstrations (\(store.savedReadingWorkflows.count))", action: openSources)
-                    .buttonStyle(MorningActionButton()).disabled(runner.isRunning)
-            }
-            if let error = runner.error ?? runs.error ?? store.error {
-                Text(error).font(.system(size: 12)).foregroundStyle(Pad.redInk).textSelection(.enabled)
-            }
-        }.padding(14).background(Pad.paperTop.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
-    }
-}
-
 /// Every saved source has visible editing and recoverable removal controls.
 struct SourceManagementList: View {
     let calendars: [LearnedCalendarSource]
@@ -150,9 +93,9 @@ struct RemovedSourcesList: View {
     }
 
     var body: some View {
-        DisclosureGroup("Removed sources · \(sources.count)", isExpanded: $expanded) {
+        DisclosureGroup("Removed jobs · \(sources.count)", isExpanded: $expanded) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Restore a source with its saved collections. Removing a source leaves its original app and saved workflow documents untouched.")
+                Text("Restore a job with its saved results. Removing a job leaves its original app and saved workflow documents untouched.")
                     .font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
                 ForEach(sources) { source in
                     HStack(spacing: 10) {
@@ -171,7 +114,7 @@ struct RemovedSourcesList: View {
     }
 }
 
-/// Calendars read today; mail and web sources use their saved reading scope.
+/// Run all reading jobs: calendars read today; mail and web jobs read their saved scope.
 struct CalendarBatchControls: View {
     let sourceCount: Int
     var isRunning = false
@@ -183,15 +126,15 @@ struct CalendarBatchControls: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                Button("Run all sources", action: runAll)
+                Button("Run all reading jobs", action: runAll)
                     .buttonStyle(MorningActionButton(primary: true)).disabled(sourceCount == 0 || isRunning)
                 if isBatchRunning {
                     ProgressView().controlSize(.small)
                     Button("Stop all", action: stop).buttonStyle(MorningActionButton())
                 }
             }
-            Text(sourceCount == 0 ? "No sources are ready yet. Add a saved demonstration or teach a source to begin."
-                 : "Reads \(sourceCount) saved \(sourceCount == 1 ? "source" : "sources"). Calendars use today, 9 AM–5 PM in their time zone. Mail and web sources use their saved scope.")
+            Text(sourceCount == 0 ? "No reading jobs yet. Teach one with Watch Me, or review a saved demonstration."
+                 : "Runs your \(sourceCount) reading \(sourceCount == 1 ? "job" : "jobs") one after another. Calendars read today, 9 AM–5 PM in their time zone; mail and web jobs read their saved scope. Jobs that check items run on their own schedule.")
                 .font(.system(size: 11)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
             if isBatchRunning, !status.isEmpty {
                 Text(status).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)

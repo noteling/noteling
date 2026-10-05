@@ -102,8 +102,8 @@ enum SourceCollectionTask {
             + (Self.sentence(snapshot.assumptions, limit: 400) ?? "")
     }
 
-    /// Why a saved source was turned down before reading, and where to fix it. A review only happens in Manage
-    /// sources; anything else can also be fixed by telling the chat, which edits saved jobs.
+    /// Why a saved source was turned down before reading, and where to fix it. A review only happens on the job's page
+    /// in Jobs; anything else can also be fixed by telling the chat, which edits saved jobs.
     func notStartedMessage(_ reason: String) -> String {
         let needsReview: Bool
         switch self {
@@ -111,7 +111,7 @@ enum SourceCollectionTask {
         case .reading(let value): needsReview = value.source.requiresReview
         }
         return "Noteling didn't start this source. \(reason)"
-            + (needsReview ? " Open Manage sources to review it." : " Fix it in Manage sources (Edit source), or say what to change in chat.")
+            + (needsReview ? " Open it in Jobs to review it." : " Fix it in Jobs (Edit, on the job's page), or say what to change in chat.")
     }
 
     /// The taught app, address, account and view, as a sentence.

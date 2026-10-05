@@ -71,15 +71,15 @@ struct LatestRunHost: View {
                     Label(error, systemImage: "exclamationmark.triangle")
                         .font(.system(size: 12)).foregroundStyle(Pad.redInk).textSelection(.enabled)
                 }
-                Text("No runs yet. Read your sources, and the newest run will show here.")
+                Text("No runs yet. Run a reading job, and the newest run will show here.")
                     .font(.system(size: 13)).foregroundStyle(Pad.inkSoft)
             }.padding(23)
         }
     }
 }
 
-/// What the Latest run link says after its name: that the run is still reading, or how many sources didn't finish,
-/// so moving the run off the main screen never hides a failure.
+/// What the Latest run link says after its name: that the run is still reading, or how many jobs didn't finish, so
+/// moving the run off the main screen never hides a failure.
 struct LatestRunNote: Equatable {
     let text: String
     let isProblem: Bool
@@ -92,20 +92,20 @@ struct LatestRunNote: Equatable {
         }
         let unfinished = run.entries.filter(\.state.didNotFinish).count
         guard unfinished > 0 else { return nil }
-        text = "\(unfinished) \(unfinished == 1 ? "source" : "sources") didn’t finish"
+        text = "\(unfinished) \(unfinished == 1 ? "job" : "jobs") didn’t finish"
         isProblem = true
     }
 }
 
-/// Names the sources in a run that didn't finish. It sits above the findings, so the failure the Latest run link
-/// promised is on screen when the run opens, not below every other source's findings.
+/// Names the jobs in a run that didn't finish. It sits above the findings, so the failure the Latest run link
+/// promised is on screen when the run opens, not below every other job's findings.
 struct UnfinishedSourcesNote: Equatable {
     let text: String
 
     init?(run: SourceRunRecord) {
         let names = run.entries.filter(\.state.didNotFinish).map(\.sourceName)
         guard !names.isEmpty else { return nil }
-        text = "\(names.count) \(names.count == 1 ? "source" : "sources") didn’t finish: \(names.joined(separator: ", "))"
+        text = "\(names.count) \(names.count == 1 ? "job" : "jobs") didn’t finish: \(names.joined(separator: ", "))"
     }
 }
 
@@ -149,7 +149,7 @@ struct SourceRunResultsView: View {
                             UnfinishedSourcesLine(note: unfinished).padding(.top, 4)
                         }
                         if sourceID != nil && run.entries.count > 1 {
-                            Button("All sources in this run") { openRun(run.id, nil) }
+                            Button("All jobs in this run") { openRun(run.id, nil) }
                                 .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
                         }
                         if let teaching { TaughtLink(morning: teaching.morning, open: teaching.openLessons) }
@@ -165,7 +165,7 @@ struct SourceRunResultsView: View {
                     }
                 }
                 if entries.isEmpty {
-                    Text("This source was not included in this run.").font(.system(size: 13)).foregroundStyle(Pad.inkSoft)
+                    Text("This job wasn’t part of this run.").font(.system(size: 13)).foregroundStyle(Pad.inkSoft)
                 }
                 ForEach(entries) { entry in
                     SourceResultContent(presentation: SourceResultPresentation(entry: entry),
@@ -194,7 +194,7 @@ struct SourceRunHistoryView: View {
                         .font(.system(size: 12)).foregroundStyle(Pad.redInk).textSelection(.enabled)
                 }
                 if runs.runs.isEmpty {
-                    Text("No saved runs yet. Run your sources from Morning Files to collect the first results.")
+                    Text("No saved runs yet. Run a reading job from Jobs to collect the first results.")
                         .font(.system(size: 13)).foregroundStyle(Pad.inkSoft).padding(.vertical, 15)
                 }
                 ForEach(runs.runs) { run in
@@ -206,11 +206,11 @@ struct SourceRunHistoryView: View {
                                     .font(.system(size: 14, weight: .semibold))
                                 Text(run.entries.map(\.sourceName).joined(separator: " · "))
                                     .font(.system(size: 12)).lineLimit(2)
-                                Text("\(run.entries.count) \(run.entries.count == 1 ? "source" : "sources") · \(run.status.rawValue.capitalized)")
+                                Text("\(run.entries.count) \(run.entries.count == 1 ? "job" : "jobs") · \(run.status.rawValue.capitalized)")
                                     .font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
                                 let gaps = run.entries.filter(\.state.didNotFinish).count
                                 if gaps > 0 {
-                                    Text("\(gaps) \(gaps == 1 ? "source has" : "sources have") incomplete results")
+                                    Text("\(gaps) \(gaps == 1 ? "job has" : "jobs have") incomplete results")
                                         .font(.system(size: 11)).foregroundStyle(Pad.redInk)
                                 }
                                 if run.origin == .migration {
@@ -247,13 +247,16 @@ extension SourceRunEntry.State {
 struct SourceResultContent: View {
     let presentation: SourceResultPresentation
     var collectedAt: Date? = nil
+    /// Opens the job's page; nil on that page, or for a job that was removed.
     var manageSource: (() -> Void)? = nil
     var teaching: RunTeaching? = nil
+    /// The job's name on top; its own page already has it.
+    var showsTitle = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             VStack(alignment: .leading, spacing: 7) {
-                Text(presentation.title).font(.system(size: 20, weight: .semibold)).textSelection(.enabled)
+                if showsTitle { Text(presentation.title).font(.system(size: 20, weight: .semibold)).textSelection(.enabled) }
                 HStack(spacing: 9) {
                     Label(presentation.stateLabel, systemImage: presentation.state.resultSymbol)
                         .foregroundStyle(presentation.state.resultTint)
@@ -313,7 +316,7 @@ struct SourceResultContent: View {
                 }.font(.system(size: 12))
             }
             if let manageSource {
-                Button("Manage source", action: manageSource).buttonStyle(.plain)
+                Button("Open job", action: manageSource).buttonStyle(.plain)
                     .font(.system(size: 12)).foregroundStyle(Pad.penInk)
             }
         }.frame(maxWidth: .infinity, alignment: .leading)

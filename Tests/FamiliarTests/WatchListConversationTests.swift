@@ -480,18 +480,18 @@ struct WatchListConversationTests {
         #expect(fixture.assistant.shell.expanded)
     }
 
-    @Test func aWatchChangeLeavesAReceiptAndTheWatchesTabOpensThePage() {
+    @Test func aWatchChangeLeavesAReceiptAndTheJobsTabOpensJobs() {
         let fixture = AssistantFixture()
         defer { fixture.remove() }
         let lists = Fixture()
         defer { lists.remove() }
         var opened = 0
         fixture.assistant.watchList = lists.conversation
-        fixture.assistant.onOpenWatches = { opened += 1 }
+        fixture.assistant.onOpenJobs = { opened += 1 }
         lists.conversation.onChange?("Watching “Sale items”: 2 items, every 15 minutes.")
         #expect(fixture.assistant.transcript.map(\.text) == ["Watching “Sale items”: 2 items, every 15 minutes."])
         #expect(fixture.assistant.transcript.first?.role == .receipt)
-        fixture.assistant.askSuggestion(Assistant.openWatchesTab)
+        fixture.assistant.askSuggestion(Assistant.openJobsTab)
         #expect(opened == 1)
         #expect(fixture.assistant.transcript.count == 1)              // never sent as a question
     }
@@ -512,7 +512,6 @@ struct WatchListConversationTests {
         #expect(WatchListWords.words(item, checking: false) == "Couldn't check: Signed out")
         item.url = "file:///etc/hosts"
         #expect(WatchListWords.openable(item) == nil)                   // only web pages open
-        #expect(WatchListWords.empty == "Nothing is being watched. Ask in chat: “watch these items: …”")
 
         var watch = WatchListWatch(name: "Sale items", check: "c", items: [item], everyMinutes: 15)
         #expect(WatchListWords.subtitle(watch, checking: false) == "Every 15 minutes · 1 item · not checked yet")

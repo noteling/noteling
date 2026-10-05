@@ -3,8 +3,8 @@ import Foundation
 import UserNotifications
 
 /// Tells the person about watched items through macOS notifications, and opens the chat when they click one.
-/// macOS asks for permission when the first watch is created. Without it everything else still works: the Watches page and
-/// the chat say notifications are off. The notification center exists only for an app bundle; anywhere else (tests,
+/// macOS asks for permission when the first watch is created. Without it everything else still works: Jobs and the chat
+/// say notifications are off. The notification center exists only for an app bundle; anywhere else (tests,
 /// `swift run`) touching it crashes, so there alerts go to the log.
 @MainActor
 final class WatchListNotifier: NSObject, ObservableObject {

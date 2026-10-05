@@ -191,7 +191,7 @@ struct AttentionSortedTests {
         let today = AttentionTime.day(of: Date(), in: ledger.timeZone), numbers = ledger.numbers
         #expect(numbers.day(today).read == 3 && numbers.day(today).shown == 2)
         #expect(numbers.screenRead(on: [today]) == "Your screen-read mail job “Gmail inbox – today’s unread” also ran today. If it reads"
-            + " the same inbox, a message shown on its card can land in the rest here, and removing it in Manage sources keeps the numbers clean.")
+            + " the same inbox, a message shown on its card can land in the rest here, and removing it in Jobs keeps the numbers clean.")
         // A step that read only the script names nothing, and a card that names no Message-ID shows nothing else.
         try fixture.read(2, key: { "later-\($0)@example.test" })
         let alone = try fixture.sort(showing: 0)
@@ -268,7 +268,7 @@ struct AttentionSortedTests {
         let numbers = relaunched.numbers
         #expect(numbers.screenRead(on: ["2026-09-28", "2026-09-29"]) == "Your screen-read mail job “Gmail inbox – today’s unread”"
             + " also ran on 2 days. If it reads the same inbox, a message shown on its card can land in the rest here, and removing it"
-            + " in Manage sources keeps the numbers clean.")
+            + " in Jobs keeps the numbers clean.")
         // Once it is removed there is nothing to suggest, but those days were still read beside it.
         #expect(numbers.screenRead(on: ["2026-09-28", "2026-09-29"], active: [fixture.job.id]) == "Your screen-read mail job"
             + " “Gmail inbox – today’s unread” also ran on 2 days. If it read the same inbox, a message shown on its card can land in the rest here.")

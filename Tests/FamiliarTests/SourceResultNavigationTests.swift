@@ -6,22 +6,26 @@ import FamiliarContracts
 
 @MainActor
 struct SourceResultNavigationTests {
-    @Test func mainScreenOpensTheLatestRunAndBackReturnsToIt() throws {
+    @Test func jobsOpensTheLatestRunAndRunHistoryAndBackReturnsToJobs() throws {
         let fixture = Fixture()
         defer { fixture.remove() }
-        let view = fixture.files()
-        let host = try #require(find(CalendarBatchHost.self, in: view.body))
-        host.openLatest()
-        #expect(fixture.navigation.route == .latestRun, "The latest run opens its results, not Manage sources and rules.")
-        view.back()
+        _ = try fixture.run([.complete], at: Date(timeIntervalSince1970: 1_800_000_000))
+        fixture.navigation.route = .folders
+        let entry = try #require(find(JobsEntry.self, in: fixture.files().body), "The home has one Jobs box.")
+        entry.open()
+        #expect(fixture.navigation.route == .jobs)
+        #expect(find(JobsPage.self, in: fixture.files().body) != nil)
+        fixture.navigation.route = .latestRun
+        fixture.files().back()
+        #expect(fixture.navigation.route == .jobs, "The latest run is part of Jobs now.")
+        fixture.navigation.route = .sourceRuns
+        fixture.files().back()
+        #expect(fixture.navigation.route == .jobs)
+        fixture.files().back()
         #expect(fixture.navigation.route == .folders)
-        host.openHistory()
-        #expect(fixture.navigation.route == .sourceRuns)
-        host.openSources()
-        #expect(fixture.navigation.route == .sources)
     }
 
-    @Test func readingYourSourcesFromTheMainScreenOpensTheLatestRun() async throws {
+    @Test func runningAllReadingJobsOpensTheLatestRun() async throws {
         let fixture = Fixture(savingSource: false)
         defer { fixture.remove() }
         let job = LearnedReadingSource(kind: .mail, name: "Morning mail", meaning: "My inbox", application: "Mail",
@@ -30,9 +34,9 @@ struct SourceResultNavigationTests {
         fixture.runner.readScript = { _ in
             ["mailbox": "INBOX", "arrived": 1, "items": [["key": "a@example.test", "title": "Invoice due Friday"]]] as [String: Any]
         }
-        let view = fixture.files()
-        let host = try #require(find(CalendarBatchHost.self, in: view.body))
-        let controls = try #require(find(CalendarBatchControls.self, in: host.body))
+        fixture.navigation.route = .jobs
+        let page = try #require(find(JobsPage.self, in: fixture.files().body))
+        let controls = try #require(find(CalendarBatchControls.self, in: page.body), "Run all reading jobs is on the Jobs page.")
         controls.runAll()
         #expect(fixture.navigation.route == .latestRun)
         let deadline = Date().addingTimeInterval(10)
@@ -40,8 +44,8 @@ struct SourceResultNavigationTests {
         let run = try #require(fixture.sources.runStore.runs.first)
         #expect(run.id == fixture.runner.currentRunID)
         #expect(run.entries.map(\.state) == [.complete])
-        view.back()
-        #expect(fixture.navigation.route == .folders, "Back from a read started on the main screen returns there, not to Run history.")
+        fixture.files().back()
+        #expect(fixture.navigation.route == .jobs, "Back from a run started in Jobs returns there.")
     }
 
     @Test func latestRunShowsTheNewestRunInFullAndFollowsANewOne() throws {
@@ -71,10 +75,10 @@ struct SourceResultNavigationTests {
         }
         #expect(LatestRunNote(run: run([.complete, .complete])) == nil, "A clean run needs no note.")
         let one = try #require(LatestRunNote(run: run([.complete, .failed])))
-        #expect(one.text == "1 source didn’t finish")
+        #expect(one.text == "1 job didn’t finish")
         #expect(one.isProblem)
         let several = try #require(LatestRunNote(run: run([.partial, .stopped, .notRun, .interrupted, .complete])))
-        #expect(several.text == "4 sources didn’t finish")
+        #expect(several.text == "4 jobs didn’t finish")
         let reading = try #require(LatestRunNote(run: run([.complete, .reading], status: .running)))
         #expect(reading.text == "reading now")
         #expect(!reading.isProblem)
@@ -88,13 +92,13 @@ struct SourceResultNavigationTests {
         }
         #expect(UnfinishedSourcesNote(run: run([fixture.entry(.complete), fixture.entry(.complete, named: "Bank")])) == nil)
         let one = run([fixture.entry(.complete), fixture.entry(.complete, named: "Bank"), fixture.entry(.failed, named: "School portal")])
-        #expect(UnfinishedSourcesNote(run: one)?.text == "1 source didn’t finish: School portal")
+        #expect(UnfinishedSourcesNote(run: one)?.text == "1 job didn’t finish: School portal")
         let several = run([fixture.entry(.partial, named: "Bank"), fixture.entry(.complete), fixture.entry(.stopped, named: "School portal")])
-        #expect(UnfinishedSourcesNote(run: several)?.text == "2 sources didn’t finish: Bank, School portal")
+        #expect(UnfinishedSourcesNote(run: several)?.text == "2 jobs didn’t finish: Bank, School portal")
 
         let all = try #require(find(UnfinishedSourcesLine.self, in: SourceRunResultsView(run: one).body),
                                "A run with every source names the failure at the top, not below each source’s findings.")
-        #expect(all.note.text == "1 source didn’t finish: School portal")
+        #expect(all.note.text == "1 job didn’t finish: School portal")
         let failedSource = try #require(one.entries.last?.sourceID)
         #expect(find(UnfinishedSourcesLine.self, in: SourceRunResultsView(run: one, sourceID: failedSource).body) == nil,
                 "One source’s page already shows its own state.")

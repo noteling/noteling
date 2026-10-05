@@ -366,7 +366,7 @@ struct AttentionNumbersTests {
 
     /// A mail job read from the screen beside the script can take a message's card, and the message then counts as left
     /// out. One quiet line says on which days that could happen, names each job as last read, and suggests removing
-    /// only the ones still in Manage sources.
+    /// only the ones still in Jobs.
     @Test func screenReadMailJobsAreNamedByTheDaysTheyRan() {
         let gmail = UUID(), apple = UUID()
         let screen = { (id: UUID, name: String) in AttentionEvent.Sorted.ScreenRead(sourceID: id, sourceName: name) }
@@ -377,7 +377,7 @@ struct AttentionNumbersTests {
         let now = Self.at("2026-09-30", "09:00"), week = Self.days
         var numbers = measure(events, now: now)
         #expect(numbers.screenRead(on: week) == "Your screen-read mail job “Gmail inbox – today’s unread” also ran on 2 days. If it reads"
-            + " the same inbox, a message shown on its card can land in the rest here, and removing it in Manage sources keeps the numbers clean.")
+            + " the same inbox, a message shown on its card can land in the rest here, and removing it in Jobs keeps the numbers clean.")
         // A rest names its own day, and a day without one says nothing.
         #expect(numbers.screenRead(on: ["2026-09-29"])?.hasPrefix("Your screen-read mail job “Gmail inbox – today’s unread” also ran yesterday.") == true)
         #expect(numbers.screenRead(on: ["2026-09-28"])?.hasPrefix("Your screen-read mail job “Gmail inbox” also ran on Mon.") == true)
@@ -386,13 +386,13 @@ struct AttentionNumbersTests {
         // On Monday the week so far holds only Monday's, named as today.
         #expect(measure(events, now: Self.at("2026-09-28", "09:00")).screenRead(on: week)?.contains("“Gmail inbox” also ran today.") == true)
 
-        // Two jobs are named together, and only the one still in Manage sources is suggested for removal.
+        // Two jobs are named together, and only the one still in Jobs is suggested for removal.
         events.append(sorted(Self.at("2026-09-30", "10:00"), keys: [], screenRead: [screen(apple, "Mail inbox"), screen(gmail, "Gmail inbox – today’s unread")]))
         numbers = measure(events, now: Self.at("2026-09-30", "11:00"))
         #expect(numbers.screenRead(on: week) == "Your screen-read mail jobs “Gmail inbox – today’s unread” and “Mail inbox” also ran on"
             + " 3 days. If they read the same inbox, a message shown on one of their cards can land in the rest here, and removing them"
-            + " in Manage sources keeps the numbers clean.")
-        #expect(numbers.screenRead(on: week, active: [apple])?.hasSuffix("can land in the rest here, and removing “Mail inbox” in Manage sources"
+            + " in Jobs keeps the numbers clean.")
+        #expect(numbers.screenRead(on: week, active: [apple])?.hasSuffix("can land in the rest here, and removing “Mail inbox” in Jobs"
             + " keeps the numbers clean.") == true)
         #expect(numbers.screenRead(on: week, active: [])?.hasSuffix("also ran on 3 days. If they read the same inbox, a message shown on"
             + " one of their cards can land in the rest here.") == true)

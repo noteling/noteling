@@ -222,12 +222,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         assistant.onOpenSettings = { [weak self] in self?.openSettings() }
         assistant.sourceConversation = sourceConversation
-        assistant.onOpenSources = { [weak self] in self?.morningPanel.showSources() }
+        assistant.onOpenJobs = { [weak self] in self?.morningPanel.showJobs(trigger: .chat) }
         assistant.onRunSource = { [weak self] id in self?.runSavedSource(id) }
-        setupWatchList()   // before the panel, which shows the watches
+        setupWatchList()   // before the panel, which shows the watches among the jobs
         morningPanel = MorningPanelController(store: morning, hideFromScreenShare: config.hideFromScreenShare,
                                              calendarSources: calendarSources, calendarRunner: calendarReader, cardGeneration: cardGeneration,
-                                             attention: attention, watches: watchList?.panel, showLauncher: config.showMorningFolder)
+                                             attention: attention, watches: watchList?.panel, jobs: jobsSetup,
+                                             showLauncher: config.showMorningFolder)
         morningPanel.onLauncherShownChanged = { [weak self] shown in
             guard let self else { return }
             self.config.showMorningFolder = shown
@@ -359,7 +360,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         morningFolderMenuItem = NSMenuItem(title: "Hide Morning Folder", action: #selector(toggleMorningFolder), keyEquivalent: "")
         menu.addItem(morningFolderMenuItem)
         menu.addItem(NSMenuItem(title: "Who’s Who…", action: #selector(menuShowPeople), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Watches…", action: #selector(menuShowWatches), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: Self.jobsMenuTitle, action: #selector(menuShowJobs), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Point the Pen   ⌃⌥Space", action: #selector(menuWand), keyEquivalent: ""))
         watchMenuItem = NSMenuItem(title: "Watch Me", action: #selector(menuWatch), keyEquivalent: "")
@@ -774,7 +775,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func openConfig() { NSWorkspace.shared.open(Config.file) }
     @objc private func openLog() { NSWorkspace.shared.open(Config.logFile) }
 
-    /// The chat's Run now tab: read one saved source, then show its progress in Manage sources.
+    /// The chat's Run now tab: run one reading job, then show it on its page in Jobs, where its progress, results and
+    /// cards are.
     private func runSavedSource(_ id: UUID) {
         let started: Task<Void, Never>?
         if let source = calendarSources.readingSources.first(where: { $0.id == id }) {
@@ -782,11 +784,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else if let source = calendarSources.sources.first(where: { $0.id == id }) {
             started = calendarReader.collect(source: source, day: Date())
         } else {
-            assistant.status = "That job is no longer in your sources."
+            assistant.status = "That job is no longer in Jobs."
             return
         }
-        assistant.status = started == nil ? (calendarReader.error ?? "That job could not start.") : "Reading your source. Progress is in Manage sources."
-        morningPanel.showSources()
+        assistant.status = started == nil ? (calendarReader.error ?? "That job could not start.") : "Running your job. Its page in Jobs shows how it goes."
+        morningPanel.showSourceJob(id: id)
+    }
+
+    /// The menu bar's way into Jobs.
+    static let jobsMenuTitle = "Jobs…"
+
+    /// What only the app knows about the jobs: the secrets each still needs in Settings, whether mouse and keyboard
+    /// control is on, and how to open Settings.
+    private var jobsSetup: JobsSetup {
+        JobsSetup(missingSecrets: { [weak self] source in
+            guard let registry = self?.registry, let script = source.script, let pack = registry.pack(holdingScript: script) else { return [] }
+            return registry.missingRequirements(for: [pack]).first?.keys ?? []
+        }, missingWatchSecrets: { [weak self] watch in
+            self?.watchList?.checker.missingSecrets(watch) ?? []
+        }, controlAllowed: { [weak self] in
+            self?.effectiveConfig.allowControl ?? true
+        }, openSettings: { [weak self] in self?.openSettings() })
     }
     @objc private func fixScreenPermission() { if !Permissions.requestScreenRecording() { Permissions.openScreenRecordingSettings() } }
     @objc private func fixAXPermission() { Permissions.requestAccessibility(); Permissions.openAccessibilitySettings() }
@@ -800,15 +818,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let feature = WatchListFeature(registry: registry)
         feature.notifier.activate()
         feature.notifier.onOpen = { [weak feature] watchID, key in feature?.openNotification(watchID: watchID, key: key) }
-        feature.showWatches = { [weak self] in self?.morningPanel?.showWatches() }
+        feature.showJobs = { [weak self] in self?.morningPanel?.showJobs() }
         feature.showWatch = { [weak self] id in self?.morningPanel?.showWatch(id: id) }
         feature.explain = { [weak self] watchID, key in self?.explainWatchedItem(watchID: watchID, key: key) }
         assistant.watchList = feature.conversation
-        assistant.onOpenWatches = { [weak feature] in feature?.openWatches() }
         watchList = feature
     }
 
-    @objc private func menuShowWatches() { watchList?.openWatches() }
+    /// The menu bar's Jobs…: every job, the reading jobs and the watches, in one list.
+    @objc private func menuShowJobs() { morningPanel.showJobs() }
 
     private func explainWatchedItem(watchID: UUID, key: String) {
         guard let feature = watchList, let watch = feature.store.watch(id: watchID), let item = watch.item(key) else {

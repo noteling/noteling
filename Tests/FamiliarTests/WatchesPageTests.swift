@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import Familiar
 
-/// The watches in Morning Files: Watches, each watch's page, the line on a watch's cards folder, and every way in (the
-/// menu bar, the chat's tab, a notification) leading there, not to a window of their own. Temp folders only.
+/// The watches in Morning Files: among the jobs, each watch's page, the line on a watch's cards folder, and every way in
+/// (a notification, its card, its cards folder) leading there, not to a window of their own. Temp folders only.
 @Suite @MainActor
 struct WatchesPageTests {
     private let now = Date(timeIntervalSince1970: 1_790_000_000)
@@ -22,23 +22,23 @@ struct WatchesPageTests {
     @Test func theWatchRoutesHaveTitlesHeightsAndThePanelsOneWidth() throws {
         let id = UUID()
         func title(_ route: MorningNavigation.Route) -> String {
-            MorningFilesView.title(for: route, folderName: { _ in nil }, watchName: { $0 == id ? "Sale items" : nil })
+            MorningFilesView.title(for: route, folderName: { _ in nil }, jobName: { $0 == id ? "Sale items" : nil })
         }
-        #expect(title(.watches) == "Watches")
+        #expect(title(.watches) == "Jobs")   // the old Watches route shows Jobs
         #expect(title(.watch(id)) == "Sale items")
-        #expect(title(.watch(UUID())) == "Watch")
+        #expect(title(.watch(UUID())) == "Job")
         #expect(title(.sources) == "Manage sources" && title(.folders) == "A little room for your day")
         #expect(MorningPanelController.preferredHeight(for: .watches) == 680 && MorningPanelController.preferredHeight(for: .watch(id)) == 680)
         let routes: [MorningNavigation.Route] = [.folders, .folder(id), .card(id), .sources, .sourceRuns, .watches, .watch(id), .people]
         #expect(routes.allSatisfy { MorningPanelController.preferredWidth(for: $0) == 650 })
         #expect(MorningPanelController.route(afterHiding: .watch(id)) == .watch(id))
 
-        // Back: from a watch's page to Watches, from Watches to the folders.
+        // Back: from a watch's page to Jobs, from Jobs to the folders.
         let fixture = try PanelFixture()
         defer { fixture.remove() }
         fixture.navigation.route = .watch(id)
         fixture.files().back()
-        #expect(fixture.navigation.route == .watches)
+        #expect(fixture.navigation.route == .jobs)
         fixture.files().back()
         #expect(fixture.navigation.route == .folders)
     }
@@ -49,9 +49,9 @@ struct WatchesPageTests {
         let watch = try fixture.add(WatchListWatch(name: "Sale items", check: "c", items: [WatchListItem(key: "1")]))
 
         fixture.navigation.route = .folders
-        #expect(find(WatchesEntry.self, in: fixture.files().body) != nil)
+        #expect(find(JobsEntry.self, in: fixture.files().body) != nil)
         fixture.navigation.route = .watches
-        #expect(find(WatchesPage.self, in: fixture.files().body) != nil)
+        #expect(find(JobsPage.self, in: fixture.files().body) != nil)
         fixture.navigation.route = .watch(watch.id)
         let page = try #require(find(WatchJobPage.self, in: fixture.files().body))
         #expect(page.id == watch.id)
@@ -59,10 +59,10 @@ struct WatchesPageTests {
         let plain = MorningFilesView(store: fixture.morning, navigation: fixture.navigation, close: {}, filed: {}, handoff: { _ in })
         #expect(find(WatchJobPage.self, in: plain.body) == nil)
         fixture.navigation.route = .folders
-        #expect(find(WatchesEntry.self, in: plain.body) == nil)
+        #expect(find(JobsEntry.self, in: plain.body) == nil)
     }
 
-    // MARK: the Watches page
+    // MARK: how a watch stands
 
     @Test func theWatchesPageSaysHowEachWatchStands() throws {
         var watch = WatchListWatch(name: "Sale items", check: "c", items: [], everyMinutes: 15)
@@ -104,41 +104,22 @@ struct WatchesPageTests {
         team.paused = true
         #expect(WatchListWords.status(team, checking: false, now: now) == "Paused in the team's tools · 1 not as expected · 1 not checked yet")
         #expect(WatchListWords.fromTeam == "From your team's tools")
-        #expect(WatchListWords.teamIntro == "Turn on the ones that are yours: only those are checked and tell you.")
 
         // What's wrong with its files is on its row.
         #expect(WatchListWords.problem("Can't read watch.json: it isn't valid JSON.")
-                == "Can't read watch.json: it isn't valid JSON. Until it's fixed, the watch keeps what it had.")
+                == "Can't read watch.json: it isn't valid JSON. Until it's fixed, the job keeps what it had.")
         #expect(WatchListWords.problem(nil) == nil)
-
-        // Nothing watched yet.
-        #expect(WatchListWords.empty == "Nothing is being watched. Ask in chat: “watch these items: …”")
-        #expect(WatchListWords.emptyTeam(linked: false) == "Your team's watch jobs show here once your team's tools are linked in Settings.")
-        #expect(WatchListWords.emptyTeam(linked: true) == "Your team's tools have no watch jobs yet.")
-    }
-
-    @Test func morningFilesHomeSaysHowTheWatchesStand() {
-        var own = WatchListWatch(name: "Sale items", check: "c", items: [item("1", red), item("2", .couldNotCheck("Offline")), item("3", .asExpected)])
-        var team = WatchListWatch(name: "Fashion", check: "c", items: [item("1", .asExpected)])
-        team.source = .team
-        team.on = false
-        #expect(WatchListWords.summary([]) == "Nothing is being watched yet.")
-        #expect(WatchListWords.summary([team]) == "1 team job you can turn on.")
-        #expect(WatchListWords.summary([own, team]) == "1 watch · 1 not as expected · 1 couldn't check")
-        own.items = [item("1", .asExpected)]
-        team.on = true
-        #expect(WatchListWords.summary([own, team]) == "2 watches · all as expected")
-        own.items.append(item("2", nil))
-        #expect(WatchListWords.summary([own]) == "1 watch")
     }
 
     // MARK: a watch's page
 
     @Test func aWatchsPageSaysWhatItIsAndHowItStands() throws {
+        // Its page starts with the header every job's page has, made from the same job as its row in Jobs.
         var watch = WatchListWatch(name: "Sale items", check: "c", items: [item("1", .asExpected), item("2", red)], everyMinutes: 15)
         watch.lastRunAt = now
-        #expect(WatchListWords.jobLines(watch, checking: false, now: now)
-                == ["Every 15 minutes", "Checked \(WatchListWords.time(now, now: now)) · 1 as expected · 1 not as expected"])
+        let job = Jobs.watchJob(watch, Jobs.Input(watches: [watch], now: now))
+        #expect(job.line == "Checks 2 items · Every 15 minutes")
+        #expect(job.lastRun == "Last run \(WatchListWords.time(now, now: now)) · 1 of 2 not as expected")
 
         var team = WatchListWatch(name: "Fashion", check: "c", items: [item("1", nil), item("2", nil)], everyMinutes: 120)
         team.source = .team
@@ -146,8 +127,10 @@ struct WatchesPageTests {
         team.on = false
         team.ends = WatchListMoment.parse("2026-10-31T23:59:00")
         let during = try #require(team.ends?.date).addingTimeInterval(-3_600)
-        #expect(WatchListWords.jobLines(team, checking: false, now: during)
-                == ["holiday/oct/fashion · From your team's tools", "Every 2 hours · Ends Sat Oct 31, 11:59 PM", "Off · 2 items"])
+        let teamJob = Jobs.watchJob(team, Jobs.Input(watches: [team], now: during))
+        #expect(teamJob.path == "holiday/oct/fashion")
+        #expect(teamJob.line == "Checks 2 items · from your team's tools · Every 2 hours · Ends Sat Oct 31, 11:59 PM")
+        #expect(teamJob.lastRun == "Not run yet" && teamJob.status == .off)
 
         // Check now: a watch of your own between its start and end, even paused; a team job only while it's on and running.
         #expect(WatchListWords.canCheckNow(watch, checking: false, now: now))
@@ -174,7 +157,7 @@ struct WatchesPageTests {
         let folderID = CardInboxFormat.folderID(source)
         func link() -> WatchCardsLink? { WatchListWords.cardsLink(for: watch, folders: fixture.morning.folders, cards: fixture.morning.cards) }
         #expect(link() == WatchCardsLink(folderID: folderID, open: 2, disposition: .unreviewed))
-        #expect(link()?.label == "Cards (2)")
+        #expect(link()?.label == "Cards folder (2)")
 
         try fixture.morning.setDisposition(cardID: CardInboxFormat.cardID(key), to: .mine)
         try fixture.morning.setCardResolution(cardID: CardInboxFormat.cardID(source + "/deal"), resolved: true)
@@ -196,6 +179,8 @@ struct WatchesPageTests {
         #expect(line.watchID == watch.id)
         line.openJob()
         #expect(fixture.navigation.route == .watch(watch.id))
+        fixture.files().back()
+        #expect(fixture.navigation.route == .folder(CardInboxFormat.folderID(source)), "Back from its job comes back to its cards.")
         fixture.navigation.route = .folder(CardInboxFormat.folderID("pack-shop"))
         #expect(find(WatchCardsFolderLine.self, in: fixture.files().body) == nil)
         fixture.navigation.route = .folder(try #require(fixture.morning.folders.first).id)
@@ -203,7 +188,7 @@ struct WatchesPageTests {
         #expect(WatchListWords.watch(forFolder: CardInboxFormat.folderID(source), in: fixture.watches.watches)?.id == watch.id)
         #expect(WatchListWords.watch(forFolder: CardInboxFormat.folderID("pack-shop"), in: fixture.watches.watches) == nil)
 
-        // "Checked 6:31 PM · every 15 minutes", then Check now and Open job.
+        // "Checked 6:31 PM · every 15 minutes", then Run now and Open job.
         #expect(WatchListWords.cardsFolderLine(watch, checking: false, now: now) == "Not checked yet · every 15 minutes")
         watch.lastRunAt = now
         #expect(WatchListWords.cardsFolderLine(watch, checking: false, now: now) == "Checked \(WatchListWords.time(now, now: now)) · every 15 minutes")
@@ -212,27 +197,25 @@ struct WatchesPageTests {
 
     // MARK: ways in
 
-    @Test func theMenuTheChatsTabAndANotificationOpenThePanel() throws {
+    @Test func aNotificationOpensItsWatchsPageOrJobsOnceItIsGone() throws {
         let place = Place()
         defer { place.remove() }
         let registry = ToolRegistry(root: place.root.appendingPathComponent("tools"), runner: ScriptRunner(config: Config()))
         let feature = WatchListFeature(registry: registry, store: place.store())
         var opened: [String] = []
-        feature.showWatches = { opened.append("Watches") }
+        feature.showJobs = { opened.append("Jobs") }
         feature.showWatch = { opened.append("page \(feature.store.watch(id: $0)?.name ?? "?")") }
         feature.explain = { opened.append("explain \(feature.store.watch(id: $0)?.name ?? "?") \($1)") }
         let watch = WatchListWatch(name: "Sale items", check: "c", items: [WatchListItem(key: "1"), WatchListItem(key: "2")])
         try feature.store.add(watch)
         try feature.store.change(watch.id, persist: false) { $0.items = [item("1", red), item("2", .asExpected)] }
 
-        feature.openWatches()                                           // the menu bar's Watches… and the chat's tab
         feature.openNotification(watchID: watch.id, key: "1")           // still red: the chat explains it
         feature.openNotification(watchID: watch.id, key: "2")           // back to as expected: its watch's page
         feature.openNotification(watchID: watch.id, key: "")            // about several items: its watch's page
-        feature.openNotification(watchID: UUID(), key: "1")             // a watch that's gone: Watches
+        feature.openNotification(watchID: UUID(), key: "1")             // a watch that's gone: Jobs
         feature.panel.why(watch.id, "1")                                // Why? on an item's row
-        #expect(opened == ["Watches", "explain Sale items 1", "page Sale items", "page Sale items", "Watches", "explain Sale items 1"])
-        #expect(Assistant.openWatchesTab == "Open Watches")
+        #expect(opened == ["explain Sale items 1", "page Sale items", "page Sale items", "Jobs", "explain Sale items 1"])
     }
 }
 

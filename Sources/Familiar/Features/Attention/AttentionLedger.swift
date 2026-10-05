@@ -554,6 +554,8 @@ enum AttentionOpen {
         case .people: return "people"
         case .sources: return "sources"
         case .sourceRun: return "sourceRun"
+        case .jobs: return "jobs"
+        case .sourceJob: return "job"
         default: return "other"
         }
     }

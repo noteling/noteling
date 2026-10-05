@@ -4,7 +4,7 @@ import FamiliarContracts
 import FamiliarRuntime
 @testable import Familiar
 
-/// The chat knows the jobs taught with Watch Me and can change them through the same store as Manage sources.
+/// The chat knows the jobs taught with Watch Me and can change them through the same store as Jobs.
 @Suite @MainActor
 struct SourceConversationTests {
     @Test func contextListsEveryJobWithItsRulesAndLastRun() throws {
@@ -69,7 +69,7 @@ struct SourceConversationTests {
         #expect(!result.isError)
         #expect(fixture.receipts == ["Created “Morning mail”: it reads through Mail over IMAP. It can run now. “Gmail inbox – today’s unread”"
             + " also reads mail from the screen. If it reads the same inbox, a message shown on its card can land in the attention test’s"
-            + " rest, and removing it in Manage sources keeps the test’s numbers clean."])
+            + " rest, and removing it in Jobs keeps the test’s numbers clean."])
         let text = try #require(result.content as? String)
         #expect(text.hasSuffix(" The receipt already told the person about that screen-read job; don't repeat it, and use remove_source"
             + " only if they ask."))
@@ -85,7 +85,7 @@ struct SourceConversationTests {
                                                                "script": "imap-mail__today"])
         #expect(fixture.receipts.last == "Created “Work mail”: it reads through Mail over IMAP. It can run now. “Gmail inbox – today’s unread”"
             + " and “Mail inbox” also read mail from the screen. If they read the same inbox, a message shown on one of their cards can land"
-            + " in the attention test’s rest, and removing them in Manage sources keeps the test’s numbers clean.")
+            + " in the attention test’s rest, and removing them in Jobs keeps the test’s numbers clean.")
         #expect((second.content as? String)?.contains("about those screen-read jobs; don't repeat it") == true)
         #expect(fixture.store.readingSources.count == 5 && fixture.store.removedSources.isEmpty)
 
@@ -112,7 +112,7 @@ struct SourceConversationTests {
                                                                "script": "imap-mail__today"])
 
         #expect(fixture.receipts == ["Created “Morning mail”: it reads through Mail over IMAP. Connect it first: add IMAP_PASSWORD in Settings."
-            + " “Gmail inbox – today’s unread” also reads mail from the screen. If it reads the same inbox, you can remove it in Manage sources"
+            + " “Gmail inbox – today’s unread” also reads mail from the screen. If it reads the same inbox, you can remove it in Jobs"
             + " once this job reads your mail, for clean attention-test numbers."])
         let text = try #require(result.content as? String)
         #expect(!text.contains("Suggest") && text.contains("don't repeat it, and use remove_source only if they ask."))
@@ -240,7 +240,7 @@ struct SourceConversationTests {
 
         #expect(!rules.isError)
         #expect(fixture.store.readingSources.first?.requiresReview == true)
-        #expect(fixture.receipts.first?.contains("still needs review in Manage sources") == true)
+        #expect(fixture.receipts.first?.contains("still needs review on its page in Jobs") == true)
         #expect(address.isError)
         #expect(fixture.store.readingSources.first?.url == inbox.url)
     }

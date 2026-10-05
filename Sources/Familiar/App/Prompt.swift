@@ -30,7 +30,7 @@ enum Prompt {
     but need to see how it looks.
     - Saved jobs: the sources the person taught with Watch Me, listed under "Your saved jobs" when there are any. \
     When they mention one ("my inbox job", "the calendar check"), use that list. get_source shows a job in full with \
-    its latest findings; update_source changes it the way Manage sources does; remove_source and restore_source take \
+    its latest findings; update_source changes it the way Edit on its page in Jobs does; remove_source and restore_source take \
     it out of future runs and bring it back; offer_run_source offers a Run now button, only when they ask to run or \
     check a job now. A job marked "Can't run yet" needs what that line names: ask for it and save it with \
     update_source. When they say a result is wrong ("that's the wrong inbox", "skip newsletters"), fix the job with \
@@ -157,7 +157,7 @@ enum Prompt {
     - completion_checks: how to verify the account and scope, the visible page/range, and whether the limited read was complete.
     - uncertainties: the assumptions this source relies on, at most three, each stated as the assumption itself (for example, "today means this Mac's time zone"). Include only assumptions that change what gets read and that the screen can't settle when the source runs; leave out anything the reader can see then, such as how unread mail is marked, the sort order or the signed-in account. People read these at a glance, so never phrase them as questions or tasks for them. Other fields are strings; use empty strings for unknowns.
 
-    A source is read afresh by Run all sources. Demonstrated messages, senders, dates and snippets are examples, never stored results of a future read. \
+    A source is read afresh each time its job runs (Run now or Run all reading jobs, in Jobs). Demonstrated messages, senders, dates and snippets are examples, never stored results of a future read. \
     Do not create a reading_source merely because a workflow happens in Gmail or a browser. Preserve an ordinary action workflow as documentation without registering it as a source.
 
     A calendar_source records reusable meaning and navigation, never a list of demonstrated events. It has these keys:

@@ -53,7 +53,8 @@ final class Assistant: ObservableObject {
             sourceConversation?.onOfferConnect = { [weak self] _ in self?.offerConnect() }
         }
     }
-    var onOpenSources: (() -> Void)?
+    /// The Open Jobs tab: Jobs in Morning Files, every reading job and watch in one list.
+    var onOpenJobs: (() -> Void)?
     var onOpenSettings: (() -> Void)?
     var onRunSource: ((UUID) -> Void)?
     /// The watch list in general chat: tools to watch items on a schedule, and to list, check, change or stop watches.
@@ -63,7 +64,6 @@ final class Assistant: ObservableObject {
             watchList?.onOfferConnect = { [weak self] _ in self?.offerConnect() }
         }
     }
-    var onOpenWatches: (() -> Void)?
     private var pendingSourceTabs: [String] = []   // added to the reply's tabs when the turn ends
     private var offeredRuns: [String: UUID] = [:]  // Run now tab title → job
 
@@ -109,9 +109,9 @@ final class Assistant: ObservableObject {
     static let fullDraftTab = "Open full draft"
     static let discardTab = "Discard"
     static let retryTab = "Try again"
-    static let openSourcesTab = "Open Manage sources"
+    /// A saved job or a watch changed in chat: where to see it.
+    static let openJobsTab = "Open Jobs"
     static let openSettingsTab = "Open Settings"
-    static let openWatchesTab = "Open Watches"
     static let reservedTabs = [continueTab, skipContextTab, keepTab, fullDraftTab, discardTab, retryTab]
 
     init(config: Config, watcher: ContextWatcher, registry: ToolRegistry, shell: ShellState, learning: WatchLearnSession,
@@ -182,9 +182,8 @@ final class Assistant: ObservableObject {
     }
 
     func askSuggestion(_ s: String) {
-        if s == Self.openSourcesTab, let onOpenSources { onOpenSources(); return }
+        if s == Self.openJobsTab, let onOpenJobs { onOpenJobs(); return }
         if s == Self.openSettingsTab, let onOpenSettings { onOpenSettings(); return }
-        if s == Self.openWatchesTab, let onOpenWatches { onOpenWatches(); return }
         if let id = offeredRuns.removeValue(forKey: s) {
             suggestions.removeAll { $0 == s }
             onRunSource?(id)
@@ -291,7 +290,7 @@ final class Assistant: ObservableObject {
             status = ""
             contextLine = recordingLine(0)
             if learning.isTeachingSource {
-                transcript.append(ChatMessage(role: .assistant, text: "Show me the information you want in your morning read: an inbox, a calendar, or another page. Show its address and account, then the limited view I should read—for example, the first page of Primary in Gmail. For a calendar, show its selection and time zone. Stop watching when you're done, then review and keep the source for Run all sources. The information shown while teaching is only an example."))
+                transcript.append(ChatMessage(role: .assistant, text: "Show me the information you want in your morning read: an inbox, a calendar, or another page. Show its address and account, then the limited view I should read—for example, the first page of Primary in Gmail. For a calendar, show its selection and time zone. Stop watching when you're done, then review and keep it as a job in Jobs. The information shown while teaching is only an example."))
             }
         case .stopped:
             contextLine = watcher.current?.summaryLine ?? (watcher.isRunning ? "Watching…" : "Watcher off")
@@ -350,18 +349,18 @@ final class Assistant: ObservableObject {
         source.url.isEmpty && !source.application.isEmpty ? "The \(source.application) app" : source.url
     }
 
-    /// What Keep registered for Run all sources, and whether it can run yet.
+    /// What Keep registered as a job, and whether it can run yet.
     static func sourceReceipt(_ draft: PackDraft) -> String {
-        var s = draft.calendarSource.map { "Calendar source kept: \(reviewExcerpt($0.name, limit: 80)). It now appears in Sources for Run all sources. Review any missing details before reading.\n\n" } ?? ""
+        var s = draft.calendarSource.map { "Calendar source kept: \(reviewExcerpt($0.name, limit: 80)). It's a job in Jobs now. Review any missing details before reading.\n\n" } ?? ""
         if let source = draft.readingSource {
-            s += "Reading source kept: \(reviewExcerpt(source.name, limit: 80)). It now appears in Sources for Run all sources. "
+            s += "Reading source kept: \(reviewExcerpt(source.name, limit: 80)). It's a job in Jobs now. "
             if let missing = source.missingSetup {
-                s += "It can't run yet: \(reviewExcerpt(missing, limit: 200)) Tell me here, or add it in Manage sources.\n\n"
+                s += "It can't run yet: \(reviewExcerpt(missing, limit: 200)) Tell me here, or add it on its page in Jobs.\n\n"
             } else {
-                s += source.requiresReview ? "Confirm its address in Manage sources before reading; it was learned from screenshot evidence.\n\n" : "Each run reads fresh information within the saved scope.\n\n"
+                s += source.requiresReview ? "Confirm its address on its page in Jobs before reading; it was learned from screenshot evidence.\n\n" : "Each run reads fresh information within the saved scope.\n\n"
             }
         }
-        return s.isEmpty ? "No reading source was registered. Run all sources will not run this workflow.\n\n" : s
+        return s.isEmpty ? "No reading source was registered, so Jobs won't run this workflow.\n\n" : s
     }
 
     /// Keep generated documents out of the animated chat layout. Only bounded, single-line fields go on the note.
@@ -393,11 +392,11 @@ final class Assistant: ObservableObject {
             field("Reading rules", source.scope, limit: 220)
             assumptions(source.uncertainties)
             if let missing = source.missingSetup, !source.requiresReview {
-                lines.append("**Before it can run:** \(reviewExcerpt(missing, limit: 200)) Tell me here and I'll write it again, or keep it and add it later in Manage sources.")
+                lines.append("**Before it can run:** \(reviewExcerpt(missing, limit: 200)) Tell me here and I'll write it again, or keep it and add it later on its page in Jobs.")
             } else {
                 lines.append(source.requiresReview
-                    ? "Keep adds this source to Sources. Confirm its address there before Run all sources can read it."
-                    : "Keep adds this source to Sources for Run all sources.")
+                    ? "Keep adds it to Jobs. Confirm its address there before it can run."
+                    : "Keep adds it to Jobs, where Run now and Run all reading jobs read it.")
             }
         } else if let source = d.calendarSource {
             lines.append("**Calendar source to keep**")
@@ -407,9 +406,9 @@ final class Assistant: ObservableObject {
             field("Calendar", source.calendarName, limit: 80)
             field("Time zone", source.timeZoneID, limit: 60)
             uncertainties(source.uncertainties)
-            lines.append("Keep adds this source to Sources for Run all sources.")
+            lines.append("Keep adds it to Jobs, where Run now and Run all reading jobs read it.")
         } else if teachingCalendar {
-            lines.append("**Reading source not established**\nKeep cannot register this draft for Run all sources. Tell me what is missing (the page address, the account, or what to read) and I'll write it again, or discard it and teach it again.")
+            lines.append("**Reading source not established**\nKeep cannot add this draft to Jobs. Tell me what is missing (the page address, the account, or what to read) and I'll write it again, or discard it and teach it again.")
         } else {
             field("Skill", d.packName)
             field("Description", d.packDescription.isEmpty ? d.workflowTitle : d.packDescription, limit: 180)
@@ -449,9 +448,9 @@ final class Assistant: ObservableObject {
             s += fields.map { "**\($0.0):** \(known($0.1))" }.joined(separator: "\n")
             s += "\n**Assuming:** " + (source.uncertainties.isEmpty ? "Nothing beyond what's above." : source.uncertainties.joined(separator: "; "))
             if let missing = source.missingSetup { s += "\n**Before it can run:** \(missing)" }
-            s += source.requiresReview ? "\nKeep adds this source to Sources. Confirm its address there before Run all sources can read it."
-                : source.missingSetup == nil ? "\nKeep adds this source to Sources for Run all sources. Each run reads fresh information within this scope."
-                : "\nKeep adds it to Sources, but it won't run until then."
+            s += source.requiresReview ? "\nKeep adds it to Jobs. Confirm its address there before it can run."
+                : source.missingSetup == nil ? "\nKeep adds it to Jobs, where Run now and Run all reading jobs read it. Each run reads fresh information within this scope."
+                : "\nKeep adds it to Jobs, but it won't run until then."
             s += "\nThe demonstration is an example, not a collected result or permission to send, edit, or scan the whole account."
         }
         if let source = d.calendarSource {
@@ -465,7 +464,7 @@ final class Assistant: ObservableObject {
             s += "\n**Still unclear:** " + (source.uncertainties.isEmpty ? "No additional uncertainties recorded; review any fields marked Not established." : source.uncertainties.joined(separator: "; "))
             s += "\nThe demonstrated dates and events are examples. A calendar read will collect fresh results separately."
         } else if teachingCalendar && d.readingSource == nil {
-            s += "\n\n**Reading source not established**\nKeep cannot register this draft for Run all sources. Show the source address, account and the bounded information to read, then discard this draft and teach it again."
+            s += "\n\n**Reading source not established**\nKeep cannot add this draft to Jobs. Show the source address, account and the bounded information to read, then discard this draft and teach it again."
         }
         if !d.screensMarkdown.isEmpty { s += "\n\n## Screens\n" + d.screensMarkdown }
         if !d.glossaryMarkdown.isEmpty { s += "\n\n## Glossary\n" + d.glossaryMarkdown }
@@ -942,16 +941,16 @@ final class Assistant: ObservableObject {
 
     // MARK: saved jobs
 
-    /// A saved-job tool changed something: a factual line on the pad, and a way to see it in Manage sources.
+    /// A saved-job tool changed something: a factual line on the pad, and a way to see it in Jobs.
     private func sourceChanged(_ receipt: String) {
         transcript.append(ChatMessage(role: .receipt, text: receipt))
-        if !pendingSourceTabs.contains(Self.openSourcesTab) { pendingSourceTabs.append(Self.openSourcesTab) }
+        if !pendingSourceTabs.contains(Self.openJobsTab) { pendingSourceTabs.append(Self.openJobsTab) }
     }
 
-    /// A watch-list tool changed something: a factual line on the pad, and a way to see it on the Watches page.
+    /// A watch-list tool changed something: a factual line on the pad, and a way to see it in Jobs.
     private func watchListChanged(_ receipt: String) {
         transcript.append(ChatMessage(role: .receipt, text: receipt))
-        if !pendingSourceTabs.contains(Self.openWatchesTab) { pendingSourceTabs.append(Self.openWatchesTab) }
+        if !pendingSourceTabs.contains(Self.openJobsTab) { pendingSourceTabs.append(Self.openJobsTab) }
     }
 
     /// The chat offered to run a job: a tab the person can tap. Nothing runs until they do.
