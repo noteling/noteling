@@ -172,9 +172,12 @@ enum CardInboxFormat {
                 rememberResolution(&card)
                 fill(&card, from: entry)
                 if var link = card.inbox, link.goneAt != nil {
+                    // Its script stopped reporting it and now reports it again: a new occurrence, so a resolved card
+                    // opens again, whoever resolved the last one. While it is reported all along, theirs stands.
                     link.goneAt = nil
-                    if link.resolvedByInbox, card.disposition == .resolved { card.disposition = .unreviewed }
+                    if card.disposition == .resolved { card.disposition = .unreviewed }
                     link.resolvedByInbox = false
+                    link.resolvedParts = nil
                     card.inbox = link
                 }
                 // Resolved by the person: only a part that wasn't there then opens it again.

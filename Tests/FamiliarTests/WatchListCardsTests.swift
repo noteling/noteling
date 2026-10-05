@@ -283,14 +283,16 @@ struct WatchListCardsTests {
         run { $0.items[0] = item("123", red(13, 10)) }
         #expect(fixture.store.cards.first?.disposition == .resolved)
         #expect(fixture.store.cards.first?.meaning.contains("Price: 13 — expected 10") == true)   // its words follow the runs
-        // Everything fine, then that item wrong again: not a new one, so still resolved.
-        run { $0.items[0] = item("123", .asExpected) }
-        #expect(fixture.store.cards.first?.disposition == .resolved && fixture.store.cards.first?.inbox?.goneAt != nil)
-        run { $0.items[0] = item("123", red(12, 10)) }
-        #expect(fixture.store.cards.first?.disposition == .resolved && fixture.store.cards.first?.inbox?.goneAt == nil)
         // Another item goes wrong: it opens again.
         run { $0.items[1] = item("456", .couldNotCheck("Signed out")) }
         #expect(fixture.store.cards.first?.disposition == .unreviewed)
+        #expect(fixture.store.cards.count == 1)
+        // Resolved, everything fine, then the same item wrong again: the problem came back, so it opens again.
+        try fixture.store.setCardResolution(cardID: id, resolved: true)
+        run { $0.items[0] = item("123", .asExpected); $0.items[1] = item("456", .asExpected) }
+        #expect(fixture.store.cards.first?.disposition == .resolved && fixture.store.cards.first?.inbox?.goneAt != nil)
+        run { $0.items[0] = item("123", red(12, 10)) }
+        #expect(fixture.store.cards.first?.disposition == .unreviewed && fixture.store.cards.first?.inbox?.goneAt == nil)
         #expect(fixture.store.cards.count == 1)
 
         // Resolved again, and a card the person took and then put back is theirs to decide.

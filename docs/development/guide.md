@@ -640,14 +640,14 @@ A script makes a card in Morning Files by writing a file, with no model involved
   dropped. A card from the inbox never runs anything: `MorningStore.enqueue` refuses it, a card discussion can't change
   its options, and it has no Edit. A card with a `url` and no button that opens a page gets **Open page**.
 - `parts` (up to 1,000 strings) says what the matter is made of, such as which items are wrong. A card the person
-  resolved stays resolved, however its file changes, until a file names a part it didn't have when they resolved it;
-  then it opens again. Without `parts`, nothing a file says opens it.
+  resolved stays resolved while its file stays, however it changes, until it names a part it didn't have when they
+  resolved it; then it opens again. Without `parts`, nothing a file says while it stays opens it.
 - **Identity** is `<source>/<id>`: the folder, and the file's name without `.json`. Writing the file again changes the
   same card's title, body, page, severity, buttons and details, and nothing the person did: their decision, their
   context, the folder's name.
 - **Deleting the file** means the matter went away. A card nobody had decided anything about is resolved; a card the
-  person took keeps their decision and says "Its script no longer reports this". A file that comes back reopens a card
-  its deletion resolved.
+  person took keeps their decision and says "Its script no longer reports this". A file that comes back is the matter
+  again: a resolved card opens again, whoever resolved it, and a card the person took keeps their decision.
 - A file that can't be read (not JSON, no title, bigger than 64 KB) is never deleted and never resolves its card: the log
   says why once, and its source's folder in Morning Files lists it until it is fixed. A source shows up to 500 cards and
   up to 100 sources are read; files past that are listed, and their cards stay as they are.
@@ -674,8 +674,9 @@ os.replace(path + ".tmp", path)   # the whole file at once, so Noteling never re
 **Cards from watches.** On by default, each watch has one card, however long its list: `cards/inbox/watch-<path>/job.json`,
 written by Noteling (`WatchListCards`) at the end of each run, when what the run found changed, with what it found as it
 found it, and no model. A run with nothing wrong deletes it, so the card resolves; problems in a later run write it
-again, and the same card opens again. If the person resolved the card while items were still wrong, it stays resolved
-until a run finds an item wrong that wasn't when they resolved it (the file's `parts` are its wrong items). A watch being
+again, and the same card opens again, even one the person resolved. If they resolved it while items were still wrong,
+it stays resolved through runs that find the same items wrong, until one finds an item wrong that wasn't when they
+resolved it (the file's `parts` are its wrong items), or everything is fine and something goes wrong again. A watch being
 checked keeps its card as it was until its run ends. `"cards": "all"` keeps the card always, `"cards": false` gives
 none, and a team job that's off has none: turning it off deletes its file, as do a watch that's gone and one whose
 cards are turned off, at launch, at each tick and after each run.

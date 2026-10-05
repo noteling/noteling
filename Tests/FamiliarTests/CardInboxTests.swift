@@ -130,13 +130,17 @@ struct CardInboxTests {
         #expect(fixture.store.cards.first { $0.id == new }?.inbox?.goneAt == nil)
         #expect(fixture.store.cards.first { $0.id == taken }?.disposition == .mine)
 
-        // A card the person resolved stays resolved when its file comes and goes.
+        // A card the person resolved stays resolved while its file stays…
         try fixture.store.setCardResolution(cardID: taken, resolved: true)
+        try fixture.write("deals", "taken", #"{"title": "I took this one, still"}"#)
+        fixture.inbox.scan(at: gone.addingTimeInterval(90))
+        #expect(fixture.store.cards.first { $0.id == taken }?.disposition == .resolved)
+        // …but a file that went away and comes back is a new occurrence: it opens again, whoever resolved it.
         try fixture.delete("deals", "taken")
         fixture.inbox.scan(at: gone.addingTimeInterval(120))
         try fixture.write("deals", "taken", #"{"title": "I took this one"}"#)
         fixture.inbox.scan(at: gone.addingTimeInterval(180))
-        #expect(fixture.store.cards.first { $0.id == taken }?.disposition == .resolved)
+        #expect(fixture.store.cards.first { $0.id == taken }?.disposition == .unreviewed)
 
         // A whole folder gone is every card in it gone.
         try FileManager.default.removeItem(at: fixture.directory.appendingPathComponent("deals"))
