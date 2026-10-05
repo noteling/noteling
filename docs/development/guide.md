@@ -356,6 +356,28 @@ current by itself, without git (`Sources/Familiar/ToolPacks/LinkedTools.swift`).
   the folder its pack is loaded from, and never outside it. Scripts run as they do from your own folder;
   `NOTELING_TOOL_DIR` points into the copy, which each update replaces, so a script should keep state elsewhere.
 
+### Setup files (`.notelingsetup`)
+Whoever supports a group can hand out one file instead of explaining Settings: double-clicking it (or **Settings → Team
+tools from GitHub → Import setup file…**) links the team's tools and saves the secrets they need
+(`Sources/Familiar/Configuration/NotelingSetup.swift`).
+```json
+{"noteling_setup": 1, "name": "Holiday pilot",
+ "tools_repo": {"url": "https://github.example.com/team/tools", "token": "github_pat_…", "branch": "main"},
+ "secrets": {"SHOP_API_KEY": "…"}}
+```
+- It can set only the team tools' address, token and branch, and secrets for tool packs. Anything else in the file is
+  listed as not used and never applied; the Claude connection comes from the team's `noteling.json` as for anyone
+  linked by hand. The repository's token goes under `tools_repo`, never among the secrets.
+- Noteling first says what it will do (the repository, whether it replaces the team tools linked now, the names of the
+  secrets, never their values) and applies it only on **Set up**. Then it checks the repository right away and says how
+  it went: what is linked, how many tool packs and team jobs came with it, with **Open Jobs**; or why it isn't linked
+  yet, while the setup stays saved and the usual 10-minute checks keep trying.
+- The type is registered by the app (`app.noteling.setup`, extension `notelingsetup`, in `Info.plist`), so Finder opens
+  such files with Noteling. A file over 64 KB, without `"noteling_setup": 1`, from a newer version, or that sets nothing
+  is refused with the reason. Noteling doesn't keep the file: the token and secrets go to the Keychain (the secrets file
+  in dev builds), and the file can be deleted afterwards. Anyone with the file can read the token in it, so give it a
+  read-only token for that one repository, and share it only inside the team.
+
 ### Team settings (`noteling.json`)
 A team that reaches Claude through its own gateway can set the connection for everyone who links its tools, so nobody
 hands config files around. `noteling.json` at the root of the linked repository (a reserved name there; it is not a

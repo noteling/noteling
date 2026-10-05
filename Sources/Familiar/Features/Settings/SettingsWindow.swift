@@ -27,6 +27,8 @@ final class SettingsModel: ObservableObject {
     @Published var hideFromScreenShare = false
     @Published var notesShortcut = true
     @Published var showMorningFolder = true
+    /// Opens a team's setup file (`.notelingsetup`); set by the app.
+    var importSetup: (() -> Void)?
     @Published var startAtLogin = false
     @Published var allowControl = false
     @Published var controlInBackground = true
@@ -450,10 +452,15 @@ private struct LinkedToolsRow: View {
                 }
             }
             Spacer()
-            Button(model.toolsRepoChanged ? "Save and update" : "Update now") {
-                if model.toolsRepoChanged { onSave() } else { Task { await updater.check() } }
+            VStack(alignment: .trailing, spacing: 6) {
+                Button(model.toolsRepoChanged ? "Save and update" : "Update now") {
+                    if model.toolsRepoChanged { onSave() } else { Task { await updater.check() } }
+                }
+                .disabled(updater.checking || (model.toolsRepo.isEmpty && !model.toolsRepoChanged))
+                if let importSetup = model.importSetup {
+                    Button("Import setup file…", action: importSetup).help("A .notelingsetup file from your team: it links their tools for you")
+                }
             }
-            .disabled(updater.checking || (model.toolsRepo.isEmpty && !model.toolsRepoChanged))
         }
     }
 }

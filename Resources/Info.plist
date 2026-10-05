@@ -15,6 +15,25 @@
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><false/>
     <key>NSHighResolutionCapable</key><true/>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key><string>Noteling setup</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>Owner</string>
+            <key>LSItemContentTypes</key><array><string>app.noteling.setup</string></array>
+        </dict>
+    </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key><string>app.noteling.setup</string>
+            <key>UTTypeDescription</key><string>Noteling setup</string>
+            <key>UTTypeConformsTo</key><array><string>public.json</string><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>notelingsetup</string></array></dict>
+        </dict>
+    </array>
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>NSHumanReadableCopyright</key><string>© 2026 Yang Lu. Code licensed under the Apache License 2.0.</string>
     <key>NSScreenCaptureUsageDescription</key>

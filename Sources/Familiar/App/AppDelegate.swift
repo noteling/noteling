@@ -747,6 +747,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openSettings() {
         origami.cancel()
+        settings.model.importSetup = { [weak self] in self?.chooseSetupFile() }
         settings.show(config: config, packs: registry.packs, linkedTools: linkedTools, onSave: { [weak self] in
             guard let self else { return }
             self.config = self.settings.model.save(into: self.config)
@@ -772,6 +773,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }, onOpenTools: { [weak self] in self?.openTools() }, onReloadTools: { [weak self] in self?.reloadTools() })
     }
     @objc private func openTools() { NSWorkspace.shared.open(config.resolvedToolsDir) }
+
+    // MARK: setup files
+
+    /// A team's setup file, double-clicked in Finder (or dropped on the app's icon).
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.pathExtension.lowercased() == NotelingSetup.fileExtension { offerSetup(url) }
+    }
+
+    /// Settings' Import setup file…
+    private func chooseSetupFile() {
+        let panel = NSOpenPanel()
+        panel.title = "Import a setup file"
+        panel.message = "Choose the .notelingsetup file your team gave you."
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        offerSetup(url)
+    }
+
+    /// Says what the file will do, applies it only if the person agrees, then links and says how that went.
+    private func offerSetup(_ url: URL) {
+        NSApp.activate(ignoringOtherApps: true)
+        let setup: NotelingSetup
+        do {
+            let size = (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+            guard size <= NotelingSetup.maxBytes else {
+                throw NotelingSetupError("This file is too big to be a Noteling setup file (\(size / 1024) KB; a setup file is a few lines).")
+            }
+            setup = try NotelingSetup.parse(Data(contentsOf: url))
+        } catch {
+            setupAlert("This setup file can't be used", error.localizedDescription)
+            return
+        }
+        let ask = NSAlert()
+        ask.messageText = "Set up Noteling with “\(setup.name)”?"
+        ask.informativeText = setup.summary(currentRepo: config.toolsRepo)
+        ask.addButton(withTitle: "Set up")
+        ask.addButton(withTitle: "Cancel")
+        guard ask.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            try setup.apply(to: &config, setSecret: { Secrets.set($0, $1) })
+            config.save()
+        } catch {
+            setupAlert("Noteling isn't fully set up", error.localizedDescription)
+            return
+        }
+        Log.info("setup: applied “\(setup.name)” (tools repo: \(setup.toolsRepo == nil ? "no" : "yes"), \(setup.secrets.count) secret(s))")
+        guard setup.toolsRepo != nil else {
+            setupAlert("Noteling is set up", "Saved \(setup.secrets.count == 1 ? "1 secret" : "\(setup.secrets.count) secrets") in your Keychain.")
+            return
+        }
+        Task { @MainActor in
+            await self.linkedTools.check()
+            if let problem = self.linkedTools.record?.lastError {
+                self.setupAlert("The setup is saved, but your team's tools aren't linked yet",
+                                problem + " Noteling tries again every 10 minutes; Settings › Team tools from GitHub shows how it's going.")
+                return
+            }
+            let packs = self.registry.packs.filter(\.linked).count
+            let jobs = NotelingSetup.teamJobCount(in: self.registry.linkedRoot)
+            let done = NSAlert()
+            done.messageText = "Noteling is set up"
+            done.informativeText = "Linked \(self.linkedTools.status())."
+                + " \(packs == 1 ? "1 tool pack" : "\(packs) tool packs") and \(jobs == 1 ? "1 team job" : "\(jobs) team jobs") came with it."
+                + (jobs > 0 ? " Turn on the jobs that are yours in Jobs." : "")
+            done.addButton(withTitle: jobs > 0 ? "Open Jobs" : "Done")
+            if jobs > 0 { done.addButton(withTitle: "Later") }
+            if done.runModal() == .alertFirstButtonReturn, jobs > 0 { self.morningPanel.showJobs() }
+        }
+    }
+
+    private func setupAlert(_ title: String, _ text: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = text
+        alert.runModal()
+    }
     @objc private func openConfig() { NSWorkspace.shared.open(Config.file) }
     @objc private func openLog() { NSWorkspace.shared.open(Config.logFile) }
 

@@ -66,6 +66,8 @@ The attention test measures whether cards show you what matters and leave the re
 
 ## Team tools from GitHub
 
+**Setup files.** A setup file (`.notelingsetup`) someone gives you sets up the link for you. Noteling shows what it will do before doing anything: the repository it links, and the names of any secrets it saves. Only after you choose **Set up** does it save the repository's address in its settings and the token and secrets in your Keychain (in `secrets.json` in developer builds). Noteling doesn't keep the file; you can delete it afterwards. The file can't change any other setting.
+
 This is off until you link a repository in **Settings → Team tools from GitHub**. Then:
 
 - **What is contacted.** Only the host in the address you entered: for github.com, GitHub's API and download hosts (`api.github.com` and `codeload.github.com`); for a GitHub Enterprise address, that host and its subdomains. Requests go through your Mac's proxy settings. At launch, every 10 minutes, and when you choose **Update now** or save a changed address or token, Noteling asks which commit the repository's branch is at. Requests carry the token, if you entered one, and name the app as Noteling; they say nothing about you, your screen or your notes.
