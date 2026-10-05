@@ -20,10 +20,11 @@ struct MorningLauncherView: View {
     @ObservedObject var store: MorningStore
     let open: () -> Void
     let people: () -> Void
+    var hide: () -> Void = {}
     private var count: Int { store.cards.filter { $0.displayDisposition == .unreviewed }.count }
     var body: some View {
         ZStack {
-            WindowDragHandle(onClick: open)
+            WindowDragHandle(onClick: open, menu: [("Open Morning Files", open), ("Who’s Who", people), ("Hide Morning folder", hide)])
             VStack(spacing: 0) {
                 ZStack(alignment: .topTrailing) {
                     MorningFolderDrawing().frame(width: 61, height: 46)
@@ -43,8 +44,7 @@ struct MorningLauncherView: View {
         .accessibilityLabel("Open morning folders, \(count) files to review")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { open() }
-        .help("Click to open. Drag to move.")
-        .contextMenu { Button("Open morning folders", action: open); Button("Who’s Who", action: people) }
+        .help("Click to open. Drag to move. Right-click to hide it.")
     }
 }
 
@@ -754,8 +754,8 @@ struct MorningActionButton: ButtonStyle {
     }
 }
 
-/// A folder on the home: a click opens it, the eye in its corner hides it (or shows it again), and a right-click offers
-/// the rest. A plain view with a tap rather than a Button, whose own click handling can keep a right-click menu closed.
+/// A folder on the home: a click opens it, and a right-click offers Rename, Create a note and Hide (or Show). A plain
+/// view with a tap rather than a Button, whose own click handling can keep a right-click menu closed.
 private struct MorningFolderTile: View {
     let folder: MorningFolder
     let count: Int
@@ -763,7 +763,6 @@ private struct MorningFolderTile: View {
     let rename: () -> Void
     let createNote: () -> Void
     let toggleHidden: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -772,19 +771,6 @@ private struct MorningFolderTile: View {
             Text("\(count) \(count == 1 ? "file" : "files")").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-        .overlay(alignment: .topTrailing) {
-            // Always there, faint until pointed at: hover alone can't be relied on in the floating panel, which doesn't
-            // take focus from the app you're in, but a click always lands.
-            Button(action: toggleHidden) {
-                Image(systemName: folder.isHidden ? "eye" : "eye.slash").font(.system(size: 13)).foregroundStyle(Pad.inkSoft)
-                    .padding(6).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).opacity(hovering || folder.isHidden ? 1 : 0.45)
-            .help(folder.isHidden ? "Show folder" : "Hide folder")
-            .accessibilityLabel(folder.isHidden ? "Show \(folder.name)" : "Hide \(folder.name)")
-            .padding(4)
-        }
-        .onHover { hovering = $0 }
         .onTapGesture(perform: open)
         .contextMenu {
             Button("Rename folder", action: rename)

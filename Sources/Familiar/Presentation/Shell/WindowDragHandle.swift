@@ -10,17 +10,42 @@ import SwiftUI
 struct WindowDragHandle: NSViewRepresentable {
     var onClick: (() -> Void)? = nil
     var onFinished: (NSWindow) -> Void = { _ in }
+    /// What a right-click on the handle offers. The handle takes every mouse event, so a SwiftUI menu on what it covers
+    /// would never open; it shows this one itself.
+    var menu: [(title: String, action: () -> Void)] = []
 
     func makeNSView(context: Context) -> NSView { DragView() }
     func updateNSView(_ nsView: NSView, context: Context) {
         guard let view = nsView as? DragView else { return }
         view.onClick = onClick
         view.onFinished = onFinished
+        view.items = menu
+    }
+
+    /// A right-click menu whose items run closures.
+    static func menu(_ items: [(title: String, action: () -> Void)]) -> NSMenu? {
+        guard !items.isEmpty else { return nil }
+        let menu = NSMenu()
+        for item in items { menu.addItem(ClosureMenuItem(title: item.title, action: item.action)) }
+        return menu
+    }
+
+    final class ClosureMenuItem: NSMenuItem {
+        private let run: () -> Void
+        init(title: String, action: @escaping () -> Void) {
+            run = action
+            super.init(title: title, action: #selector(runAction), keyEquivalent: "")
+            target = self
+        }
+        required init(coder: NSCoder) { fatalError("init(coder:) is not used") }
+        @objc func runAction() { run() }
     }
 
     private final class DragView: NSView {
         var onClick: (() -> Void)?
         var onFinished: (NSWindow) -> Void = { _ in }
+        var items: [(title: String, action: () -> Void)] = []
+        override func menu(for event: NSEvent) -> NSMenu? { WindowDragHandle.menu(items) }
         private var startPoint: NSPoint?
         private var startFrame: NSRect?
         private var didDrag = false

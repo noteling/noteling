@@ -50,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var watcherMenuItem: NSMenuItem!
     private var hideMenuItem: NSMenuItem!
+    private var morningFolderMenuItem: NSMenuItem!
     private var screenPermItem: NSMenuItem!
     private var axPermItem: NSMenuItem!
     private var toolsMenuItem: NSMenuItem!
@@ -226,7 +227,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupWatchList()   // before the panel, which shows the watches
         morningPanel = MorningPanelController(store: morning, hideFromScreenShare: config.hideFromScreenShare,
                                              calendarSources: calendarSources, calendarRunner: calendarReader, cardGeneration: cardGeneration,
-                                             attention: attention, watches: watchList?.panel)
+                                             attention: attention, watches: watchList?.panel, showLauncher: config.showMorningFolder)
+        morningPanel.onLauncherShownChanged = { [weak self] shown in
+            guard let self else { return }
+            self.config.showMorningFolder = shown
+            self.config.save()
+        }
         morningPanel.onDiscussCard = { [weak self] card in
             guard let self, self.assistant.discussCard(card) else { return }
             self.openChat()
@@ -350,6 +356,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         menu.autoenablesItems = false
         menu.addItem(NSMenuItem(title: "Morning Files…", action: #selector(menuShowMorning), keyEquivalent: ""))
+        morningFolderMenuItem = NSMenuItem(title: "Hide Morning Folder", action: #selector(toggleMorningFolder), keyEquivalent: "")
+        menu.addItem(morningFolderMenuItem)
         menu.addItem(NSMenuItem(title: "Who’s Who…", action: #selector(menuShowPeople), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Watches…", action: #selector(menuShowWatches), keyEquivalent: ""))
         menu.addItem(.separator())
@@ -496,6 +504,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             : "Stop Working in \(assistant.peek.appName)   \(HotKey.display(config.hotkey))"
         tasksMenuItem.isEnabled = desktop.tasks.hasTasks
         hideMenuItem.isEnabled = panel.isVisible || origami.isFlying
+        morningFolderMenuItem.title = morningPanel.launcherShown ? "Hide Morning Folder" : "Show Morning Folder"
         origamiMenuItem.title = origami.isFlying ? "Land Noteling   Esc" : "Fold into a Crane"
         origamiMenuItem.isEnabled = origami.isFlying || canTakeOrigamiFlight
         let scripts = registry.packs.reduce(0) { $0 + $1.scripts.count }
@@ -513,6 +522,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     @objc private func menuShowTasks() { desktop.tasks.show() }
     @objc private func menuShowMorning() { morningPanel.show() }
+    /// The little Morning folder on the screen, put away or brought back; Morning Files still opens from the menu.
+    @objc private func toggleMorningFolder() { morningPanel.setLauncherShown(!morningPanel.launcherShown) }
     @objc private func menuShowPeople() { morningPanel.showPeople() }
     @objc private func menuWatch() {
         if assistant.watching { stopWatchingAndShow() } else { assistant.startWatching() }
@@ -752,6 +763,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.control.preciseClicks = self.config.backgroundPreciseClicks
             self.control.virtualDisplayEnabled = self.config.backgroundVirtualDisplay
             self.wand.hideFromScreenShare = self.config.hideFromScreenShare
+            self.morningPanel.setLauncherShown(self.config.showMorningFolder, notify: false)
             if self.config.notesShortcut { self.notesShortcut.start() } else { self.notesShortcut.stop() }
             self.morningTasks.wake()
             self.cardGeneration?.start()

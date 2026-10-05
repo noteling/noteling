@@ -97,6 +97,8 @@ Your team’s scripts can put cards in Morning Files too, by writing a small fil
 
 A folder you don’t need in Morning Files can be hidden: right-click it, or open it, and choose **Hide folder**. Nothing in it is deleted and new files still arrive; **Hidden folders · Show** at the bottom of the home brings it back.
 
+The little Morning folder on your screen can be put away too: right-click it and choose **Hide Morning folder**, or use **Hide Morning Folder** in the menu bar, or the switch in Settings. Morning Files still opens from the menu bar, and **Show Morning Folder** brings the folder back.
+
 ## Your information, your control
 
 Your saved sources, cards, and run history are stored on your Mac, and Noteling sends nothing to its developer. AI features send what a request needs to your configured Claude connection. Depending on the request, that can include screenshots, text from the window you’re using, the apps and web addresses you used recently, what Noteling reads from your sources, and the lessons you teach, in your own words. **Watch Me** records only the demonstration you start. The [privacy notice](PRIVACY.md) lists exactly what is stored, what is sent, and how to delete it.

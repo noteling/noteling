@@ -31,8 +31,9 @@ import QuartzCore
     /// Only the little folder is shown at launch. Opening a file is always an explicit action.
     init(store: MorningStore, hideFromScreenShare: Bool, calendarSources: CalendarStore? = nil,
          calendarRunner: CalendarCollectionRunner? = nil, cardGeneration: CardGenerationService? = nil,
-         attention: AttentionLedger? = nil, watches: WatchListPanel? = nil) {
+         attention: AttentionLedger? = nil, watches: WatchListPanel? = nil, showLauncher: Bool = true) {
         self.store = store
+        launcherShown = showLauncher
         self.attention = attention
         launcher = MorningPanel(title: "Morning folder", hideFromScreenShare: hideFromScreenShare)
         panel = MorningPanel(title: "Morning files", hideFromScreenShare: hideFromScreenShare)
@@ -43,7 +44,7 @@ import QuartzCore
         launcher.contentView = NSHostingView(rootView: MorningLauncherView(store: store, open: { [weak self] in
             guard let self else { return }
             self.panel.isVisible ? self.hideContents() : self.show(trigger: .launcher)
-        }, people: { [weak self] in self?.showPeople() }))
+        }, people: { [weak self] in self?.showPeople() }, hide: { [weak self] in self?.setLauncherShown(false) }))
         panel.contentView = NSHostingView(rootView: MorningFilesView(
             store: store, navigation: navigation,
             close: { [weak self] in self?.hideContents() },
@@ -60,7 +61,7 @@ import QuartzCore
             .receive(on: RunLoop.main)
             .sink { [weak self] _, _ in self?.position() }
         position()
-        launcher.orderFrontRegardless()
+        if launcherShown { launcher.orderFrontRegardless() }
         screenObservation = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in MainActor.assumeIsolated { self?.position() } }
@@ -103,6 +104,23 @@ import QuartzCore
         openContents(nil)
     }
 
+    /// Whether the little Morning folder sits on the screen. Hidden, Morning Files still opens from the menu bar.
+    private(set) var launcherShown = true
+    /// The person hid or showed the folder: the app remembers it.
+    var onLauncherShownChanged: ((Bool) -> Void)?
+
+    func setLauncherShown(_ shown: Bool, notify: Bool = true) {
+        guard shown != launcherShown else { return }
+        launcherShown = shown
+        if shown {
+            position()
+            if !hiddenForForegroundGrant { launcher.orderFrontRegardless() }
+        } else {
+            launcher.orderOut(nil)
+        }
+        if notify { onLauncherShownChanged?(shown) }
+    }
+
     func setHiddenForForegroundGrant(_ hidden: Bool) {
         hiddenForForegroundGrant = hidden
         if hidden {
@@ -111,7 +129,7 @@ import QuartzCore
             flight?.orderOut(nil)
         } else {
             position()
-            launcher.orderFrontRegardless()
+            if launcherShown { launcher.orderFrontRegardless() }
             // Returning from a desktop grant must never take keyboard focus.
             if contentsRequested { panel.orderFrontRegardless() }
             if contentsRequested, let heldOpen { recordOpen(heldOpen.trigger, wasOpen: heldOpen.wasOpen) }
