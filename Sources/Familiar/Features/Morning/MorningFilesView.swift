@@ -754,8 +754,8 @@ struct MorningActionButton: ButtonStyle {
     }
 }
 
-/// A folder on the home: a click opens it, hovering shows Hide (or Show), and a right-click offers the rest. A plain view
-/// with a tap rather than a Button, whose own click handling can keep a right-click menu from opening in the floating panel.
+/// A folder on the home: a click opens it, the eye in its corner hides it (or shows it again), and a right-click offers
+/// the rest. A plain view with a tap rather than a Button, whose own click handling can keep a right-click menu closed.
 private struct MorningFolderTile: View {
     let folder: MorningFolder
     let count: Int
@@ -773,15 +773,16 @@ private struct MorningFolderTile: View {
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         .overlay(alignment: .topTrailing) {
-            if hovering || folder.isHidden {
-                Button(action: toggleHidden) {
-                    Image(systemName: folder.isHidden ? "eye" : "eye.slash").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
-                        .padding(6).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain).help(folder.isHidden ? "Show folder" : "Hide folder")
-                .accessibilityLabel(folder.isHidden ? "Show \(folder.name)" : "Hide \(folder.name)")
-                .padding(4)
+            // Always there, faint until pointed at: hover alone can't be relied on in the floating panel, which doesn't
+            // take focus from the app you're in, but a click always lands.
+            Button(action: toggleHidden) {
+                Image(systemName: folder.isHidden ? "eye" : "eye.slash").font(.system(size: 13)).foregroundStyle(Pad.inkSoft)
+                    .padding(6).contentShape(Rectangle())
             }
+            .buttonStyle(.plain).opacity(hovering || folder.isHidden ? 1 : 0.45)
+            .help(folder.isHidden ? "Show folder" : "Hide folder")
+            .accessibilityLabel(folder.isHidden ? "Show \(folder.name)" : "Hide \(folder.name)")
+            .padding(4)
         }
         .onHover { hovering = $0 }
         .onTapGesture(perform: open)

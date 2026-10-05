@@ -302,4 +302,11 @@ private final class MorningPanel: NSPanel {
     }
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// A click on a button leaves the panel unfocused, so the app you're in keeps your typing. A right-click focuses it
+    /// first, because its menu (Rename, Hide folder…) only opens in a window that has focus.
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .rightMouseDown, !isKeyWindow { makeKey() }
+        super.sendEvent(event)
+    }
 }
