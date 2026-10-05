@@ -74,6 +74,83 @@ struct ClaudeClientTests {
         #expect(reply.toolCalls == 2)
     }
 
+    /// A turn that can't take control (a card discussion, a watch item's explanation) follows one that used the computer.
+    /// The API refuses a history naming a toolset the request doesn't declare ("toolset_name 'computer' on a tool_use block
+    /// is not the family of a declared toolset entry"), so those earlier steps go out as words, and the kept history stays.
+    @Test
+    func anEarlierComputerStepGoesAsWordsWhenThisTurnCantTakeControl() async throws {
+        let fixture = try HTTPFixture(responses: [
+            HTTPFixture.Response(json: ["stop_reason": "end_turn", "content": [["type": "text", "text": "Because the page is behind."]]]),
+        ])
+        defer { fixture.close() }
+        let client = ClaudeClient(options: options(baseURL: fixture.baseURL), session: fixture.session)
+        let earlier: [[String: Any]] = [
+            ["role": "user", "content": "Open the item page."],
+            ["role": "assistant", "content": [
+                ["type": "thinking", "thinking": "Click it.", "signature": "fixture-signature"],
+                ["type": "text", "text": "Opening it."],
+                ["type": "tool_use", "id": "click-1", "name": "left_click", "toolset_name": "computer", "input": ["coordinate": [10, 20]]],
+                ["type": "tool_use", "id": "lookup-1", "name": "shop__brief", "input": ["item": "123"]],
+            ]],
+            ["role": "user", "content": [
+                ["type": "tool_result", "tool_use_id": "click-1", "toolset_name": "computer", "content": [
+                    ["type": "text", "text": "Clicked."],
+                    ["type": "image", "source": ["type": "base64", "media_type": "image/png", "data": "ZmFrZQ=="]],
+                ]],
+                ["type": "tool_result", "tool_use_id": "lookup-1", "content": "{\"price\": 12.33}"],
+            ]],
+            ["role": "assistant", "content": [["type": "text", "text": "It's open."]]],
+            ["role": "user", "content": "Why?"],
+        ]
+        var messages = earlier
+        let tools: [[String: Any]] = [["name": "shop__brief", "description": "Brief", "input_schema": ["type": "object", "properties": [:]]]]
+        _ = try await client.converse(system: "Explain.", tools: tools, messages: &messages,
+                                      executor: { _, _, _ in Issue.record("Unexpected tool call"); return .text("unexpected") },
+                                      onStatus: { _ in })
+
+        let sent = try #require(fixture.requests.first?.body["messages"] as? [[String: Any]])
+        let blocks = sent.flatMap { ($0["content"] as? [[String: Any]]) ?? [] }
+        #expect(!blocks.contains { $0["toolset_name"] as? String == "computer" })
+        #expect(!blocks.contains { ($0["tool_use_id"] as? String) == "click-1" || ($0["id"] as? String) == "click-1" })
+        // The step and its result are still there, in words; the declared tool's call and result are untouched.
+        let words = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined(separator: "\n")
+        #expect(words.contains("left_click") && words.contains("Clicked."))
+        #expect(blocks.contains { $0["id"] as? String == "lookup-1" } && blocks.contains { $0["tool_use_id"] as? String == "lookup-1" })
+        // A rewritten turn leaves its thinking out: its signature covers the turn as it was.
+        let rewritten = try #require(sent[1]["content"] as? [[String: Any]])
+        #expect(!rewritten.contains { $0["type"] as? String == "thinking" })
+        // In the results message, the remaining tool results still come first.
+        let results = try #require(sent[2]["content"] as? [[String: Any]])
+        #expect(results.first?["type"] as? String == "tool_result")
+        #expect(sent.count == earlier.count)   // same turns, so roles still alternate
+        // What the conversation keeps is unchanged: a later turn that can take control sends it as it was.
+        #expect(NSArray(array: Array(messages.prefix(earlier.count))).isEqual(to: earlier))
+    }
+
+    @Test
+    func aHistoryIsSentAsItIsWhenItsToolsetsAreDeclared() {
+        let history: [[String: Any]] = [
+            ["role": "user", "content": "Click it."],
+            ["role": "assistant", "content": [["type": "tool_use", "id": "c", "name": "left_click", "toolset_name": "computer", "input": [:]]]],
+            ["role": "user", "content": [["type": "tool_result", "tool_use_id": "c", "toolset_name": "computer", "content": "Clicked."]]],
+        ]
+        #expect(NSArray(array: ClaudeClient.fitted(history, to: [["type": "computer_toolset_20260801"]])).isEqual(to: history))
+        let fitted = ClaudeClient.fitted(history, to: [])
+        #expect((fitted[1]["content"] as? [[String: Any]])?.first?["text"] as? String == "[Earlier, with the computer: left_click]")
+        #expect((fitted[2]["content"] as? [[String: Any]])?.first?["text"] as? String == "[What it gave: Clicked.]")
+        #expect(fitted[0]["content"] as? String == "Click it.")   // plain turns untouched
+    }
+
+    @Test
+    func toolsetFamiliesAndResultWords() {
+        #expect(ClaudeClient.toolsetFamily("computer_toolset_20260801") == "computer")
+        #expect(ClaudeClient.toolsetFamily("web_search_20260209") == nil)
+        #expect(ClaudeClient.resultWords("Done.") == "Done.")
+        #expect(ClaudeClient.resultWords([["type": "text", "text": "Clicked."], ["type": "image", "source": [:]]]) == "Clicked. a screenshot")
+        #expect(ClaudeClient.resultWords(nil) == "nothing")
+        #expect(ClaudeClient.resultWords(String(repeating: "a", count: 400)).count == 301)
+    }
+
     @Test
     func gatewayHeadersAndModelOptionsRemainSpecificToEachClient() async throws {
         let success = try HTTPFixture.Response(json: ["stop_reason": "end_turn", "content": [["type": "text", "text": "Ready."]]])

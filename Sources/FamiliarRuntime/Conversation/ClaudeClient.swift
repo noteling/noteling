@@ -139,6 +139,65 @@ package final class ClaudeClient: ConversationClient {
         }
     }
 
+    /// The history as this request can send it. A step taken with a toolset this request doesn't declare (the computer,
+    /// from an earlier turn that could take control, before a card discussion or a watch item's explanation that can't)
+    /// goes as a line of text, and so does its result: the API refuses a tool_use naming a toolset it wasn't given. A
+    /// rewritten turn leaves its thinking out, since its signature covers the turn as it was. Only what is sent changes;
+    /// the conversation keeps every step, so a later turn that can take control sends them as they were.
+    package static func fitted(_ messages: [[String: Any]], to tools: [[String: Any]]) -> [[String: Any]] {
+        let declared = Set(tools.compactMap { ($0["type"] as? String).flatMap(toolsetFamily) })
+        var rewritten = Set<String>()
+        return messages.map { message in
+            guard let blocks = message["content"] as? [[String: Any]] else { return message }
+            var changed = false
+            var kept: [[String: Any]] = [], words: [[String: Any]] = []
+            for block in blocks {
+                let type = block["type"] as? String
+                if type == "tool_use", let toolset = block["toolset_name"] as? String, !declared.contains(toolset) {
+                    rewritten.insert(block["id"] as? String ?? "")
+                    let step = "\(block["name"] as? String ?? "a step") \(describe(block["input"] as? [String: Any] ?? [:]))"
+                    kept.append(["type": "text", "text": "[Earlier, with the \(toolset): \(step.trimmingCharacters(in: .whitespaces))]"])
+                    changed = true
+                } else if type == "tool_result", let id = block["tool_use_id"] as? String, rewritten.contains(id) {
+                    words.append(["type": "text", "text": "[What it gave: \(resultWords(block["content"]))]"])
+                    changed = true
+                } else {
+                    kept.append(block)
+                }
+            }
+            guard changed else { return message }
+            var content = kept + words   // a results message keeps its remaining tool results first
+            if message["role"] as? String == "assistant" {
+                content.removeAll { ["thinking", "redacted_thinking"].contains($0["type"] as? String ?? "") }
+            }
+            var fitted = message
+            fitted["content"] = content.isEmpty ? [["type": "text", "text": "[an earlier step]"]] : content
+            return fitted
+        }
+    }
+
+    /// The family a toolset declaration belongs to: "computer_toolset_20260801" is the computer.
+    static func toolsetFamily(_ type: String) -> String? {
+        type.range(of: "_toolset_").map { String(type[..<$0.lowerBound]) }
+    }
+
+    /// A tool result as a few words: its text, and "a screenshot" for an image.
+    static func resultWords(_ content: Any?) -> String {
+        let text: String
+        if let plain = content as? String {
+            text = plain
+        } else if let blocks = content as? [[String: Any]] {
+            text = blocks.map { block in
+                block["type"] as? String == "image" ? "a screenshot" : (block["text"] as? String ?? "")
+            }.filter { !$0.isEmpty }.joined(separator: " ")
+        } else {
+            text = ""
+        }
+        let flat = text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
+        if flat.isEmpty { return "nothing" }
+        return flat.count > 300 ? String(flat.prefix(300)) + "…" : flat
+    }
+
     /// A tool's error result as one log line.
     package static func errorLine(_ content: Any) -> String {
         guard let text = content as? String else { return "(non-text result)" }
@@ -158,7 +217,7 @@ package final class ClaudeClient: ConversationClient {
             "max_tokens": maxTokens,
             "output_config": ["effort": effort],
             "system": [["type": "text", "text": system, "cache_control": ["type": "ephemeral"]]],
-            "messages": messages,
+            "messages": Self.fitted(messages, to: tools),
         ]
         if serverFallbacks { body["fallbacks"] = "default" }
         if !tools.isEmpty { body["tools"] = tools }
