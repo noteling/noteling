@@ -80,20 +80,27 @@ struct CardInboxLink: Codable, Equatable {
     var key: String
     /// high, normal or low.
     var severity: String
-    /// Buttons that only open a page or ask Noteling a question in chat.
+    /// Buttons that only open a page, ask Noteling a question in chat, or open a watch's page.
     var actions: [CardInboxAction]
     /// When its file was deleted: the script no longer reports it.
     var goneAt: Date? = nil
     /// Its file's deletion resolved it, rather than the person: the card opens again if the file comes back.
     var resolvedByInbox = false
+    /// What its file says the matter is made of (`parts`), such as which items of a watch are wrong.
+    var parts: [String]? = nil
+    /// The parts it had when the person resolved it: a later file with another part opens it again.
+    var resolvedParts: [String]? = nil
 }
 
-/// One button on an inbox card: open a web page, or ask Noteling something about the card in chat. Never anything else.
+/// One button on an inbox card: open a web page, ask Noteling something about the card in chat, or open a watch's
+/// page in Morning Files. Never anything else.
 struct CardInboxAction: Codable, Equatable, Identifiable {
     var label: String
     var url: String? = nil
     var ask: String? = nil
-    var id: String { label + "\u{1F}" + (url ?? "") + "\u{1F}" + (ask ?? "") }
+    /// A watch's id: the button opens that watch's page, and only when there is such a watch.
+    var watch: String? = nil
+    var id: String { [label, url ?? "", ask ?? "", watch ?? ""].joined(separator: "\u{1F}") }
 }
 
 extension MorningCard {

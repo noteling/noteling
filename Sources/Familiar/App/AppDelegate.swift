@@ -223,9 +223,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         assistant.sourceConversation = sourceConversation
         assistant.onOpenSources = { [weak self] in self?.morningPanel.showSources() }
         assistant.onRunSource = { [weak self] id in self?.runSavedSource(id) }
+        setupWatchList()   // before the panel, which shows the watches
         morningPanel = MorningPanelController(store: morning, hideFromScreenShare: config.hideFromScreenShare,
                                              calendarSources: calendarSources, calendarRunner: calendarReader, cardGeneration: cardGeneration,
-                                             attention: attention)
+                                             attention: attention, watches: watchList?.panel)
         morningPanel.onDiscussCard = { [weak self] card in
             guard let self, self.assistant.discussCard(card) else { return }
             self.openChat()
@@ -244,7 +245,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupHotKey()
         setupWatcher()
         setupWand()
-        setupWatchList()
         setupCardInbox()
         requestPermissionsOnFirstRun()
         Task {
@@ -351,6 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.autoenablesItems = false
         menu.addItem(NSMenuItem(title: "Morning Files…", action: #selector(menuShowMorning), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Who’s Who…", action: #selector(menuShowPeople), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Watches…", action: #selector(menuShowWatches), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Point the Pen   ⌃⌥Space", action: #selector(menuWand), keyEquivalent: ""))
         watchMenuItem = NSMenuItem(title: "Watch Me", action: #selector(menuWatch), keyEquivalent: "")
@@ -360,7 +361,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(stopWorkMenuItem)
         tasksMenuItem = NSMenuItem(title: "Background Tasks…", action: #selector(menuShowTasks), keyEquivalent: "")
         menu.addItem(tasksMenuItem)
-        menu.addItem(NSMenuItem(title: "Watch List…", action: #selector(showWatchList), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Open Chat", action: #selector(openChat), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Show Bubble", action: #selector(menuShowBubble), keyEquivalent: ""))
         hideMenuItem = NSMenuItem(title: "Hide Bubble", action: #selector(menuHideBubble), keyEquivalent: "")
@@ -747,7 +747,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.taskPanel.updateSharing(self.config.hideFromScreenShare)
             self.morningPanel.updateSharing(self.config.hideFromScreenShare)
             self.watchDraftWindow.updateSharing(self.config.hideFromScreenShare)
-            self.watchList?.window.updateSharing(self.config.hideFromScreenShare)
             self.control.maxLongEdge = self.config.maxImageLongEdge
             self.control.hideFromScreenShare = self.config.hideFromScreenShare
             self.control.preciseClicks = self.config.backgroundPreciseClicks
@@ -782,30 +781,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: watch list
 
-    /// Items checked on a schedule by a pack's `watch:` script: the chat's tools, the alerts and the window. The
-    /// schedule starts once the packs have loaded (in `applicationDidFinishLaunching`).
+    /// Items checked on a schedule by a pack's `watch:` script: the chat's tools, the alerts, and their pages in Morning
+    /// Files. Set up before the Morning panel, which shows them; the schedule starts once the packs have loaded (in
+    /// `applicationDidFinishLaunching`).
     private func setupWatchList() {
         let feature = WatchListFeature(registry: registry)
         feature.notifier.activate()
-        feature.notifier.onOpen = { [weak self] watchID, key in self?.openWatchedItem(watchID: watchID, key: key) }
-        feature.window.onWhy = { [weak self] watchID, key in self?.explainWatchedItem(watchID: watchID, key: key) }
+        feature.notifier.onOpen = { [weak feature] watchID, key in feature?.openNotification(watchID: watchID, key: key) }
+        feature.showWatches = { [weak self] in self?.morningPanel?.showWatches() }
+        feature.showWatch = { [weak self] id in self?.morningPanel?.showWatch(id: id) }
+        feature.explain = { [weak self] watchID, key in self?.explainWatchedItem(watchID: watchID, key: key) }
         assistant.watchList = feature.conversation
-        assistant.onOpenWatchList = { [weak self] in self?.showWatchList() }
+        assistant.onOpenWatches = { [weak feature] in feature?.openWatches() }
         watchList = feature
     }
 
-    @objc private func showWatchList() {
-        watchList?.window.show(hideFromScreenShare: config.hideFromScreenShare)
-    }
-
-    /// A clicked notification explains its item in the chat while it is still red or grey; otherwise the window shows it.
-    private func openWatchedItem(watchID: UUID, key: String) {
-        guard watchList?.store.watch(id: watchID)?.item(key)?.needsExplaining == true else { showWatchList(); return }
-        explainWatchedItem(watchID: watchID, key: key)
-    }
+    @objc private func menuShowWatches() { watchList?.openWatches() }
 
     private func explainWatchedItem(watchID: UUID, key: String) {
-        guard let feature = watchList, let watch = feature.store.watch(id: watchID), let item = watch.item(key) else { showWatchList(); return }
+        guard let feature = watchList, let watch = feature.store.watch(id: watchID), let item = watch.item(key) else {
+            watchList?.open(watchID)
+            return
+        }
         openChat()
         assistant.explainWatched(watch, item: item, checkedBy: feature.checkLabel(watch))
     }
@@ -824,10 +821,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         inbox.scan()
     }
 
-    /// A watch's Why? explains its item as a notification does; any other question asks about the card in chat.
+    /// A watch's card asks about its job in general chat, where the watch tools can look it up; any other question asks
+    /// about the card in chat.
     private func askAboutCard(_ card: MorningCard, question: String) {
-        if let key = card.inbox?.key, let (watch, item) = watchList?.item(forCard: key), item.needsExplaining {
-            explainWatchedItem(watchID: watch.id, key: item.key)
+        if let key = card.inbox?.key, let watch = watchList?.watch(forCard: key) {
+            openChat()
+            assistant.askAboutWatch(watch, question: question)
             return
         }
         guard assistant.discussCard(card) else { return }

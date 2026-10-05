@@ -63,7 +63,7 @@ final class Assistant: ObservableObject {
             watchList?.onOfferConnect = { [weak self] _ in self?.offerConnect() }
         }
     }
-    var onOpenWatchList: (() -> Void)?
+    var onOpenWatches: (() -> Void)?
     private var pendingSourceTabs: [String] = []   // added to the reply's tabs when the turn ends
     private var offeredRuns: [String: UUID] = [:]  // Run now tab title → job
 
@@ -111,7 +111,7 @@ final class Assistant: ObservableObject {
     static let retryTab = "Try again"
     static let openSourcesTab = "Open Manage sources"
     static let openSettingsTab = "Open Settings"
-    static let openWatchListTab = "Open Watch List"
+    static let openWatchesTab = "Open Watches"
     static let reservedTabs = [continueTab, skipContextTab, keepTab, fullDraftTab, discardTab, retryTab]
 
     init(config: Config, watcher: ContextWatcher, registry: ToolRegistry, shell: ShellState, learning: WatchLearnSession,
@@ -184,7 +184,7 @@ final class Assistant: ObservableObject {
     func askSuggestion(_ s: String) {
         if s == Self.openSourcesTab, let onOpenSources { onOpenSources(); return }
         if s == Self.openSettingsTab, let onOpenSettings { onOpenSettings(); return }
-        if s == Self.openWatchListTab, let onOpenWatchList { onOpenWatchList(); return }
+        if s == Self.openWatchesTab, let onOpenWatches { onOpenWatches(); return }
         if let id = offeredRuns.removeValue(forKey: s) {
             suggestions.removeAll { $0 == s }
             onRunSource?(id)
@@ -948,10 +948,10 @@ final class Assistant: ObservableObject {
         if !pendingSourceTabs.contains(Self.openSourcesTab) { pendingSourceTabs.append(Self.openSourcesTab) }
     }
 
-    /// A watch-list tool changed something: a factual line on the pad, and a way to see it in the Watch List.
+    /// A watch-list tool changed something: a factual line on the pad, and a way to see it on the Watches page.
     private func watchListChanged(_ receipt: String) {
         transcript.append(ChatMessage(role: .receipt, text: receipt))
-        if !pendingSourceTabs.contains(Self.openWatchListTab) { pendingSourceTabs.append(Self.openWatchListTab) }
+        if !pendingSourceTabs.contains(Self.openWatchesTab) { pendingSourceTabs.append(Self.openWatchesTab) }
     }
 
     /// The chat offered to run a job: a tab the person can tap. Nothing runs until they do.

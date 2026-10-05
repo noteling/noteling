@@ -1,15 +1,19 @@
 import Foundation
 
 /// The watch list, put together once by the app: where watches are kept, what checks them on schedule, how alerts
-/// reach the person, the chat's tools and the window.
+/// reach the person, and the chat's tools. Its pages are in Morning Files (`WatchesPage`, `WatchJobPage`).
 @MainActor
 final class WatchListFeature {
     let store: WatchListStore
     let runner: WatchListRunner
     let notifier: WatchListNotifier
     let conversation: WatchListConversation
-    let window: WatchListWindowController
     let checker: WatchListChecker
+    /// The ways into the watch pages, which the app points at Morning Files: Watches, one watch's page, and the
+    /// chat's explanation of an item.
+    var showWatches: () -> Void = {}
+    var showWatch: (UUID) -> Void = { _ in }
+    var explain: (UUID, String) -> Void = { _, _ in }
 
     init(registry: ToolRegistry, store: WatchListStore? = nil) {
         // Your team's watches are `watches/` in the linked tools, wherever the latest update put them.
@@ -33,7 +37,25 @@ final class WatchListFeature {
         self.notifier = notifier
         self.conversation = conversation
         self.checker = checker
-        window = WatchListWindowController(store: store, runner: runner, notifier: notifier)
+    }
+
+    /// What Morning Files needs to show the watches. Why? on an item asks the chat.
+    var panel: WatchListPanel {
+        WatchListPanel(store: store, runner: runner, notifier: notifier, why: { [weak self] watchID, key in self?.explain(watchID, key) })
+    }
+
+    /// The menu bar's Watches… and the chat's Open Watches tab.
+    func openWatches() { showWatches() }
+
+    /// A clicked notification: the chat explains an item that is still red or grey; anything else, such as an item
+    /// back to as expected or a notification about several items, opens its watch's page.
+    func openNotification(watchID: UUID, key: String) {
+        if store.watch(id: watchID)?.item(key)?.needsExplaining == true { explain(watchID, key) } else { open(watchID) }
+    }
+
+    /// A watch's page, or Watches once the watch is gone.
+    func open(_ id: UUID) {
+        if store.watch(id: id) != nil { showWatch(id) } else { showWatches() }
     }
 
     /// Starts the schedule. With watches kept from before, macOS is asked again for notifications, which only prompts
@@ -44,14 +66,9 @@ final class WatchListFeature {
         runner.start()
     }
 
-    /// The watch and item an inbox card is about, when it is one of a watch's cards.
-    func item(forCard key: String) -> (WatchListWatch, WatchListItem)? {
-        let parts = key.split(separator: "/", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else { return nil }
-        for watch in store.watches where WatchListCards.source(for: watch) == parts[0] {
-            if let item = watch.items.first(where: { WatchListCards.fileName(for: $0.key) == parts[1] + ".json" }) { return (watch, item) }
-        }
-        return nil
+    /// The watch an inbox card is about, when it is a watch's card (`<source>/job`).
+    func watch(forCard key: String) -> WatchListWatch? {
+        store.watches.first { WatchListCards.key(for: $0) == key }
     }
 
     /// The card view's folder name for a watch's cards: the watch's name.
@@ -61,7 +78,6 @@ final class WatchListFeature {
 
     func stop() {
         runner.stop()
-        window.close()
     }
 
     /// Which check a watch uses, as an explanation names it: its own check.py, or the pack's script.

@@ -5,6 +5,8 @@ import SwiftUI
         case folders, folder(UUID), card(UUID), people, person(UUID), editPerson(UUID?), editCard(UUID?), editFolder(UUID?), sources
         case sourceRuns, sourceRun(runID: UUID, sourceID: UUID?), latestRun, lessons
         case attention(AttentionScreen)
+        /// Every watch, and one watch's page.
+        case watches, watch(UUID)
     }
     @Published var route: Route = .folders
     @Published var disposition: MorningCardDisposition = .unreviewed
@@ -81,6 +83,8 @@ struct MorningFilesView: View {
     var attention: AttentionLedger? = nil
     /// An inbox card's question button: asks Noteling about the card in chat.
     var askAboutCard: ((MorningCard, String) -> Void)? = nil
+    /// The watches, with their pages here: Watches, one watch's page, and the line on a watch's cards folder.
+    var watches: WatchListPanel? = nil
     @State private var localError: String?
     @State private var showingOriginal: UUID?   // the card whose original text is expanded
     @State private var undo: MorningCard?
@@ -149,6 +153,7 @@ struct MorningFilesView: View {
                     Button("Manage sources") { navigation.route = .sources }
                     Button("Run history") { navigation.route = .sourceRuns }
                 }
+                if watches != nil { Button("Watches") { navigation.route = .watches } }
                 Button("Create a note") { createNote() }
                 Button("Who’s Who") { navigation.route = .people }
                 Button("Add folder") { navigation.route = .editFolder(nil) }
@@ -161,7 +166,13 @@ struct MorningFilesView: View {
     }
 
     private var heading: String {
-        switch navigation.route {
+        Self.title(for: navigation.route, folderName: { id in store.folders.first { $0.id == id }?.name },
+                   watchName: { id in watches?.store.watch(id: id)?.name })
+    }
+
+    /// Each screen's heading.
+    static func title(for route: MorningNavigation.Route, folderName: (UUID) -> String?, watchName: (UUID) -> String?) -> String {
+        switch route {
         case .folders: return "A little room for your day"
         case .sources: return "Manage sources"
         case .sourceRuns: return "Run history"
@@ -169,12 +180,14 @@ struct MorningFilesView: View {
         case .latestRun: return "Latest run"
         case .lessons: return "What you’ve taught"
         case .attention(let screen): return screen.heading
-        case .folder(let id): return store.folders.first { $0.id == id }?.name ?? "Folder"
+        case .folder(let id): return folderName(id) ?? "Folder"
         case .card: return "On your desk"
         case .people, .person: return "Who’s Who"
         case .editPerson(let id): return id == nil ? "Someone you work with" : "Edit person"
         case .editCard(let id): return id == nil ? "A new note" : "Edit note"
         case .editFolder(let id): return id == nil ? "A new folder" : "Rename folder"
+        case .watches: return "Watches"
+        case .watch(let id): return watchName(id) ?? "Watch"
         }
     }
 
@@ -204,6 +217,15 @@ struct MorningFilesView: View {
                               teaching: teaching)
             } else { empty("Run results are unavailable.") }
         case .lessons: LessonsView(morning: store, attention: attention)
+        case .watches:
+            if let watches {
+                WatchesPage(store: watches.store, runner: watches.runner, notifier: watches.notifier, open: { navigation.route = .watch($0) })
+            } else { empty("Watches are unavailable.") }
+        case .watch(let id):
+            if let watches {
+                WatchJobPage(store: watches.store, runner: watches.runner, notifier: watches.notifier, morning: store, id: id,
+                             why: watches.why, openCards: openCards, stopped: { navigation.route = .watches })
+            } else { empty("Watches are unavailable.") }
         case .attention(let screen):
             if let attention {
                 AttentionScreenView(ledger: attention, store: store, navigation: navigation, screen: screen,
@@ -254,6 +276,7 @@ struct MorningFilesView: View {
                         }.padding(14).background(Pad.paperTop.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
                     }.buttonStyle(.plain)
                 }
+                if let watches { WatchesEntry(store: watches.store, open: { navigation.route = .watches }) }
                 if let attention {
                     AttentionDailyLine(ledger: attention, readsScript: { calendarSources?.readingSources.contains(where: \.readsThroughScript) == true },
                                        open: { navigation.route = .attention(.rest(day: $0)) })
@@ -315,6 +338,11 @@ struct MorningFilesView: View {
         let cards = store.cards.filter { $0.folderID == id && $0.displayDisposition == navigation.disposition }
         return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                // A watch's cards: when it last checked, Check now, and its page.
+                if let watches, let watch = WatchListWords.watch(forFolder: id, in: watches.store.watches) {
+                    WatchCardsFolderLine(store: watches.store, runner: watches.runner, watchID: watch.id,
+                                         openJob: { navigation.route = .watch(watch.id) })
+                }
                 HStack {
                     Text("Pick up a file. Put it back whenever you like.").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
                     Spacer(); dispositionPicker
@@ -478,8 +506,8 @@ struct MorningFilesView: View {
         }
     }
 
-    /// An inbox card's buttons: each opens a web page or asks Noteling about the card in chat, and nothing else. A card
-    /// with a page and no button for it gets Open page.
+    /// An inbox card's buttons: each opens a web page, asks Noteling about the card in chat, or opens a watch's page
+    /// here, and nothing else. A card with a page and no button for it gets Open page.
     @ViewBuilder private func inboxButtons(_ card: MorningCard) -> some View {
         ForEach(Array(Self.inboxActions(card).enumerated()), id: \.offset) { index, action in
             if let url = action.url.flatMap(URL.init(string:)) {
@@ -487,8 +515,17 @@ struct MorningFilesView: View {
             } else if let ask = action.ask {
                 Button(action.label) { askAboutCard?(card, ask) }.buttonStyle(MorningActionButton(primary: index == 0)).help(ask)
                     .disabled(askAboutCard == nil)
+            } else if let id = Self.openableWatch(action, in: watches?.store.watches ?? []) {
+                Button(action.label) { navigation.route = .watch(id) }.buttonStyle(MorningActionButton(primary: index == 0))
+                    .help("Open this watch’s items")
             }
         }
+    }
+
+    /// The watch an Open job button opens: only a watch that is there. It never runs anything.
+    static func openableWatch(_ action: CardInboxAction, in watches: [WatchListWatch]) -> UUID? {
+        guard let id = action.watch.flatMap(UUID.init(uuidString:)), watches.contains(where: { $0.id == id }) else { return nil }
+        return id
     }
 
     /// What an inbox card's buttons are: its file's, and Open page for its page when none opens it.
@@ -626,6 +663,11 @@ struct MorningFilesView: View {
     private func openRun(_ runID: UUID, _ sourceID: UUID?) {
         navigation.route = .sourceRun(runID: runID, sourceID: sourceID)
     }
+    /// A watch's cards, in the pile that has them.
+    private func openCards(_ link: WatchCardsLink) {
+        navigation.disposition = link.disposition
+        navigation.route = .folder(link.folderID)
+    }
     private func manageSource(_ id: UUID) {
         navigation.calendarSourceID = id
         navigation.route = .sources
@@ -647,6 +689,7 @@ struct MorningFilesView: View {
                 navigation.route = .folder(card.folderID)
             } else { navigation.route = .folders }
         case .person, .editPerson: navigation.route = .people
+        case .watch: navigation.route = .watches
         default: navigation.route = .folders
         }
     }

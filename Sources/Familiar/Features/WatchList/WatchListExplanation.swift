@@ -106,4 +106,24 @@ extension Assistant {
                                              watch: watch, item: item, now: Date(), checkedBy: checkedBy)
         Task { await send(content: [["type": "text", "text": text]], ctx: scene, title: question, messageID: message.id, allowsControl: false) }
     }
+
+    /// A watch card's Why?: asked in general chat, whose watch tools can look the job up, about the job rather than
+    /// the screen, so nothing of the screen goes with it.
+    func askAboutWatch(_ watch: WatchListWatch, question: String) {
+        shell.expanded = true
+        guard !busy else { status = "Still answering the last one. Ask “Why?” again when it's done."; return }
+        guard !learning.awaitingPurpose, !learning.awaitingContext else { status = "Finish or discard Watch Me first."; return }
+        if cardConversation?.cardID != nil {   // a card discussion has its own tools; this is a general question
+            cardConversation?.clear()
+            execution.conversation.clear()
+        }
+        let message = ChatMessage(role: .user, text: question)
+        transcript.append(message)
+        suggestions = []
+        chatBusy = true
+        let scene = WatchListChecker.scene(for: watch)
+        let text = Prompt.context(scene, recent: []) + "\n## Question\n\(question)\n"
+            + "(Asked from the card of the watch “\(watch.name)”. list_watches shows its items as they stand now.)\n"
+        Task { await send(content: [["type": "text", "text": text]], ctx: scene, title: question, messageID: message.id, allowsControl: false) }
+    }
 }
