@@ -84,7 +84,7 @@ struct Note: Identifiable {
             case .assistant:
                 if let i = out.indices.last, !out[i].hasAnswer { out[i].answers.append(m) }
                 else { out.append(Note(id: m.id, heading: nil, answers: [m])) }
-            case .error, .note, .receipt, .check:
+            case .error, .note, .receipt, .check, .glance:
                 if let i = out.indices.last { out[i].answers.append(m) }
                 else { out.append(Note(id: m.id, heading: nil, answers: [m])) }
             }
@@ -160,12 +160,15 @@ struct StickyNoteView: View {
             ForEach(note.answers) { a in answer(a) }
             if awaitingQuestion && !busy {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("What about it? Tap a question below or type your own. ⏎ on its own explains it.")
+                    Text(note.answers.contains { $0.role == .glance }
+                         ? "Anything else? Tap a question below or type your own."
+                         : "What about it? Tap a question below or type your own. ⏎ on its own explains it.")
                         .font(.callout).foregroundStyle(Pad.inkSoft)
                     Spacer(minLength: 4)
-                    Button("Never mind") { onDismiss?() }
+                    let answered = note.answers.contains { $0.role == .glance }
+                    Button(answered ? "Done" : "Never mind") { onDismiss?() }
                         .buttonStyle(.plain).font(.callout).foregroundStyle(Pad.penInk)
-                        .help("Put the pick away (Esc). Nothing was sent.")
+                        .help(answered ? "Keep the answer and stop here (Esc). Nothing was sent." : "Put the pick away (Esc). Nothing was sent.")
                 }
                 .padding(.top, 2)
             }
@@ -238,6 +241,8 @@ struct StickyNoteView: View {
             )
             .rotationEffect(.degrees(-0.8))
             .padding(.vertical, 3)
+        case .glance:
+            if let g = m.glance { GlanceView(glance: g) }
         case .check:
             // a note's check, in the script's own words: it holds, it doesn't, or what it found
             HStack(alignment: .top, spacing: 6) {
@@ -277,6 +282,46 @@ struct StickyNoteView: View {
         }
         .padding(.leading, 14).padding(.trailing, 12).padding(.bottom, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A page brief's own answer on the pick: the headline, why, and what to do, as the pack's script wrote them, each line
+/// with its source. Printed rather than inked: it comes from the page's tools, not from Claude.
+struct GlanceView: View {
+    let glance: PageGlance
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Label("From the page's tools", systemImage: "checklist")
+                .font(.system(size: 10.5, weight: .medium)).foregroundStyle(Pad.inkSoft)
+            if !glance.headline.isEmpty {
+                Text(glance.headline).font(.system(size: 14, weight: .semibold)).foregroundStyle(Pad.ink)
+            }
+            section("Why", glance.why)
+            section("What you can do", glance.todo)
+        }
+        .textSelection(.enabled)
+        .padding(EdgeInsets(top: 8, leading: 10, bottom: 9, trailing: 10))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 3).fill(Pad.tabPaper).shadow(color: .black.opacity(0.12), radius: 1.5, y: 1))
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func section(_ title: String, _ lines: [PageGlance.Line]) -> some View {
+        if !lines.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.6).foregroundStyle(Pad.inkSoft)
+                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("•").foregroundStyle(Pad.inkSoft)
+                        (Text(line.text).foregroundStyle(Pad.ink)
+                         + Text(line.source.map { "  \($0)" } ?? "").font(.system(size: 10.5)).foregroundStyle(Pad.penInk))
+                            .font(.system(size: 13))
+                    }
+                }
+            }
+        }
     }
 }
 

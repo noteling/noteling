@@ -211,6 +211,16 @@ func runRenderCard() {
                                                                       NSPoint(x: circle.maxX, y: circle.midY), NSPoint(x: circle.midX, y: circle.minY)],
                                   region: circle))
         render(BubblePanel.defaultExpandedSize, dark: false, "pad-400-pick.png")
+        // the same pick on a page whose pack briefs it: the brief's own answer is on it at once
+        if let glance = PageGlance.parse("""
+            {"glance":{"headline":"Cost Center is empty, so Submit is off",
+            "why":[{"text":"The report has no cost center yet","source":"report check"},
+                   {"text":"Your department's usual one is 4310","source":"directory"}],
+            "do":["Pick 4310 – Marketing Ops from the list","Use the project's cost center if it's for a client"]}}
+            """) {
+            state.transcript.append(ChatMessage(role: .glance, text: glance.plainText, glance: glance))
+            render(BubblePanel.defaultExpandedSize, dark: false, "pad-400-glance.png")
+        }
         // the same pick once a tap asked about it
         let picked = state.transcript.first.map { m -> ChatMessage in
             var asked = m; asked.asked = "Why is it like this?"; return asked

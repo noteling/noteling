@@ -2,7 +2,7 @@ import Foundation
 import FamiliarContracts
 
 /// Raw HTTP client for the Claude Messages API with a manual tool-use loop.
-package final class ClaudeClient: ConversationClient {
+package final class ClaudeClient: ConversationClient, ModelSwitchable {
     package var apiKey: String
     package var model: String
     package var effort: String
@@ -13,6 +13,8 @@ package final class ClaudeClient: ConversationClient {
     /// Server-side refusal fallbacks (the `fallbacks` field and its beta header) exist only on Anthropic's own API.
     /// Gateways and cloud platforms reject them, so they are sent only to api.anthropic.com.
     package var serverFallbacks: Bool
+    /// Refusal fallbacks are for the current Opus, Sonnet and Fable models; a Haiku turn (a fast pen model) goes without.
+    package var fallbacksApply: Bool { serverFallbacks && !model.lowercased().hasPrefix("claude-haiku") }
     /// Checked before every tool round; when true the loop ends gracefully (pending tool calls get an error result).
     package var shouldStop: () -> Bool = { false }
     /// Seconds to wait before each retry of a dropped connection or a busy server. Resending is safe: the Messages
@@ -215,11 +217,11 @@ package final class ClaudeClient: ConversationClient {
         var body: [String: Any] = [
             "model": model,
             "max_tokens": maxTokens,
-            "output_config": ["effort": effort],
             "system": [["type": "text", "text": system, "cache_control": ["type": "ephemeral"]]],
             "messages": Self.fitted(messages, to: tools),
         ]
-        if serverFallbacks { body["fallbacks"] = "default" }
+        if !effort.isEmpty { body["output_config"] = ["effort": effort] }   // Haiku 4.5 takes none
+        if fallbacksApply { body["fallbacks"] = "default" }
         if !tools.isEmpty { body["tools"] = tools }
 
         var req = URLRequest(url: baseURL.appendingPathComponent("v1/messages"))
@@ -228,7 +230,7 @@ package final class ClaudeClient: ConversationClient {
         // A gateway may authenticate through its own header instead (config apiHeaders).
         if !apiKey.isEmpty { req.setValue(apiKey, forHTTPHeaderField: "x-api-key") }
         req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        if serverFallbacks { req.setValue("server-side-fallback-2026-07-01", forHTTPHeaderField: "anthropic-beta") }
+        if fallbacksApply { req.setValue("server-side-fallback-2026-07-01", forHTTPHeaderField: "anthropic-beta") }
         for (k, v) in extraHeaders { req.setValue(v, forHTTPHeaderField: k) }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 

@@ -6,7 +6,7 @@ import Foundation
 import SwiftUI
 
 struct ChatMessage: Identifiable {
-    enum Role { case user, wand, assistant, error, draft, learned, note, receipt, check }   // draft/learned: a note Noteling starts itself (a watched workflow's title), before and after Keep; note: a sticky note someone left on the control; receipt: the last frame of a background job
+    enum Role { case user, wand, assistant, error, draft, learned, note, receipt, check, glance }   // draft/learned: a note Noteling starts itself (a watched workflow's title), before and after Keep; note: a sticky note someone left on the control; receipt: the last frame of a background job
     let id = UUID()
     let role: Role
     let text: String
@@ -16,6 +16,7 @@ struct ChatMessage: Identifiable {
     var holds: Bool? = nil         // check: whether a note's check found its claim holds; nil when it only informs
     var seen: SeenScreen? = nil    // user/wand: what Claude was shown from the screen for this question
     var asked: String? = nil       // wand: what the person asked about the pick, by a tap or in their own words
+    var glance: PageGlance? = nil  // glance: the page brief's own answer, shown on the pick before any model is asked
 }
 
 @MainActor
@@ -605,8 +606,11 @@ final class Assistant: ObservableObject {
     /// What a pick has ready by the time its question comes: the pictures for Claude, the screen held for the answer,
     /// and the answers of the notes' checks.
     private struct PickReady {
-        var content: [[String: Any]] = []
+        /// The whole screen marked where the pick was, and the crop of what was picked: blocks for Claude, and pictures.
+        var full: (block: [String: Any], picture: CGImage)?
+        var crop: (block: [String: Any], picture: CGImage)?
         var held: FrozenScreen?
+        var seen: SeenScreen?
         var checks: [String: NoteCheckResult] = [:]
     }
 
@@ -619,6 +623,7 @@ final class Assistant: ObservableObject {
         let ctx: ScreenContext?
         let generation: Int
         let briefing: Bool
+        let at: Date
         let ready: Task<PickReady?, Never>
     }
     private var pendingPick: PendingPick?
@@ -626,6 +631,8 @@ final class Assistant: ObservableObject {
     @Published private(set) var pendingPickID: UUID?
     /// Bumped when the pad's input should take the keyboard, such as right after a pick.
     @Published private(set) var focusRequest = 0
+    /// What is in front for a pick; tests replace it.
+    lazy var sceneNow: () -> ScreenContext? = { [unowned self] in self.watcher.sample() ?? self.watcher.current }
     /// How the screen is taken; tests replace it so they never capture the real display.
     var captureDisplay: (_ containing: NSPoint?) async throws -> RawCapture = { try await ScreenCapture.captureDisplay(containing: $0) }
 
@@ -654,7 +661,7 @@ final class Assistant: ObservableObject {
             transcript.append(ChatMessage(role: .note, text: n.text, meta: "For \(n.anchor.controlSummary), \(place) · " + n.peopleSay(),
                                           warning: n.isWarning))
         }
-        let ctx = watcher.sample() ?? watcher.current
+        let ctx = sceneNow()
         let generation = captureGeneration
         // Only the notes on what was pointed at run their checks; a note elsewhere is checked when its sticker is picked.
         let checked = target.notes.filter { $0.check != nil }
@@ -665,9 +672,13 @@ final class Assistant: ObservableObject {
         let briefing = briefs?.source(for: ctx) != nil
         if briefing { briefs?.prefetch(ctx) }
 
-        let ready = Task { await self.prepare(pick: pick.id, target: target, ctx: ctx, generation: generation, rows: rows, checked: checked) }
+        let picked = Date()
+        // A page whose brief is already in shows its own answer on the pick at once, before anything else.
+        if briefing, let glance = briefs?.kept(for: ctx)?.glance { showGlance(glance, on: pick.id, pickedAt: picked) }
+        let ready = Task { await self.prepare(pick: pick.id, target: target, ctx: ctx, generation: generation, rows: rows, checked: checked,
+                                              briefing: briefing, pickedAt: picked) }
         pendingPick = PendingPick(messageID: pick.id, target: target, off: off, ctx: ctx, generation: generation,
-                                  briefing: briefing, ready: ready)
+                                  briefing: briefing, at: picked, ready: ready)
         if target.named != nil { answerPick(nil); return }   // a sticker: the note is what it's about
         pendingPickID = pick.id
         suggestions = Prompt.penQuestions(packs: registry.select(for: ctx).active)
@@ -702,37 +713,67 @@ final class Assistant: ObservableObject {
                 + Prompt.wandInstruction(target: target, ctx: ctx, question: asked)
                 + Prompt.notes(onTarget: target.notes, notOnScreen: pick.off, furtherDown: target.furtherDown, elsewhere: elsewhere,
                                checks: ready.checks)
-            var content = ready.content
+            // With the page's brief in hand, the crop is enough and the pack's tools have already run: one lean turn.
+            let lean = !brief.isEmpty
+            let pictures = lean ? [ready.crop ?? ready.full].compactMap { $0 } : [ready.full, ready.crop].compactMap { $0 }
+            var content = pictures.map(\.block)
             content.append(["type": "text", "text": text])
-            await send(content: content, ctx: ctx, title: asked ?? target.shortLabel, held: ready.held, seenOn: pick.messageID)
+            if var seen = ready.seen {
+                seen.pictures = pictures.map(\.picture)
+                seen.pending = false
+                setSeen(seen, on: pick.messageID)
+            }
+            let asking = Date()
+            await send(content: content, ctx: ctx, title: asked ?? target.shortLabel, allowsControl: false, packScripts: !lean,
+                       pen: true, held: ready.held, seenOn: pick.messageID)
+            Log.info("pen: picked→asked \(Self.seconds(asking.timeIntervalSince(pick.at))), asked→answered \(Self.seconds(Date().timeIntervalSince(asking))), "
+                     + "brief \(lean ? "in" : "none"), pictures \(pictures.count)")
         }
     }
 
-    /// Esc or Never mind: the pick waiting for its question goes, with what it put on the pad. Nothing was sent.
+    private static func seconds(_ t: TimeInterval) -> String { String(format: "%.1fs", t) }
+
+    /// The page brief's own answer on the pick, unless it is already there.
+    private func showGlance(_ glance: PageGlance, on pick: UUID, pickedAt: Date) {
+        guard let i = transcript.firstIndex(where: { $0.id == pick }) else { return }
+        guard !transcript[(i + 1)...].contains(where: { $0.role == .glance }) else { return }
+        transcript.append(ChatMessage(role: .glance, text: glance.plainText, glance: glance))
+        Log.info("pen: glance on the pick \(Int(Date().timeIntervalSince(pickedAt) * 1000)) ms after it")
+    }
+
+    /// Esc, Never mind or Done: the pick stops waiting for its question. One the page's brief answered stays on the pad
+    /// (Done); any other goes, with what it put there (Never mind). Nothing was sent either way.
     func dismissPick() {
         guard pendingPick != nil else { return }
         dropPendingPick()
         status = ""
     }
 
-    private func dropPendingPick() {
+    /// A pick the page's brief already answered stays on the pad when a new pick replaces it (only its chip goes:
+    /// nothing was sent); otherwise the waiting pick goes, with everything it put on the pad.
+    private func dropPendingPick(keepAnswered: Bool = true) {
         guard let pick = pendingPick else { return }
         pendingPick = nil
         pendingPickID = nil
         pick.ready.cancel()
-        // The waiting pick is the newest thing on the pad: it and everything after it are its own.
-        if let i = transcript.firstIndex(where: { $0.id == pick.messageID }) { transcript.removeSubrange(i...) }
         suggestions = []
+        guard let i = transcript.firstIndex(where: { $0.id == pick.messageID }) else { return }
+        if keepAnswered, transcript[(i + 1)...].contains(where: { $0.role == .glance }) {
+            transcript[i].seen = nil
+            return
+        }
+        // The waiting pick is the newest thing on the pad: it and everything after it are its own.
+        transcript.removeSubrange(i...)
     }
 
     /// Everything a pick needs from the screen and the notes, from the moment of the pick: the screen taken (with the
     /// capture moment and the chip), and each check's answer under its note. Nil when the pad was cleared meanwhile.
     private func prepare(pick: UUID, target: WandTarget, ctx: ScreenContext?, generation: Int, rows: [String: UUID],
-                         checked: [StickyNote]) async -> PickReady? {
+                         checked: [StickyNote], briefing: Bool, pickedAt: Date) async -> PickReady? {
         var ready = PickReady()
         // On the pad while the pick is: a dropped or cleared pick leaves nothing behind.
         func onPad() -> Bool { generation == captureGeneration && transcript.contains { $0.id == pick } }
-        var seen = SeenScreen(kind: target.isRegion ? .circled : .pointed, at: Date(), place: SeenScreen.place(ctx))
+        var seen = SeenScreen(kind: target.isRegion ? .circled : .pointed, at: Date(), place: SeenScreen.place(ctx), pending: true)
         do {
             let raw = try await captureDisplay(target.screenPoint)
             guard onPad() else { return nil }
@@ -744,29 +785,29 @@ final class Assistant: ObservableObject {
                 picked = region
                 let pts = stroke.map { raw.imagePoint($0) }
                 let annotated = ScreenCapture.annotate(full, stroke: pts.map { CGPoint(x: $0.x * f, y: $0.y * f) })
-                if let shot = ScreenCapture.encode(annotated) { ready.content.append(imageBlock(shot)); seen.pictures.append(annotated) }
+                if let shot = ScreenCapture.encode(annotated) { ready.full = (imageBlock(shot), annotated) }
                 let tl = raw.imagePoint(NSPoint(x: region.minX, y: region.maxY))
                 let rect = CGRect(x: tl.x, y: tl.y, width: region.width * raw.pixelsPerPoint, height: region.height * raw.pixelsPerPoint)
                 let pad = max(40 * raw.pixelsPerPoint, CGFloat(min(raw.image.width, raw.image.height)) * 0.04)
                 if let cropped = ScreenCapture.crop(raw.image, around: rect, padding: pad, maxLongEdge: 1568), let shot = ScreenCapture.encode(cropped) {
-                    ready.content.append(imageBlock(shot))
-                    seen.pictures.append(cropped)
+                    ready.crop = (imageBlock(shot), cropped)
                 }
-                Log.info("wand: images \(ready.content.count), region \(Int(rect.width))x\(Int(rect.height))px")
+                Log.info("wand: region \(Int(rect.width))x\(Int(rect.height))px")
             } else {
                 let p = raw.imagePoint(target.screenPoint)
                 let annotated = ScreenCapture.annotate(full, ringAt: CGPoint(x: p.x * f, y: p.y * f))
-                if let shot = ScreenCapture.encode(annotated) { ready.content.append(imageBlock(shot)); seen.pictures.append(annotated) }
+                if let shot = ScreenCapture.encode(annotated) { ready.full = (imageBlock(shot), annotated) }
                 let cropSize = CGSize(width: 900 * raw.pixelsPerPoint / 2, height: 560 * raw.pixelsPerPoint / 2)
                 if let cropped = ScreenCapture.crop(raw.image, around: p, size: cropSize), let shot = ScreenCapture.encode(cropped) {
-                    ready.content.append(imageBlock(shot))
-                    seen.pictures.append(cropped)
+                    ready.crop = (imageBlock(shot), cropped)
                 }
                 picked = NSRect(x: target.screenPoint.x - 225, y: target.screenPoint.y - 140, width: 450, height: 280)
-                Log.info("wand: images \(ready.content.count), point \(Int(p.x)),\(Int(p.y))")
+                Log.info("wand: point \(Int(p.x)),\(Int(p.y))")
             }
             onCaptured?(CaptureMoment(image: full, screen: raw.screen, region: picked))
+            seen.pictures = [ready.full?.picture, ready.crop?.picture].compactMap { $0 }
             seen.held = !controlsForeground
+            ready.seen = seen
             setSeen(seen, on: pick)
             lastCapture = (Date(), ctx)
         } catch {
@@ -797,6 +838,11 @@ final class Assistant: ObservableObject {
                 notesUsage?.record("check", counts: ["ms": result.milliseconds], tags: ["script": result.script, "result": result.verdict.rawValue],
                                    notes: [note.id])
             }
+        }
+        // The brief still running when the pick came: its answer joins the pick as soon as it's in.
+        if briefing, let glance = await briefs?.brief(for: ctx, wait: 10)?.glance {
+            guard onPad() else { return nil }
+            showGlance(glance, on: pick, pickedAt: pickedAt)
         }
         return ready
     }
@@ -968,6 +1014,9 @@ final class Assistant: ObservableObject {
                                     includeNotes: notes).promptSection
     }
 
+    /// Tests stand in their own connection.
+    func useConnection(_ connection: any ConversationClient) { client = connection }
+
     /// Re-create the API client after settings change.
     func reconfigure(_ newConfig: Config) {
         // Keep the visible conversation while dropping provider-specific tools and image state.
@@ -988,8 +1037,10 @@ final class Assistant: ObservableObject {
     /// `allowsControl: false` keeps the mouse and keyboard out of a request that only reads and explains.
     /// `held` is the screen as it was when the person asked: the answer's looks use it unless the answer controls the
     /// foreground. `seenOn` is the question whose chip shows what Claude was shown (the typed question by default).
+    /// `packScripts: false` leaves the pack's tools out (their brief is already in the request), and `pen` runs the turn
+    /// on the pen's model and effort (`Config.penModel`, `penEffort`).
     func send(content: [[String: Any]], ctx: ScreenContext?, title: String, messageID: UUID? = nil, allowsControl: Bool = true,
-              held: FrozenScreen? = nil, seenOn: UUID? = nil) async {
+              packScripts: Bool = true, pen: Bool = false, held: FrozenScreen? = nil, seenOn: UUID? = nil) async {
         guard let client else {
             transcript.append(ChatMessage(role: .error, text: ConversationBackend.setupMessage(config: config)))
             finishRequest()
@@ -998,6 +1049,20 @@ final class Assistant: ObservableObject {
         chatBusy = true
         suggestions = []
         status = "Thinking…"
+        // A pen question is a short glance: it runs on the pen's model and effort, then the connection goes back.
+        let switchable = client as? ModelSwitchable
+        let usual = (model: switchable?.model, effort: client.effort)
+        if pen {
+            let penModel = config.penModel.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !penModel.isEmpty { switchable?.model = penModel }
+            client.effort = (switchable?.model ?? "").lowercased().hasPrefix("claude-haiku") ? "" : config.penEffort
+        }
+        defer {
+            if pen {
+                if let model = usual.model { switchable?.model = model }
+                client.effort = usual.effort
+            }
+        }
         let discussingCard = cardConversation?.card != nil
         let controlAllowed = allowsControl && config.allowControl && desktop != nil && !watching && !discussingCard
         let background = controlAllowed && backgroundControl
@@ -1031,8 +1096,9 @@ final class Assistant: ObservableObject {
                     return try await desktop.prepare(id: id, registry: registry, context: ctx, background: background,
                                                      title: title, additionalRoutes: sourceRoutes, lookAtScreen: capture, readScreen: read)
                 }
-                let router = try ExecutionTools.make(registry: registry, context: ctx, control: nil,
-                                                     background: false, additionalRoutes: sourceRoutes, lookAtScreen: capture, readScreen: read)
+                let router = try ExecutionTools.make(registry: registry, context: ctx, control: nil, background: false,
+                                                     packScripts: packScripts, additionalRoutes: sourceRoutes,
+                                                     lookAtScreen: capture, readScreen: read)
                 return PreparedExecution(system: Prompt.system, router: router)
             })
             let onStatus: (String) -> Void = { [weak self] value in

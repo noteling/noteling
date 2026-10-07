@@ -12,6 +12,9 @@ final class PageBriefs {
         var text: String
         var at: Date
         var failed = false
+
+        /// The brief's own short answer for the pen, when its script gives one (`PageGlance`).
+        var glance: PageGlance? { failed ? nil : PageGlance.parse(text) }
     }
 
     private let registry: ToolRegistry
@@ -63,6 +66,12 @@ final class PageBriefs {
             group.cancelAll()
             return first
         }
+    }
+
+    /// The brief for this scene if one is kept and fresh, without waiting or starting one.
+    func kept(for ctx: ScreenContext?) -> Brief? {
+        guard let ctx, let key = Self.key(ctx) else { return nil }
+        return fresh(key)
     }
 
     private func fresh(_ key: String) -> Brief? {
