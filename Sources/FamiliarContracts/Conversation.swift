@@ -21,6 +21,12 @@ package protocol ModelSwitchable: AnyObject {
     var model: String { get set }
 }
 
+/// A connection that can show an answer as it is written. While `onText` is set, each turn streams, and `onText`
+/// gets the answer so far (this round's text) as it grows; it may be called off the main thread.
+package protocol StreamsText: AnyObject {
+    var onText: ((String) -> Void)? { get set }
+}
+
 package struct ClaudeError: LocalizedError {
     package let message: String
     package var errorDescription: String? { message }

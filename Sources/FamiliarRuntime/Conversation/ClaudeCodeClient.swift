@@ -3,7 +3,7 @@ import FamiliarContracts
 
 /// Runs the user's unmodified, signed-in Claude Code executable. Noteling owns
 /// conversation history and all tools; the CLI owns authentication and its loop.
-package final class ClaudeCodeClient: ConversationClient, ModelSwitchable {
+package final class ClaudeCodeClient: ConversationClient, ModelSwitchable, StreamsText {
     package var effort: String
     /// Empty = Claude Code's own default model.
     package var model: String
@@ -11,6 +11,10 @@ package final class ClaudeCodeClient: ConversationClient, ModelSwitchable {
     package var maxToolRounds = 8
     package var shouldStop: () -> Bool = { false }
     package var requestTimeout: TimeInterval = 300
+    /// Set while someone watches the answer being written: the CLI then sends its partial messages, read as they come.
+    package var onText: ((String) -> Void)?
+    /// Claude Code executables too old for `--include-partial-messages`: their answers arrive whole.
+    private static let withoutPartials = LockedPaths()
     private let options: ClaudeCodeOptions
     private let pythonRuntime: PythonRuntime
 
@@ -119,6 +123,8 @@ package final class ClaudeCodeClient: ConversationClient, ModelSwitchable {
         let model = self.model.trimmingCharacters(in: .whitespacesAndNewlines)
         if !model.isEmpty { args += ["--model", model] }
         if !effort.isEmpty { args += ["--effort", effort == "low" ? "low" : effort == "medium" ? "medium" : "high"] }
+        let partials = onText != nil && !Self.withoutPartials.contains(executable)
+        if partials { args += ["--include-partial-messages"] }
         var environment = Self.environment()
         environment["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = String(max(256, maxTokens))
         let process = try workspace.process(executable: executable, arguments: args, environment: environment,
@@ -134,6 +140,7 @@ package final class ClaudeCodeClient: ConversationClient, ModelSwitchable {
             }
             onStatus("Thinking with Claude Code…")
             let deadline = Date().addingTimeInterval(requestTimeout)
+            var partial = partials ? CLIPartials(output: workspace.output) : nil
             var toolCalls = 0
             var computerFailed = false
             while process.isRunning {
@@ -188,6 +195,10 @@ package final class ClaudeCodeClient: ConversationClient, ModelSwitchable {
                     }
                     pending = PendingCLITool(identifier: identifier, binding: binding, result: resultBox, task: task)
                 }
+                if var reading = partial {
+                    if let text = reading.read() { onText?(text) }
+                    partial = reading
+                }
                 do { try await Task.sleep(nanoseconds: 40_000_000) } catch { /* Observe cancellation above. */ }
             }
             if let pending {
@@ -204,6 +215,11 @@ package final class ClaudeCodeClient: ConversationClient, ModelSwitchable {
             }
             guard let result = events.last(where: { $0["type"] as? String == "result" }) else {
                 let stderr = (try? String(contentsOf: workspace.errorOutput, encoding: .utf8)) ?? ""
+                if partials, (String(decoding: stdout, as: UTF8.self) + stderr).contains("include-partial-messages") {
+                    // An older Claude Code: the answer comes whole from now on.
+                    Self.withoutPartials.insert(executable)
+                    return try await converse(system: system, tools: tools, messages: &messages, executor: executor, onStatus: onStatus)
+                }
                 throw ClaudeError(message: Self.failureMessage(String(decoding: stdout, as: UTF8.self) + stderr))
             }
             guard process.terminationStatus == 0, result["is_error"] as? Bool != true,
@@ -498,4 +514,47 @@ private final class CLIWorkspace {
         try? FileManager.default.removeItem(at: root)
     }
     deinit { close() }
+}
+
+/// Reads the CLI's output file as it grows and keeps the answer being written: `--include-partial-messages` lines carry
+/// the Messages API's stream events, one message per model turn.
+package struct CLIPartials {
+    private let handle: FileHandle?
+    private var buffer = Data()
+    private var stream = MessageStream()
+    private var last = ""
+
+    package init(output: URL) { handle = try? FileHandle(forReadingFrom: output) }
+
+    /// The text so far when it changed since the last read; nil otherwise.
+    package mutating func read() -> String? {
+        guard let handle else { return nil }
+        buffer.append(handle.availableData)
+        var changed = false
+        while let end = buffer.firstIndex(of: 0x0a) {
+            let line = buffer[buffer.startIndex..<end]
+            buffer.removeSubrange(buffer.startIndex...end)
+            changed = take(line) || changed
+        }
+        guard changed, stream.text != last else { return nil }
+        last = stream.text
+        return last
+    }
+
+    /// One output line; true when it changed the text.
+    mutating func take<Line: DataProtocol>(_ line: Line) -> Bool {
+        guard let json = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any],
+              json["type"] as? String == "stream_event", let event = json["event"] as? [String: Any] else { return false }
+        if event["type"] as? String == "message_start" { stream = MessageStream() }   // a new turn starts empty
+        let changed = (try? stream.apply(event: event)) ?? false
+        return changed || (event["type"] as? String == "message_start" && !last.isEmpty)
+    }
+}
+
+/// A set of executable paths shared across turns.
+final class LockedPaths: @unchecked Sendable {
+    private let lock = NSLock()
+    private var paths = Set<String>()
+    func contains(_ path: String) -> Bool { lock.lock(); defer { lock.unlock() }; return paths.contains(path) }
+    func insert(_ path: String) { lock.lock(); paths.insert(path); lock.unlock() }
 }
