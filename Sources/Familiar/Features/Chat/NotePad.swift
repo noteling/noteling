@@ -182,6 +182,9 @@ struct StickyNoteView: View {
             }
             Text(m.text).font(HandFont.font(size: 18)).foregroundStyle(Pad.ink).textSelection(.enabled)
                 .padding(.trailing, peek != nil ? 34 : 0)   // room for the character's chin
+            if let seen = m.seen, !seen.isEmpty || (seen.held && busy && !note.hasAnswer) {
+                SeenChip(seen: seen, answering: busy && !note.hasAnswer)
+            }
             InkLine(wobble: 0.6).stroke(Pad.ink.opacity(0.22), lineWidth: 1).frame(height: 3)
         }
     }

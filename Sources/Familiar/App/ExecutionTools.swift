@@ -13,7 +13,8 @@ enum ExecutionTools {
                      policy: Policy = .standard, additionalRoutes: [ToolRoute] = [],
                      trackedItems: [TrackedSourceItem] = [],
                      onObservation: (() -> Void)? = nil, onNavigation: (() -> Void)? = nil,
-                     lookAtScreen: @escaping () async -> ToolResult) throws -> ToolRouter {
+                     lookAtScreen: @escaping () async -> ToolResult,
+                     readScreen: (() async -> ToolResult)? = nil) throws -> ToolRouter {
         if policy != .standard {
             guard background, let control else {
                 throw ClaudeError(message: "Source collection needs a selected background task window.")
@@ -43,7 +44,10 @@ enum ExecutionTools {
                     if name == "read_screen" { return control.readTargetScreen() }
                 }
                 if name == "look_at_screen" { return await lookAtScreen() }
-                if name == "read_screen" { return await ScreenText.readFrontmost() }
+                if name == "read_screen" {
+                    if let readScreen { return await readScreen() }
+                    return await ScreenText.readFrontmost()
+                }
                 return BuiltinTools.execute(name, input, root: root, linkedRoot: linkedRoot)
             })
         }

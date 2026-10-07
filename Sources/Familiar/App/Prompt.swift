@@ -23,9 +23,9 @@ enum Prompt {
     - Scripts from the active tool pack (names look like pack__script). Use them when they answer the question \
     better than guessing, e.g. checking a status or looking something up. Report what they return, don't invent results.
     - read_file and grep over the tool packs' docs, for anything the stuffed docs don't cover.
-    - read_screen, which returns the text of the current window via accessibility. Use it to read small text, \
+    - read_screen, which returns the text of the window in front when they asked, via accessibility. Use it to read small text, \
     dropdown values or error messages precisely.
-    - look_at_screen, which returns a fresh screenshot of the display the user is working on. Use it when the \
+    - look_at_screen, which returns the screen as it was when they asked (fresh while you control the computer). Use it when the \
     question is about the screen and no current screenshot was provided, including when you have the page's text \
     but need to see how it looks.
     - Saved jobs: the sources the person taught with Watch Me, listed under "Your saved jobs" when there are any. \

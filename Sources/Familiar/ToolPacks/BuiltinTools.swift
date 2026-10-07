@@ -23,12 +23,12 @@ enum BuiltinTools {
             ["name": "look_at_screen",
              "description": background
                 ? "Take a fresh screenshot of the task's current target window. Follows target_window selections and never captures the user's other windows. Coordinates are pixels of this window capture; while borrowing the real mouse, use the computer screenshot action for display coordinates."
-                : "Take a fresh screenshot of the display the user is working on and return it. Use only when the question is about what is on screen and no current screenshot was provided.",
+                : "Look at the display the user is working on: the screen as it was when they asked (a fresh screenshot when none was taken then, or while you control the computer). Use only when the question is about what is on screen and no current screenshot was provided.",
              "input_schema": ["type": "object", "properties": [:]]],
             ["name": "read_screen",
              "description": background
                 ? "Read text from the task's current target window via Accessibility (labels, values, buttons, links). Follows target_window selections and never reads the user's other windows."
-                : "Return the text content of the user's current window via Accessibility (labels, values, buttons, links). Use it to read small text, dropdown values or error messages precisely.",
+                : "Return the text of the window that was in front when they asked, via Accessibility (labels, values, buttons, links). Use it to read small text, dropdown values or error messages precisely.",
              "input_schema": ["type": "object", "properties": [:]]],
         ]
     }

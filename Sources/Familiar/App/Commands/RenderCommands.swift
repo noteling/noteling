@@ -130,8 +130,11 @@ func runRenderCard() {
     let state = Assistant(config: config, watcher: watcher, registry: registry, shell: shell, learning: learning)
     shell.expanded = true
     state.contextLine = "Google Chrome · New Report - Concur"
+    let shot = renderFakeScreen()
+    let taken = Date(timeIntervalSince1970: 1_790_000_000)
     state.transcript = [
-        ChatMessage(role: .wand, text: "Cost Center (dropdown, empty)"),
+        ChatMessage(role: .wand, text: "Cost Center (dropdown, empty)",
+                    seen: SeenScreen(kind: .pointed, at: taken, place: "Google Chrome · “New Report”", pictures: [shot])),
         ChatMessage(role: .note, text: "Pick the one ending in your department code, not the project one, or Finance bounces it.", meta: "Priya · 2026-09-18", warning: true),
         ChatMessage(role: .assistant, text: """
             That's the **Cost Center** field: it tells Finance which team's budget pays for this report. It's required, so the form won't submit while it's empty.
@@ -141,7 +144,8 @@ func runRenderCard() {
             3. If you don't see your team, choose "Other" and add a line in Comments.
             If this report is for a client project, use the project's cost center instead of your own.
             """),
-        ChatMessage(role: .user, text: "how do I split this across two cost centers"),
+        ChatMessage(role: .user, text: "how do I split this across two cost centers",
+                    seen: SeenScreen(kind: .screen, at: taken, place: "Google Chrome · “New Report”", pageText: "Cost Center\nAllocate")),
         ChatMessage(role: .assistant, text: """
             You can't split at the report level, but you can per line item.
             Open an expense line, click **Allocate** (bottom of the line editor), then add a second row and set a percentage or an amount for each cost center. The two rows must add up to 100%.
@@ -190,9 +194,31 @@ func runRenderCard() {
         render(BubblePanel.defaultExpandedSize, dark: false, "pad-400-empty.png")
         state.transcript = Array(full.prefix(3)); state.chatBusy = true; state.status = "Reading the page…"
         render(BubblePanel.defaultExpandedSize, dark: false, "pad-400-busy.png")
+        // a question being answered from the screen it took: the chip says the person can switch away
+        state.transcript = [ChatMessage(role: .user, text: "why is this greyed out",
+                                        seen: SeenScreen(kind: .screen, at: taken, place: "Google Chrome · “New Report”",
+                                                         pictures: [shot], held: true))]
+        state.status = "Thinking…"
+        render(BubblePanel.defaultExpandedSize, dark: false, "pad-400-held.png")
         state.transcript = full; state.suggestions = sugg; state.chatBusy = false
     }
     exit(0)
+}
+
+/// A made-up screen for the renders: a browser bar, a form and a button, nothing real.
+private func renderFakeScreen() -> CGImage {
+    let w = 1440, h = 900
+    let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    ctx.setFillColor(CGColor(gray: 0.97, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+    ctx.setFillColor(CGColor(gray: 0.86, alpha: 1)); ctx.fill(CGRect(x: 0, y: h - 70, width: w, height: 70))
+    ctx.setFillColor(CGColor(red: 0.20, green: 0.42, blue: 0.85, alpha: 1)); ctx.fill(CGRect(x: 0, y: h - 130, width: w, height: 60))
+    ctx.setFillColor(CGColor(gray: 1, alpha: 1)); ctx.fill(CGRect(x: 120, y: 160, width: 1200, height: 560))
+    ctx.setFillColor(CGColor(gray: 0.78, alpha: 1))
+    for row in 0..<6 { ctx.fill(CGRect(x: 180, y: 640 - row * 80, width: 520, height: 34)) }
+    ctx.setFillColor(CGColor(red: 0.98, green: 0.80, blue: 0.20, alpha: 1)); ctx.fill(CGRect(x: 800, y: 560, width: 420, height: 110))
+    ctx.setFillColor(CGColor(red: 0.20, green: 0.42, blue: 0.85, alpha: 1)); ctx.fill(CGRect(x: 180, y: 200, width: 200, height: 50))
+    return ctx.makeImage()!
 }
 
 /// `Noteling --render-pen <dir>`: the pen overlay over a fake window, with two stickers (one open) and the note editor,
