@@ -241,7 +241,9 @@ enum Prompt {
             + "doesn't cover.\n```json\n\(b.text)\n```\n"
     }
 
-    static func wandInstruction(target: WandTarget, ctx: ScreenContext?) -> String {
+    /// What the pen picked, and what to do with it. `question` is what the person then asked about it, by a tap or in
+    /// their own words; nil when they only pressed Return, which asks for the short identify-and-explain.
+    static func wandInstruction(target: WandTarget, ctx: ScreenContext?, question: String? = nil) -> String {
         var s: String
         if target.isRegion {
             s = "## The user circled part of the screen with the pen\n"
@@ -251,33 +253,56 @@ enum Prompt {
                 for e in target.regionElements { s += "- \(e.summary)\n" }
             }
             s += "The violet ink stroke on the full screenshot is their drawing. The second image is a crop of the circled area.\n\n"
+        } else {
+            s = "## The user pointed the pen at something on screen\n"
+            if let e = target.element { s += "Accessibility says it is: \(e.label)\n" }
+            if let t = target.windowTitle, !t.isEmpty { s += "Window: “\(t)”\(target.windowOwner.map { " (\($0))" } ?? "")\n" }
+            s += "The spot is marked with a violet ring on the full screenshot. The second image is a zoomed crop around it.\n\n"
+        }
+        let what = target.isRegion ? "what they circled" : "what they pointed at"
+        if let question = question?.trimmingCharacters(in: .whitespacesAndNewlines), !question.isEmpty {
+            s += "## Their question about it\n\(question)\n\n"
             s += packShapeFirst
+            s += """
+            Answer that question about \(what), directly, under 120 words before the Suggestions line. Name things as \
+            they appear on screen, and use the tool pack if relevant. If something is clearly an error, a blocked state or \
+            an empty required field, say why and what to do. Don't ask what they want to know: they just said. End with the \
+            Suggestions line offering up to 3 follow-ups they'd likely ask next.
+            """
+            return s
+        }
+        s += packShapeFirst
+        if target.isRegion {
             s += """
             Respond in this shape, under 90 words before the Suggestions line:
             1. One line naming what they circled, as it appears on screen (the group, table, chart or set of fields).
             2. Two or three lines on what it shows or what state it is in, using the tool pack if relevant. \
             If anything in it is clearly an error, a blocked state or an empty required field, say why and what to do right away.
-            3. Then ask what they want to know, and end with the Suggestions line offering up to 3 specific options.
+            3. End with the Suggestions line offering up to 3 specific follow-ups. Don't ask what they want to know.
             """
-            return s
+        } else {
+            s += """
+            Respond in this shape, under 80 words before the Suggestions line:
+            1. One line naming what they pointed at, as it appears on screen.
+            2. One or two lines on what it is or what state it is in, using the tool pack if relevant. \
+            If it is clearly an error, a blocked state or an empty required field, say why and what to do right away.
+            3. End with the Suggestions line offering up to 3 specific follow-ups. Don't ask what they want to know.
+            """
         }
-        s = "## The user pointed the pen at something on screen\n"
-        if let e = target.element { s += "Accessibility says it is: \(e.label)\n" }
-        if let t = target.windowTitle, !t.isEmpty { s += "Window: “\(t)”\(target.windowOwner.map { " (\($0))" } ?? "")\n" }
-        s += "The spot is marked with a violet ring on the full screenshot. The second image is a zoomed crop around it.\n\n"
-        s += packShapeFirst
-        s += """
-        Respond in this shape, under 80 words before the Suggestions line:
-        1. One line naming what they pointed at, as it appears on screen.
-        2. One or two lines on what it is or what state it is in, using the tool pack if relevant. \
-        If it is clearly an error, a blocked state or an empty required field, say why and what to do right away.
-        3. Then ask what they want to know, and end with the Suggestions line offering up to 3 specific options.
-        """
         return s
     }
 
     /// A pack that knows the page knows what people there need from the pen better than the default shape does.
-    static let packShapeFirst = "If the active tool pack says how to answer when someone circles or points at something, follow the pack exactly and skip the shape below, including its closing question.\n"
+    static let packShapeFirst = "If the active tool pack says how to answer when someone circles or points at something, follow the pack exactly and skip the shape below.\n"
+
+    /// The questions the pen offers as taps once something is picked: the pack's own (SKILL.md `pen:`) for the page in
+    /// front, else general ones. Tapping one asks it; nothing is sent before.
+    static func penQuestions(packs: [ToolPack]) -> [String] {
+        let own = packs.lazy.map(\.pen).first { !$0.isEmpty } ?? []
+        return own.isEmpty ? defaultPenQuestions : Array(own.prefix(3))
+    }
+
+    static let defaultPenQuestions = ["What is this?", "Why is it like this?", "What can I do here?"]
 
     /// Notes people stuck on controls: the ones on what was picked, then the rest of the scene.
     /// The notes a request carries, each as its author's claim with its age, and any check run on it.

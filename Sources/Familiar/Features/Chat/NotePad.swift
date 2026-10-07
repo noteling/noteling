@@ -133,7 +133,9 @@ struct StickyNoteView: View {
     let ledger: RevealLedger
     var peek: MascotMood? = nil     // the character looking over the top edge (the newest note only)
     var animated = true
+    var awaitingQuestion = false    // a pen pick waiting for its question: the tabs are the questions to ask
     let onSuggest: (String) -> Void
+    var onDismiss: (() -> Void)? = nil
     @Environment(\.colorScheme) private var scheme
 
     private var tilt: Double { index.isMultiple(of: 2) ? -Pad.tilt : Pad.tilt }
@@ -156,6 +158,17 @@ struct StickyNoteView: View {
         VStack(alignment: .leading, spacing: 8) {
             if let h = note.heading { heading(h) }
             ForEach(note.answers) { a in answer(a) }
+            if awaitingQuestion && !busy {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("What about it? Tap a question below or type your own. ⏎ on its own explains it.")
+                        .font(.callout).foregroundStyle(Pad.inkSoft)
+                    Spacer(minLength: 4)
+                    Button("Never mind") { onDismiss?() }
+                        .buttonStyle(.plain).font(.callout).foregroundStyle(Pad.penInk)
+                        .help("Put the pick away (Esc). Nothing was sent.")
+                }
+                .padding(.top, 2)
+            }
             if busy && !note.hasAnswer {
                 HStack(spacing: 7) {
                     ProgressView().controlSize(.small)
@@ -174,7 +187,7 @@ struct StickyNoteView: View {
     private func heading(_ m: ChatMessage) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if m.role == .wand {
-                Label("You pointed at", systemImage: "pencil.tip")
+                Label(m.seen?.kind == .circled ? "You circled" : "You pointed at", systemImage: "pencil.tip")
                     .font(.system(size: 11, weight: .medium)).foregroundStyle(Pad.penInk)
             } else if m.role == .draft || m.role == .learned {
                 Label(m.role == .draft ? "Learned by watching · draft" : "Learned by watching", systemImage: "eye")
@@ -182,6 +195,9 @@ struct StickyNoteView: View {
             }
             Text(m.text).font(HandFont.font(size: 18)).foregroundStyle(Pad.ink).textSelection(.enabled)
                 .padding(.trailing, peek != nil ? 34 : 0)   // room for the character's chin
+            if let asked = m.asked {
+                Text("“\(asked)”").font(HandFont.font(size: 15)).foregroundStyle(Pad.ink.opacity(0.78)).textSelection(.enabled)
+            }
             if let seen = m.seen, !seen.isEmpty || (seen.held && busy && !note.hasAnswer) {
                 SeenChip(seen: seen, answering: busy && !note.hasAnswer)
             }

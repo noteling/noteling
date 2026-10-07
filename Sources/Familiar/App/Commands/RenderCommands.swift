@@ -200,6 +200,28 @@ func runRenderCard() {
                                                          pictures: [shot], held: true))]
         state.status = "Thinking…"
         render(BubblePanel.defaultExpandedSize, dark: false, "pad-400-held.png")
+        // a circle waiting for its question: the questions as tabs, the hint, nothing sent
+        state.transcript = []; state.suggestions = []; state.chatBusy = false; state.status = ""
+        let screen = NSScreen.main ?? NSScreen.screens[0]
+        state.captureDisplay = { _ in RawCapture(image: shot, screen: screen, pixelsPerPoint: CGFloat(shot.width) / screen.frame.width) }
+        let circle = NSRect(x: screen.frame.minX + screen.frame.width * 0.55, y: screen.frame.minY + screen.frame.height * 0.3,
+                            width: screen.frame.width * 0.3, height: screen.frame.height * 0.15)
+        state.wandPick(WandTarget(screenPoint: NSPoint(x: circle.midX, y: circle.midY), element: nil, windowOwner: "Google Chrome",
+                                  windowTitle: "New Report", stroke: [NSPoint(x: circle.minX, y: circle.midY), NSPoint(x: circle.midX, y: circle.maxY),
+                                                                      NSPoint(x: circle.maxX, y: circle.midY), NSPoint(x: circle.midX, y: circle.minY)],
+                                  region: circle))
+        render(BubblePanel.defaultExpandedSize, dark: false, "pad-400-pick.png")
+        // the same pick once a tap asked about it
+        let picked = state.transcript.first.map { m -> ChatMessage in
+            var asked = m; asked.asked = "Why is it like this?"; return asked
+        }
+        state.dismissPick()
+        state.transcript = (picked.map { [$0] } ?? []) + [ChatMessage(role: .assistant, text: """
+            That's the **Cost Center** box, and it's empty, which is why **Submit** is greyed out: the report can't go to Finance without it.
+            Pick your team's cost center from the list and Submit turns on.
+            """)]
+        state.suggestions = ["Which one is mine?", "Can I split it?"]
+        render(BubblePanel.defaultExpandedSize, dark: false, "pad-400-asked.png")
         state.transcript = full; state.suggestions = sugg; state.chatBusy = false
     }
     exit(0)

@@ -12,10 +12,15 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
 1. **Watcher** (Accessibility, no screenshots) polls the frontmost app, window title and browser URL.
 2. **Tool packs** in `~/.noteling/tools/<pack>/` match the current app/URL and supply docs plus scripts.
 3. **Pen**: hold the note until the ring fills, or press **⌃⌥Space**. The pointer becomes a quill, the screen dims with a
-   shimmering border, the element under the quill is outlined, and a click sends a screenshot (ringed at the click) plus a
-   zoomed crop to Claude. **Drag** to circle something instead: the ink stroke goes on the screenshot, the crop is the circled
+   shimmering border, the element under the quill is outlined, and a click picks it: a screenshot (ringed at the click)
+   plus a zoomed crop. **Drag** to circle something instead: the ink stroke goes on the screenshot, the crop is the circled
    area, and the labelled controls inside it are named for the model.
-   The reply names what you pointed at, explains its state, and offers tappable follow-ups.
+   A pick says what, not what about it, so the pad asks first and nothing goes to Claude yet: the pick lands as a note
+   with "What about it?", the pad's input takes the keyboard, and up to three questions sit under it as tabs (the
+   active pack's `pen:` list, else "What is this?", "Why is it like this?", "What can I do here?"). A tap, your own
+   words, or Return on its own (the short identify-and-explain) sends one request with the question; Esc or **Never
+   mind** puts the pick away, and a new pick replaces one still waiting. The screen, the notes' checks and the page's
+   brief start at the pick, so they're ready by the time you ask. A sticker pick asks about its note at once.
 4. **Notes**: while the pen is up, **right-click** (two-finger click, or ⌃-click) a control and a sticky note opens right on it.
    Type, ⏎ keeps it, ⇧⏎ makes a new line, Esc drops it; tick **Warning** for the orange kind. Right-drag circles a spot and
    sticks the note to that area. Right-click an existing sticker to edit or remove it. Picking up the pen shows every note
@@ -296,6 +301,11 @@ Two optional keys name scripts by file name (without `.py`):
   pen waits up to 10 seconds for a run in progress; a failed run is kept for 30 seconds and the answer says what
   couldn't be checked. A pack whose body says how to answer a pen pick gets its own shape instead of the default one.
 - `watch: <script>`: the check a watch list runs for each item (see Watch list).
+
+And one that is a list of words, not a script:
+- `pen: [Why this price?, What should I do?]`: the questions the pen offers as taps after a pick on the pack's pages,
+  up to three, in place of the general ones.
+
 Scripts: a top-level `run(...)` with type hints and a docstring becomes a tool; the docstring's `Args:` section
 becomes parameter descriptions; the return value is JSON-serialised back to the model. Dependencies go in a
 PEP 723 header and are installed by the bundled `uv` on first use:
