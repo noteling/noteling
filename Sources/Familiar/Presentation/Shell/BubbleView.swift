@@ -204,6 +204,7 @@ struct BubbleView: View {
         .shadow(color: .black.opacity(0.3), radius: 12, y: 6)
         .padding(8)
         .onAppear { inputFocused = true }
+        .onChange(of: state.focusRequest) { _, _ in inputFocused = true }
         .onDisappear { ledger.reset() }
         .onChange(of: state.busy) { was, now in   // the orb is not on screen while the pad is open, so the pad reacts
             guard was, !now else { return }
@@ -274,7 +275,8 @@ struct BubbleView: View {
     /// The notes, oldest at the top, newest at the bottom and on top of the pile.
     private var transcript: some View {
         let notes = Note.group(state.transcript)
-        let tabsOn = state.busy ? nil : notes.last { $0.hasAnswer }?.id   // follow-ups stick to the last real answer
+        // follow-ups stick to the last real answer; a pick waiting for its question carries the questions to ask
+        let tabsOn = state.busy ? nil : state.pendingPickID ?? notes.last { $0.hasAnswer }?.id
         return ScrollViewReader { proxy in
             ScrollView {
                 // Notes change height as tabs and the busy row move between turns.
@@ -287,7 +289,8 @@ struct BubbleView: View {
                         StickyNoteView(note: n, index: i, isLatest: latest, busy: state.chatPresentationBusy && latest, status: state.status,
                                        suggestions: n.id == tabsOn ? state.suggestions : [], ledger: ledger,
                                        peek: latest ? peekMood : nil, animated: padAnimated,
-                                       onSuggest: { state.askSuggestion($0) })
+                                       awaitingQuestion: n.id == state.pendingPickID,
+                                       onSuggest: { state.askSuggestion($0) }, onDismiss: { state.dismissPick() })
                             .id(n.id)
                     }
                     if state.chatPresentationBusy, notes.last?.hasAnswer == true || notes.isEmpty {
@@ -340,16 +343,23 @@ struct BubbleView: View {
         }
     }
 
+    /// Something to send: words, or a pick waiting for its question (Return on its own explains it).
+    private var canSend: Bool {
+        !state.busy && (state.pendingPickID != nil || !state.question.trimmingCharacters(in: .whitespaces).isEmpty)
+    }
+
     /// A lined strip of paper to write on, the pen to pick up, and a nib to send.
     private var inputRow: some View {
         HStack(alignment: .bottom, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                TextField("", text: $state.question, prompt: Text("Write to me…").foregroundStyle(Pad.ink.opacity(0.42)), axis: .vertical)
+                TextField("", text: $state.question, prompt: Text(state.pendingPickID != nil ? "Ask about it, or ⏎ to just explain it…" : "Write to me…")
+                    .foregroundStyle(Pad.ink.opacity(0.42)), axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(Pad.body).foregroundStyle(Pad.ink)
                     .lineLimit(1...4)
                     .focused($inputFocused)
                     .onSubmit { state.ask() }
+                    .onExitCommand { state.dismissPick() }
                 InkLine(wobble: 0.5).stroke(Pad.ink.opacity(0.30), lineWidth: 1).frame(height: 3)
             }
             .padding(.bottom, 1)
@@ -364,8 +374,8 @@ struct BubbleView: View {
                 }
             }
             .buttonStyle(.plain)
-            .disabled(state.busy || state.question.trimmingCharacters(in: .whitespaces).isEmpty)
-            .opacity(state.busy || state.question.trimmingCharacters(in: .whitespaces).isEmpty ? 0.35 : 1)
+            .disabled(!canSend)
+            .opacity(canSend ? 1 : 0.35)
             .keyboardShortcut(.return, modifiers: .command)
             .help("Send (⌘↩)")
         }

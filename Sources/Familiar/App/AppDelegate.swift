@@ -431,6 +431,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             if !self.panel.isVisible { self.showBubble() }
             self.assistant.wandPick(target)
+            // The pad asks what about it: take the keyboard so the question can be typed straight away.
+            if self.shell.expanded { self.panel.makeKeyAndOrderFront(nil) }
         }
         assistant.onCaptured = { [weak self] moment in
             CaptureFlash.show(moment, toward: self?.panel.isVisible == true ? self?.panel.frame : nil)

@@ -12,7 +12,7 @@ what it finds into cards you can review, discuss, or ask it to help with.
 
 ## Meet your Noteling
 
-- **Ask about your screen.** Point at something confusing, or open chat and ask a question.
+- **Ask about your screen.** Point the pen at something confusing, or circle it, then tap a question or type your own. Or open chat and ask.
 - **Show it how.** Use **Watch Me** to demonstrate where information lives. Add context in your own words, such as “Only check unread email from the last two days.”
 - **Keep track of unfinished work.** Findings become cards that carry forward. Open a card to discuss it, add context, or decide what to do next.
 - **Ask for help doing it.** Hand an action to Noteling and follow its progress in the task window. You can stop it at any time.

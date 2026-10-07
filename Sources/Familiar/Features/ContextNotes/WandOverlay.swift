@@ -22,7 +22,7 @@ struct WandTarget {
         if let named { return named }
         if isRegion {
             let names = regionElements.compactMap(\.label).prefix(2).map { "“\($0.prefix(28))”" }
-            if names.isEmpty { return "what you circled" }
+            if names.isEmpty { return "part of the screen" }
             return "circled " + names.joined(separator: ", ") + (regionElements.count > 2 ? "…" : "")
         }
         if let e = element {

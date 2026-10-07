@@ -56,6 +56,7 @@ final class ToolPack {
     var sources: [String] = []      // scripts a saved job can read through (SKILL.md `sources:`, script names without .py)
     var brief: String?              // script run ahead for the page in front, so the pen answers from it (SKILL.md `brief:`)
     var watch: String?              // script that checks one item for a watch list (SKILL.md `watch:`)
+    var pen: [String] = []          // questions the pen offers as taps on this pack's pages (SKILL.md `pen:`), up to 3
     var body = ""
     var docs: [DocFile] = []
     var scripts: [ScriptTool] = []
@@ -121,6 +122,7 @@ final class ToolRegistry {
                 pack.sources = Self.list(fm["sources"])
                 pack.brief = Self.list(fm["brief"]).first
                 pack.watch = Self.list(fm["watch"]).first
+                pack.pen = Self.list(fm["pen"]).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                 if let m = fm["match"] as? [String: Any] {
                     pack.match.urls = Self.list(m["urls"])
                     pack.match.bundles = Self.list(m["bundles"])
