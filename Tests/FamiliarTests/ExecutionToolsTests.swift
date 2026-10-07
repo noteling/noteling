@@ -164,6 +164,21 @@ struct ExecutionToolsTests {
     }
 
     @Test
+    func screenTextRouteUsesTheSuppliedReaderSoAHeldAnswerReadsWhatWasAskedAbout() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        var reads = 0
+        let router = try ExecutionTools.make(registry: fixture.registry(), context: nil, control: nil,
+                                             background: false, lookAtScreen: { .text("unused") },
+                                             readScreen: { reads += 1; return .text("the page as asked about") })
+
+        let result = await router.executor("read_screen", [:], nil)
+        #expect(!result.isError)
+        #expect(reads == 1)
+        #expect(result.content as? String == "the page as asked about")
+    }
+
+    @Test
     func onlyActiveAndGlobalPackScriptsBecomeExecutableRoutes() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }

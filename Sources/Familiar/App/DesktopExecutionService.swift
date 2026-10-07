@@ -40,7 +40,8 @@ final class DesktopExecutionService {
                  additionalRoutes: [ToolRoute] = [],
                  trackedItems: [TrackedSourceItem] = [],
                  onObservation: (() -> Void)? = nil, onNavigation: (() -> Void)? = nil,
-                 lookAtScreen: @escaping () async -> ToolResult) async throws -> PreparedExecution {
+                 lookAtScreen: @escaping () async -> ToolResult,
+                 readScreen: (() async -> ToolResult)? = nil) async throws -> PreparedExecution {
         guard owner == nil, tasks.activeTask == nil || tasks.activeTask?.id == id else {
             throw ClaudeError(message: "Another request is using desktop control.")
         }
@@ -58,7 +59,7 @@ final class DesktopExecutionService {
         let router = try ExecutionTools.make(registry: registry, context: context, control: control,
                                              background: background, policy: policy, additionalRoutes: additionalRoutes,
                                              trackedItems: trackedItems, onObservation: onObservation, onNavigation: onNavigation,
-                                             lookAtScreen: lookAtScreen)
+                                             lookAtScreen: lookAtScreen, readScreen: readScreen)
         control.lane = background ? .background : .foreground
         control.target = target
         control.declaredIrreversible = registry.select(for: context).active.flatMap(\.irreversible)

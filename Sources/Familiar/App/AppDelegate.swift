@@ -432,6 +432,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if !self.panel.isVisible { self.showBubble() }
             self.assistant.wandPick(target)
         }
+        assistant.onCaptured = { [weak self] moment in
+            CaptureFlash.show(moment, toward: self?.panel.isVisible == true ? self?.panel.frame : nil)
+        }
         wand.sceneProvider = { [weak self] in self?.watcher.sample() ?? self?.watcher.current }
         wand.notesProvider = { [weak self] ctx in self?.registry.notes(for: ctx) ?? [] }
         wand.author = { [weak self] in self.map { NoteStore.author($0.config) } ?? NSFullUserName() }

@@ -44,6 +44,12 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    curious when you hover, thinking while it works, happy or sad when the answer lands.
    The chat is a pad of sticky notes: each question is a note with the answer written on it (inked in line by line as it
    arrives), follow-ups are paper tabs under the note, and the character peeks over the newest one.
+   **The capture moment:** a question about the screen (and every pen pick) takes the screen when it is asked, with a
+   flash and the picture shrinking toward the pad (`CaptureFlash`; a fade with Reduce Motion). The answer holds that
+   screen (`FrozenScreen`): `look_at_screen` returns it and `read_screen` the window that was in front, so the person can
+   switch away; a read after they've moved on says so rather than reading the wrong window. An answer that controls the
+   computer in the foreground looks live instead. A chip under the question (`SeenScreen`) says what Claude was shown,
+   and clicking it shows exactly that.
    For a little paper adventure, right-click the note → **Fold into a crane** (also in the pad's More menu and menu bar).
    It folds, flaps around the current screen once, lands at the same spot, and unfolds. The flight is click-through;
    **Esc** or menu bar → **Land Noteling** brings it back early. Starting work brings it back too. Available while idle;

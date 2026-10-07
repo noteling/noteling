@@ -14,6 +14,7 @@ struct ChatMessage: Identifiable {
     var warning = false            // note: a warning rather than a tip
     var image: CGImage? = nil      // receipt: the target window when the job ended
     var holds: Bool? = nil         // check: whether a note's check found its claim holds; nil when it only informs
+    var seen: SeenScreen? = nil    // user/wand: what Claude was shown from the screen for this question
 }
 
 @MainActor
@@ -38,6 +39,8 @@ final class Assistant: ObservableObject {
     var onCancelWand: (() -> Void)?       // the app drops an active pen before a recording starts
     var onNotesChanged: (() -> Void)?     // a note was kept or removed: the app recounts the badge
     var onShowNotes: (() -> Void)?        // the badge was clicked: the app shows the notes on the page
+    /// The app shows the capture moment (`CaptureFlash`) each time a question takes the screen.
+    var onCaptured: ((CaptureMoment) -> Void)?
     /// Where how notes get used is kept, on this Mac only.
     var notesUsage: NotesUsageLog?
     /// The page's own tools, run ahead when a page arrives; the pen and typed questions answer from them.
@@ -527,12 +530,33 @@ final class Assistant: ObservableObject {
             let evidence = cardConversation?.card != nil ? ScreenEvidence.none
                 : Self.evidence(for: q, mode: config.screenshotMode, bundleID: ctx?.bundleID)
             var attach = evidence == .screenshot, page = ""
+            // A question about the screen takes it now, for the whole answer, and shows that it did (the flash and the
+            // chip): after that the person can switch away. The picture is taken beside the page read.
+            let held = evidence == .none ? nil : FrozenScreen(scene: ctx)
+            var seen = SeenScreen(kind: .screen, at: held?.at ?? Date(), place: SeenScreen.place(ctx))
+            let maxEdge = config.maxImageLongEdge
+            let capturing = Task { () -> CGImage? in
+                guard let held else { return nil }
+                do {
+                    let raw = try await ScreenCapture.captureDisplay()
+                    let picture = ScreenCapture.downscale(raw.image, maxLongEdge: maxEdge)
+                    held.keep(picture: picture)
+                    if generation == captureGeneration { onCaptured?(CaptureMoment(image: picture, screen: raw.screen)) }
+                    return picture
+                } catch {
+                    Log.info("ask: no screenshot: \(error.localizedDescription)")
+                    return nil
+                }
+            }
             if evidence == .page, let bundle = ctx?.bundleID {
                 status = "Reading the page…"
                 let read = await Task.detached(priority: .userInitiated) { PageReader.read(bundleID: bundle) }.value
                 guard generation == captureGeneration else { finishRequest(); return }
                 if let read, !(read.elements.isEmpty && read.sheet == nil) {
                     page = Self.pageSection(read)
+                    let text = read.text()
+                    held?.keep(pageText: text)
+                    seen.pageText = text
                     Log.info("ask: page read attached (\(read.elements.count) things, \(Int(read.elapsed * 1_000)) ms)")
                 } else {
                     attach = true   // nothing readable, such as a PDF or a canvas: a picture instead
@@ -540,21 +564,18 @@ final class Assistant: ObservableObject {
                 }
             }
             Log.info("ask: screenshot \(attach ? "attached" : "skipped") (mode \(config.screenshotMode))")
-            if attach, needsFreshCapture(for: ctx) {
-                status = "Capturing screen…"
-                do {
-                    let raw = try await ScreenCapture.captureDisplay()
-                    guard generation == captureGeneration else { finishRequest(); return }
-                    if let shot = ScreenCapture.encode(ScreenCapture.downscale(raw.image, maxLongEdge: config.maxImageLongEdge)) {
-                        content.append(imageBlock(shot))
-                        lastCapture = (Date(), ctx)
-                        Log.info("ask: screenshot \(shot.width)x\(shot.height) \(shot.sizeKB)KB")
-                    }
-                } catch {
-                    Log.info("ask: no screenshot: \(error.localizedDescription)")
-                }
-            }
+            let picture = await capturing.value
             guard generation == captureGeneration else { finishRequest(); return }
+            if let picture, attach, needsFreshCapture(for: ctx), let shot = ScreenCapture.encode(picture) {
+                content.append(imageBlock(shot))
+                lastCapture = (Date(), ctx)
+                seen.pictures.append(picture)
+                Log.info("ask: screenshot \(shot.width)x\(shot.height) \(shot.sizeKB)KB")
+            }
+            if held != nil {
+                seen.held = !controlsForeground
+                setSeen(seen, on: m.id)
+            }
             var brief = ""
             if briefing {
                 status = "Checking this page…"
@@ -566,7 +587,7 @@ final class Assistant: ObservableObject {
             let text = context + brief + page + "\n## Question\n\(q)\n"
             content.append(["type": "text", "text": text])
             diagnoseChat(.contextReady)
-            await send(content: content, ctx: ctx, title: q, messageID: m.id)
+            await send(content: content, ctx: ctx, title: q, messageID: m.id, held: held)
         }
     }
 
@@ -576,7 +597,8 @@ final class Assistant: ObservableObject {
         guard !busy else { status = "Still answering the last one."; return }
         guard !awaitingPurpose, !awaitingContext else { status = "Finish or discard Watch Me before using the pen."; return }
         shell.expanded = true
-        transcript.append(ChatMessage(role: .wand, text: target.shortLabel))
+        let pick = ChatMessage(role: .wand, text: target.shortLabel)
+        transcript.append(pick)
         // What people wrote comes first, at once and labelled: on this control, then for things not on screen.
         let off = Array(target.notOnScreen.prefix(5))
         var rows: [String: UUID] = [:]
@@ -605,32 +627,45 @@ final class Assistant: ObservableObject {
         Task {
             status = "Capturing screen…"
             var content: [[String: Any]] = []
+            // The screen is taken once, at the pick, for the whole answer, and the pick shows it: the flash, the picked
+            // part flying to the pad, and the chip under the pick.
+            var held: FrozenScreen?
+            var seen = SeenScreen(kind: target.isRegion ? .circled : .pointed, at: Date(), place: SeenScreen.place(ctx))
             do {
                 let raw = try await ScreenCapture.captureDisplay(containing: target.screenPoint)
                 guard generation == captureGeneration else { finishRequest(); return }
                 let full = ScreenCapture.downscale(raw.image, maxLongEdge: config.maxImageLongEdge)
+                held = FrozenScreen(scene: ctx, at: seen.at, picture: full)
                 let f = CGFloat(full.width) / CGFloat(raw.image.width)
+                let picked: NSRect
                 if let stroke = target.stroke, let region = target.region {
+                    picked = region
                     let pts = stroke.map { raw.imagePoint($0) }
                     let annotated = ScreenCapture.annotate(full, stroke: pts.map { CGPoint(x: $0.x * f, y: $0.y * f) })
-                    if let shot = ScreenCapture.encode(annotated) { content.append(imageBlock(shot)) }
+                    if let shot = ScreenCapture.encode(annotated) { content.append(imageBlock(shot)); seen.pictures.append(annotated) }
                     let tl = raw.imagePoint(NSPoint(x: region.minX, y: region.maxY))
                     let rect = CGRect(x: tl.x, y: tl.y, width: region.width * raw.pixelsPerPoint, height: region.height * raw.pixelsPerPoint)
                     let pad = max(40 * raw.pixelsPerPoint, CGFloat(min(raw.image.width, raw.image.height)) * 0.04)
                     if let cropped = ScreenCapture.crop(raw.image, around: rect, padding: pad, maxLongEdge: 1568), let shot = ScreenCapture.encode(cropped) {
                         content.append(imageBlock(shot))
+                        seen.pictures.append(cropped)
                     }
                     Log.info("wand: images \(content.count), region \(Int(rect.width))x\(Int(rect.height))px")
                 } else {
                     let p = raw.imagePoint(target.screenPoint)
                     let annotated = ScreenCapture.annotate(full, ringAt: CGPoint(x: p.x * f, y: p.y * f))
-                    if let shot = ScreenCapture.encode(annotated) { content.append(imageBlock(shot)) }
+                    if let shot = ScreenCapture.encode(annotated) { content.append(imageBlock(shot)); seen.pictures.append(annotated) }
                     let cropSize = CGSize(width: 900 * raw.pixelsPerPoint / 2, height: 560 * raw.pixelsPerPoint / 2)
                     if let cropped = ScreenCapture.crop(raw.image, around: p, size: cropSize), let shot = ScreenCapture.encode(cropped) {
                         content.append(imageBlock(shot))
+                        seen.pictures.append(cropped)
                     }
+                    picked = NSRect(x: target.screenPoint.x - 225, y: target.screenPoint.y - 140, width: 450, height: 280)
                     Log.info("wand: images \(content.count), point \(Int(p.x)),\(Int(p.y))")
                 }
+                onCaptured?(CaptureMoment(image: full, screen: raw.screen, region: picked))
+                seen.held = !controlsForeground
+                setSeen(seen, on: pick.id)
                 lastCapture = (Date(), ctx)
             } catch {
                 guard generation == captureGeneration else { finishRequest(); return }
@@ -676,7 +711,7 @@ final class Assistant: ObservableObject {
                 + Prompt.wandInstruction(target: target, ctx: ctx)
                 + Prompt.notes(onTarget: target.notes, notOnScreen: off, furtherDown: target.furtherDown, elsewhere: elsewhere, checks: checks)
             content.append(["type": "text", "text": text])
-            await send(content: content, ctx: ctx, title: target.shortLabel)
+            await send(content: content, ctx: ctx, title: target.shortLabel, held: held, seenOn: pick.id)
         }
     }
 
@@ -774,17 +809,60 @@ final class Assistant: ObservableObject {
         return cues.contains { t.contains($0) }
     }
 
-    /// Fresh screenshot for the look_at_screen tool.
-    private func lookAtScreen(_ ctx: ScreenContext?, generation: Int) async -> ToolResult {
+    /// The look_at_screen tool: the screen as it was when they asked, while the answer holds it; else a fresh
+    /// screenshot, shown with the capture moment. Either way the question's chip gets the picture.
+    private func lookAtScreen(_ ctx: ScreenContext?, generation: Int, held: FrozenScreen? = nil, seenOn: UUID? = nil) async -> ToolResult {
+        if let held, let picture = held.picture, let shot = ScreenCapture.encode(picture) {
+            addSeen(picture: picture, on: seenOn, ctx: ctx)
+            Log.info("look_at_screen: as asked \(Int(Date().timeIntervalSince(held.at)))s ago, \(shot.width)x\(shot.height) \(shot.sizeKB)KB")
+            return .blocks([["type": "text", "text": held.pictureLine], imageBlock(shot)])
+        }
         do {
             let raw = try await ScreenCapture.captureDisplay()
-            guard let shot = ScreenCapture.encode(ScreenCapture.downscale(raw.image, maxLongEdge: config.maxImageLongEdge)) else {
+            let picture = ScreenCapture.downscale(raw.image, maxLongEdge: config.maxImageLongEdge)
+            guard let shot = ScreenCapture.encode(picture) else {
                 return .text("Could not encode the screenshot.", isError: true)
             }
             if generation == captureGeneration { lastCapture = (Date(), ctx) }
+            onCaptured?(CaptureMoment(image: picture, screen: raw.screen))
+            held?.keep(picture: picture)
+            addSeen(picture: picture, on: seenOn, ctx: ctx)
             Log.info("look_at_screen: \(shot.width)x\(shot.height) \(shot.sizeKB)KB")
             return .blocks([imageBlock(shot)])
         } catch { return .text(error.localizedDescription, isError: true) }
+    }
+
+    /// The read_screen tool: while the answer holds the screen, the window in front when they asked (`FrozenScreen.read`);
+    /// else the window in front now.
+    private func readScreen(held: FrozenScreen?, seenOn: UUID?, ctx: ScreenContext?) async -> ToolResult {
+        guard let held else {
+            let result = await ScreenText.readFrontmost()
+            if !result.isError, let text = result.content as? String { addSeen(pageText: text, on: seenOn, ctx: ctx) }
+            return result
+        }
+        let (result, kept) = await held.read(now: watcher.sample()) { await ScreenText.readFrontmost() }
+        if let kept { addSeen(pageText: kept, on: seenOn, ctx: ctx) }
+        return result
+    }
+
+    /// Whether an answer now could take the mouse and keyboard on the person's own screen: control on, in the
+    /// foreground lane. Such an answer has to see what its actions did, so it doesn't hold the screen.
+    private var controlsForeground: Bool {
+        config.allowControl && desktop != nil && !watching && cardConversation?.card == nil && !backgroundControl
+    }
+
+    private func setSeen(_ seen: SeenScreen, on id: UUID?) {
+        guard let id, let i = transcript.firstIndex(where: { $0.id == id }) else { return }
+        transcript[i].seen = seen
+    }
+
+    /// Adds what a look during the answer showed Claude to the question's chip, starting one if it has none.
+    private func addSeen(picture: CGImage? = nil, pageText: String? = nil, on id: UUID?, ctx: ScreenContext?) {
+        guard let id, let i = transcript.firstIndex(where: { $0.id == id }) else { return }
+        var seen = transcript[i].seen ?? SeenScreen(kind: .screen, at: Date(), place: SeenScreen.place(ctx))
+        if let picture, !seen.pictures.contains(where: { $0 === picture }) { seen.pictures.append(picture) }
+        if let pageText { seen.pageText = pageText }
+        transcript[i].seen = seen
     }
 
     private func needsFreshCapture(for ctx: ScreenContext?) -> Bool {
@@ -821,7 +899,10 @@ final class Assistant: ObservableObject {
     var control: ComputerController? { desktop?.control }
 
     /// `allowsControl: false` keeps the mouse and keyboard out of a request that only reads and explains.
-    func send(content: [[String: Any]], ctx: ScreenContext?, title: String, messageID: UUID? = nil, allowsControl: Bool = true) async {
+    /// `held` is the screen as it was when the person asked: the answer's looks use it unless the answer controls the
+    /// foreground. `seenOn` is the question whose chip shows what Claude was shown (the typed question by default).
+    func send(content: [[String: Any]], ctx: ScreenContext?, title: String, messageID: UUID? = nil, allowsControl: Bool = true,
+              held: FrozenScreen? = nil, seenOn: UUID? = nil) async {
         guard let client else {
             transcript.append(ChatMessage(role: .error, text: ConversationBackend.setupMessage(config: config)))
             finishRequest()
@@ -848,17 +929,23 @@ final class Assistant: ObservableObject {
                     return PreparedExecution(system: Self.cardConversationSystem,
                         router: try ToolRouter(routes: cardConversation.routes()))
                 }
+                let holding = controlAllowed && !background ? nil : held
+                let chip = seenOn ?? messageID
                 let capture: () async -> ToolResult = { [weak self] in
                     guard let self else { return .text("unavailable", isError: true) }
-                    return await self.lookAtScreen(ctx, generation: generation)
+                    return await self.lookAtScreen(ctx, generation: generation, held: holding, seenOn: chip)
+                }
+                let read: () async -> ToolResult = { [weak self] in
+                    guard let self else { return .text("unavailable", isError: true) }
+                    return await self.readScreen(held: holding, seenOn: chip, ctx: ctx)
                 }
                 let sourceRoutes = (sourceConversation?.routes() ?? []) + (watchList?.routes() ?? [])
                 if controlAllowed, let desktop {
                     return try await desktop.prepare(id: id, registry: registry, context: ctx, background: background,
-                                                     title: title, additionalRoutes: sourceRoutes, lookAtScreen: capture)
+                                                     title: title, additionalRoutes: sourceRoutes, lookAtScreen: capture, readScreen: read)
                 }
                 let router = try ExecutionTools.make(registry: registry, context: ctx, control: nil,
-                                                     background: false, additionalRoutes: sourceRoutes, lookAtScreen: capture)
+                                                     background: false, additionalRoutes: sourceRoutes, lookAtScreen: capture, readScreen: read)
                 return PreparedExecution(system: Prompt.system, router: router)
             })
             let onStatus: (String) -> Void = { [weak self] value in
