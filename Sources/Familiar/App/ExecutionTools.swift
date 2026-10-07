@@ -10,7 +10,7 @@ enum ExecutionTools {
 
     static func make(registry: ToolRegistry, context: ScreenContext?,
                      control: ComputerController?, background: Bool,
-                     policy: Policy = .standard, additionalRoutes: [ToolRoute] = [],
+                     policy: Policy = .standard, packScripts: Bool = true, additionalRoutes: [ToolRoute] = [],
                      trackedItems: [TrackedSourceItem] = [],
                      onObservation: (() -> Void)? = nil, onNavigation: (() -> Void)? = nil,
                      lookAtScreen: @escaping () async -> ToolResult,
@@ -25,7 +25,8 @@ enum ExecutionTools {
         var routes: [ToolRoute] = []
         let selection = registry.select(for: context)
         let runner = registry.runner
-        for pack in selection.active + selection.global {
+        // `packScripts: false` when the pack's brief already answered for them, so the turn needs no round trips.
+        for pack in packScripts ? selection.active + selection.global : [] {
             for script in pack.scripts {
                 let requirements = pack.requires
                 routes.append(ToolRoute(match: .tool(name: script.id), definition: script.definition) { _, input, _ in

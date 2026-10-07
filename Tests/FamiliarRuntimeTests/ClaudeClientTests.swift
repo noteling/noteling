@@ -213,6 +213,37 @@ struct ClaudeClientTests {
     }
 
     @Test
+    func aHaikuTurnSendsNoEffortAndNoFallbacks() async throws {
+        let success = try HTTPFixture.Response(json: ["stop_reason": "end_turn", "content": [["type": "text", "text": "Ready."]]])
+        let fixture = HTTPFixture(responses: [success, success])
+        defer { fixture.close() }
+        let client = ClaudeClient(options: options(baseURL: fixture.baseURL), session: fixture.session)
+        client.serverFallbacks = true   // as on Anthropic's own API, without sharing its fixture host with another test
+        client.model = "claude-haiku-4-5"
+        client.effort = ""
+        var messages: [[String: Any]] = [["role": "user", "content": "Hello"]]
+        _ = try await client.converse(system: "Fixture system prompt", tools: [], messages: &messages,
+                                       executor: { _, _, _ in Issue.record("Unexpected tool call"); return .text("unexpected") },
+                                       onStatus: { _ in })
+        let haiku = try #require(fixture.requests.first)
+        #expect(haiku.body["model"] as? String == "claude-haiku-4-5")
+        #expect(haiku.body["output_config"] == nil)
+        #expect(haiku.body["fallbacks"] == nil)
+        #expect(haiku.request.value(forHTTPHeaderField: "anthropic-beta") == nil)
+
+        // back on the usual model, both return
+        client.model = "fixture-model"
+        client.effort = "medium"
+        messages = [["role": "user", "content": "Hello"]]
+        _ = try await client.converse(system: "Fixture system prompt", tools: [], messages: &messages,
+                                       executor: { _, _, _ in Issue.record("Unexpected tool call"); return .text("unexpected") },
+                                       onStatus: { _ in })
+        let usual = try #require(fixture.requests.last)
+        #expect((usual.body["output_config"] as? [String: Any])?["effort"] as? String == "medium")
+        #expect(usual.body["fallbacks"] as? String == "default")
+    }
+
+    @Test
     func gatewayWithoutAnAnthropicKeyAuthenticatesThroughItsOwnHeader() async throws {
         let success = try HTTPFixture.Response(json: ["stop_reason": "end_turn", "content": [["type": "text", "text": "Ready."]]])
         let fixture = HTTPFixture(responses: [success])

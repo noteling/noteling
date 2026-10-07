@@ -15,6 +15,12 @@ package protocol ConversationClient: AnyObject {
                   executor: @escaping ToolExecutor, onStatus: @escaping (String) -> Void) async throws -> ClaudeReply
 }
 
+/// A connection whose model can change for one turn, such as a pen question on a faster model. An empty model leaves
+/// the choice to the connection (the CLI's own default); an empty effort sends none, for models that take no effort.
+package protocol ModelSwitchable: AnyObject {
+    var model: String { get set }
+}
+
 package struct ClaudeError: LocalizedError {
     package let message: String
     package var errorDescription: String? { message }

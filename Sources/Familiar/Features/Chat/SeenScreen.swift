@@ -15,6 +15,8 @@ struct SeenScreen {
     var pageText: String? = nil
     /// The answer works from the screen as it was when asked (`FrozenScreen`), so the person can switch away.
     var held = false
+    /// Taken at a pen pick, and not sent yet: nothing goes to Claude until the question comes.
+    var pending = false
 
     var isEmpty: Bool { pictures.isEmpty && pageText == nil }
 
@@ -23,6 +25,9 @@ struct SeenScreen {
 
     /// "Saw your screen · 10:31", "Read the page · 10:31", "Saw what you circled · 10:31".
     var caption: String {
+        if pending {
+            return (kind == .circled ? "Took what you circled" : "Took where you pointed") + " · sent only when you ask"
+        }
         let what: String
         switch kind {
         case .pointed: what = "Saw where you pointed"

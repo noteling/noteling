@@ -10,6 +10,8 @@ struct Config: Codable {
     var model: String = "claude-opus-5"
     var effort: String = "medium"
     var maxTokens: Int = 4096
+    var penModel: String = ""                // the pen's questions on another model, e.g. a faster one; empty = the model above
+    var penEffort: String = "low"            // how hard the pen's questions think: a pen answer is a short glance
     var watcherEnabled: Bool = true
     var watcherIntervalSeconds: Double = 2
     var maxImageLongEdge: Int = 1568
@@ -111,6 +113,8 @@ struct Config: Codable {
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? d.model
         effort = try c.decodeIfPresent(String.self, forKey: .effort) ?? d.effort
         maxTokens = try c.decodeIfPresent(Int.self, forKey: .maxTokens) ?? d.maxTokens
+        penModel = try c.decodeIfPresent(String.self, forKey: .penModel) ?? d.penModel
+        penEffort = try c.decodeIfPresent(String.self, forKey: .penEffort) ?? d.penEffort
         watcherEnabled = try c.decodeIfPresent(Bool.self, forKey: .watcherEnabled) ?? d.watcherEnabled
         watcherIntervalSeconds = try c.decodeIfPresent(Double.self, forKey: .watcherIntervalSeconds) ?? d.watcherIntervalSeconds
         maxImageLongEdge = try c.decodeIfPresent(Int.self, forKey: .maxImageLongEdge) ?? d.maxImageLongEdge

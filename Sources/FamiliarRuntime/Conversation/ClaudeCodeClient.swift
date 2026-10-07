@@ -3,8 +3,10 @@ import FamiliarContracts
 
 /// Runs the user's unmodified, signed-in Claude Code executable. Noteling owns
 /// conversation history and all tools; the CLI owns authentication and its loop.
-package final class ClaudeCodeClient: ConversationClient {
+package final class ClaudeCodeClient: ConversationClient, ModelSwitchable {
     package var effort: String
+    /// Empty = Claude Code's own default model.
+    package var model: String
     package var maxTokens: Int
     package var maxToolRounds = 8
     package var shouldStop: () -> Bool = { false }
@@ -16,6 +18,7 @@ package final class ClaudeCodeClient: ConversationClient {
         self.options = options
         self.pythonRuntime = pythonRuntime
         effort = options.effort
+        model = options.model
         maxTokens = options.maxTokens
     }
 
@@ -113,9 +116,9 @@ package final class ClaudeCodeClient: ConversationClient {
                     "--permission-mode", "dontAsk", "--max-turns", String(max(1, maxToolRounds + 1)),
                     "--system-prompt", system + "\n\nYou are running inside Noteling. Use only the supplied Noteling tools. Tool names are prefixed with mcp__noteling__; computer actions are named computer__screenshot, computer__left_click, etc. Earlier conversation is historical context. Answer the latest user request."]
         if !bindings.isEmpty { args += ["--allowedTools", "mcp__noteling__*"] }
-        let model = options.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let model = self.model.trimmingCharacters(in: .whitespacesAndNewlines)
         if !model.isEmpty { args += ["--model", model] }
-        args += ["--effort", effort == "low" ? "low" : effort == "medium" ? "medium" : "high"]
+        if !effort.isEmpty { args += ["--effort", effort == "low" ? "low" : effort == "medium" ? "medium" : "high"] }
         var environment = Self.environment()
         environment["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = String(max(256, maxTokens))
         let process = try workspace.process(executable: executable, arguments: args, environment: environment,

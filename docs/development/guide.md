@@ -20,7 +20,9 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    active pack's `pen:` list, else "What is this?", "Why is it like this?", "What can I do here?"). A tap, your own
    words, or Return on its own (the short identify-and-explain) sends one request with the question; Esc or **Never
    mind** puts the pick away, and a new pick replaces one still waiting. The screen, the notes' checks and the page's
-   brief start at the pick, so they're ready by the time you ask. A sticker pick asks about its note at once.
+   brief start at the pick, so they're ready by the time you ask. A sticker pick asks about its note at once. On a
+   page whose brief gives a `glance` (see `brief:` below), that answer is on the pick at once, and **Done** keeps it.
+   A pen question never controls the computer, and runs on the pen's model and effort (`penModel`, `penEffort`).
 4. **Notes**: while the pen is up, **right-click** (two-finger click, or ⌃-click) a control and a sticky note opens right on it.
    Type, ⏎ keeps it, ⇧⏎ makes a new line, Esc drops it; tick **Warning** for the orange kind. Right-drag circles a spot and
    sticks the note to that area. Right-click an existing sticker to edit or remove it. Picking up the pen shows every note
@@ -300,6 +302,11 @@ Two optional keys name scripts by file name (without `.py`):
   and with typed questions on that page as "What the page's tools say", so the answer needs no tool round trips. The
   pen waits up to 10 seconds for a run in progress; a failed run is kept for 30 seconds and the answer says what
   couldn't be checked. A pack whose body says how to answer a pen pick gets its own shape instead of the default one.
+  The result can carry the brief's own short answer for the pen as `glance`, which shows on the pick the moment
+  something is picked (or as soon as the brief is in), before any model is asked:
+  `{"glance": {"headline": "…", "why": ["…", {"text": "…", "source": "…"}], "do": ["…"]}}`, up to three lines each,
+  shown as written. A question asked about a pick on a briefed page is one lean turn: the crop only, no pack tools
+  (the brief already ran them), on the pen's model and effort (`penModel`, `penEffort`).
 - `watch: <script>`: the check a watch list runs for each item (see Watch list).
 
 And one that is a list of words, not a script:
@@ -850,6 +857,8 @@ and `CardFilesView.swift` for its Files section) and `Features/WatchList/WatchLi
 | apiHeaders | {} | extra headers for the gateway, e.g. `{"Authorization": "Bearer …"}` when it authenticates without an Anthropic key. A value written `$NAME` is the secret of that name (Settings shows a field for it); `$$` starts a literal `$` |
 | model | claude-opus-5 | API model id |
 | effort | medium | API: low / medium / high / xhigh / max; CLI: low / medium / high |
+| penModel | "" | the pen's questions on another model, such as `claude-sonnet-5-5` or `claude-haiku-4-5` (Haiku gets no effort); empty = the model in use. Through a company gateway, only a model it allows |
+| penEffort | low | how hard a pen question thinks: a pen answer is a short glance (`low`, `medium`, `high`) |
 | maxTokens | 4096 | answer length cap |
 | screenshotMode | auto | `auto`: attach a screenshot when the question sounds screen-related, otherwise the model may call `look_at_screen`; `always`; `never` |
 | screenshotReuseSeconds | 0 | if > 0, quick follow-ups on the same screen reuse the last screenshot within this window |
