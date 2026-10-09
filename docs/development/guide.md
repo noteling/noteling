@@ -57,6 +57,12 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    switch away; a read after they've moved on says so rather than reading the wrong window. An answer that controls the
    computer in the foreground looks live instead. A chip under the question (`SeenScreen`) says what Claude was shown,
    and clicking it shows exactly that.
+   **Answers as they're written:** a turn that can't control the computer (every pen question, and typed questions
+   while control is off) streams, and the pad shows the answer as it grows, about twelve times a second, never with
+   its Suggestions line; the finished answer takes its place. The API connection asks for `stream: true` and puts the
+   reply back together event by event (`MessageStream`); the Claude Code connection adds `--include-partial-messages`
+   and reads them as the CLI writes them (an older CLI without that flag is asked again without it). Background jobs
+   and turns that may control the computer don't stream.
    For a little paper adventure, right-click the note → **Fold into a crane** (also in the pad's More menu and menu bar).
    It folds, flaps around the current screen once, lands at the same spot, and unfolds. The flight is click-through;
    **Esc** or menu bar → **Land Noteling** brings it back early. Starting work brings it back too. Available while idle;

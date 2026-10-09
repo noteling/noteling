@@ -213,6 +213,81 @@ struct ClaudeClientTests {
     }
 
     @Test
+    func aWatchedAnswerStreamsAndComesBackWhole() async throws {
+        let fixture = HTTPFixture(responses: [
+            try HTTPFixture.Response(events: Self.events(blocks: [("tool_use", ["id": "t1", "name": "shop__summary", "input": [String: Any]()],
+                                                                    ["{\"item\":", " \"123\"}"])], stop: "tool_use")),
+            try HTTPFixture.Response(events: Self.events(blocks: [("text", ["text": ""], ["It's ", "ADS Inc's ", "offer."])], stop: "end_turn")),
+        ])
+        defer { fixture.close() }
+        let client = ClaudeClient(options: options(baseURL: fixture.baseURL), session: fixture.session)
+        var seen: [String] = []
+        client.onText = { seen.append($0) }
+        var messages: [[String: Any]] = [["role": "user", "content": "Whose offer?"]]
+        var inputs: [[String: Any]] = []
+        let reply = try await client.converse(system: "Fixture system prompt", tools: [["name": "shop__summary", "input_schema": ["type": "object"]]],
+                                              messages: &messages, executor: { _, input, _ in inputs.append(input); return .text("ADS Inc") },
+                                              onStatus: { _ in })
+
+        #expect(reply.text == "It's ADS Inc's offer.")
+        #expect(reply.toolCalls == 1)
+        #expect(inputs.first?["item"] as? String == "123")   // the tool's input, put back together from its pieces
+        #expect(seen.last == "It's ADS Inc's offer.")
+        #expect(seen.contains("It's "))                       // the text grew as it came
+        #expect(fixture.requests.allSatisfy { $0.body["stream"] as? Bool == true })
+        let call = try #require((messages[1]["content"] as? [[String: Any]])?.first)
+        #expect(call["type"] as? String == "tool_use" && (call["input"] as? [String: Any])?["item"] as? String == "123")
+        #expect(reply.outputTokens == 14)
+    }
+
+    @Test
+    func anUnwatchedAnswerDoesNotStream() async throws {
+        let fixture = HTTPFixture(responses: [try HTTPFixture.Response(json: ["stop_reason": "end_turn", "content": [["type": "text", "text": "Ready."]]])])
+        defer { fixture.close() }
+        let client = ClaudeClient(options: options(baseURL: fixture.baseURL), session: fixture.session)
+        var messages: [[String: Any]] = [["role": "user", "content": "Hello"]]
+        _ = try await client.converse(system: "Fixture system prompt", tools: [], messages: &messages,
+                                       executor: { _, _, _ in .text("unexpected") }, onStatus: { _ in })
+        #expect(fixture.requests.first?.body["stream"] == nil)
+    }
+
+    @Test
+    func aStreamedRequestTheAPIRefusesSaysWhy() async throws {
+        let fixture = HTTPFixture(responses: [try HTTPFixture.Response(json: ["error": ["type": "invalid_request_error", "message": "Fixture bad model."]], status: 400)])
+        defer { fixture.close() }
+        let client = ClaudeClient(options: options(baseURL: fixture.baseURL), session: fixture.session)
+        client.onText = { _ in }
+        var messages: [[String: Any]] = [["role": "user", "content": "Hello"]]
+        do {
+            _ = try await client.converse(system: "Fixture system prompt", tools: [], messages: &messages,
+                                           executor: { _, _, _ in .text("unexpected") }, onStatus: { _ in })
+            Issue.record("Expected the request to be refused")
+        } catch {
+            #expect(error.localizedDescription == "API error 400: Fixture bad model.")
+        }
+    }
+
+    /// The events of one streamed reply: each block's start, its pieces, its stop; then the stop reason and usage.
+    static func events(blocks: [(type: String, start: [String: Any], pieces: [String])], stop: String) -> [[String: Any]] {
+        var out: [[String: Any]] = [["type": "message_start", "message": ["id": "msg_fixture", "type": "message", "role": "assistant",
+                                                                          "content": [Any](), "usage": ["input_tokens": 10, "output_tokens": 1]]]]
+        for (i, block) in blocks.enumerated() {
+            var start = block.start
+            start["type"] = block.type
+            out.append(["type": "content_block_start", "index": i, "content_block": start])
+            for piece in block.pieces {
+                let delta: [String: Any] = block.type == "text" ? ["type": "text_delta", "text": piece] : ["type": "input_json_delta", "partial_json": piece]
+                out.append(["type": "content_block_delta", "index": i, "delta": delta])
+            }
+            out.append(["type": "content_block_stop", "index": i])
+        }
+        out.append(["type": "ping"])
+        out.append(["type": "message_delta", "delta": ["stop_reason": stop, "stop_sequence": NSNull()], "usage": ["output_tokens": 7]])
+        out.append(["type": "message_stop"])
+        return out
+    }
+
+    @Test
     func aHaikuTurnSendsNoEffortAndNoFallbacks() async throws {
         let success = try HTTPFixture.Response(json: ["stop_reason": "end_turn", "content": [["type": "text", "text": "Ready."]]])
         let fixture = HTTPFixture(responses: [success, success])
@@ -507,6 +582,18 @@ private final class HTTPFixture: @unchecked Sendable {
             status = 0
             data = Data()
             self.failure = failure
+        }
+
+        /// A streamed reply: each event as an `event:` line and a `data:` line, the way the API sends them.
+        init(events: [[String: Any]]) throws {
+            status = 200
+            var body = ""
+            for event in events {
+                let json = String(decoding: try JSONSerialization.data(withJSONObject: event), as: UTF8.self)
+                body += "event: \(event["type"] as? String ?? "message")\ndata: \(json)\n\n"
+            }
+            data = Data(body.utf8)
+            headers = ["Content-Type": "text/event-stream"]
         }
     }
 

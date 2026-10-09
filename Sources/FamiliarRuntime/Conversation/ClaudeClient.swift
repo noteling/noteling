@@ -2,7 +2,7 @@ import Foundation
 import FamiliarContracts
 
 /// Raw HTTP client for the Claude Messages API with a manual tool-use loop.
-package final class ClaudeClient: ConversationClient, ModelSwitchable {
+package final class ClaudeClient: ConversationClient, ModelSwitchable, StreamsText {
     package var apiKey: String
     package var model: String
     package var effort: String
@@ -15,6 +15,8 @@ package final class ClaudeClient: ConversationClient, ModelSwitchable {
     package var serverFallbacks: Bool
     /// Refusal fallbacks are for the current Opus, Sonnet and Fable models; a Haiku turn (a fast pen model) goes without.
     package var fallbacksApply: Bool { serverFallbacks && !model.lowercased().hasPrefix("claude-haiku") }
+    /// Set while someone watches the answer being written: each request then streams, and this gets the text so far.
+    package var onText: ((String) -> Void)?
     /// Checked before every tool round; when true the loop ends gracefully (pending tool calls get an error result).
     package var shouldStop: () -> Bool = { false }
     /// Seconds to wait before each retry of a dropped connection or a busy server. Resending is safe: the Messages
@@ -223,6 +225,8 @@ package final class ClaudeClient: ConversationClient, ModelSwitchable {
         if !effort.isEmpty { body["output_config"] = ["effort": effort] }   // Haiku 4.5 takes none
         if fallbacksApply { body["fallbacks"] = "default" }
         if !tools.isEmpty { body["tools"] = tools }
+        let streaming = onText != nil
+        if streaming { body["stream"] = true }
 
         var req = URLRequest(url: baseURL.appendingPathComponent("v1/messages"))
         req.httpMethod = "POST"
@@ -239,10 +243,11 @@ package final class ClaudeClient: ConversationClient, ModelSwitchable {
         while true {
             attempt += 1
             let started = Date()
+            let http: HTTPURLResponse
             let data: Data
-            let resp: URLResponse
+            let reply: [String: Any]?
             do {
-                (data, resp) = try await session.data(for: req)
+                (http, data, reply) = try await exchange(req, streaming: streaming)
             } catch let error as URLError where error.code != .cancelled {
                 let elapsed = Date().timeIntervalSince(started)
                 logger("request to \(host) failed: URLError \(error.code.rawValue) after \(Self.seconds(elapsed)) (attempt \(attempt))")
@@ -253,9 +258,8 @@ package final class ClaudeClient: ConversationClient, ModelSwitchable {
                 throw ClaudeError(message: Self.explain(error, host: host, elapsed: elapsed, attempts: attempt,
                                                         timeout: session.configuration.timeoutIntervalForRequest))
             }
-            guard let http = resp as? HTTPURLResponse else { throw ClaudeError(message: "No HTTP response.") }
+            if let reply { return reply }
             let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-            if (200..<300).contains(http.statusCode) { return json }
             let msg = (json["error"] as? [String: Any])?["message"] as? String ?? String(data: data, encoding: .utf8) ?? "unknown"
             if Self.retryableStatuses.contains(http.statusCode), attempt <= retryDelays.count {
                 let wait = min(Self.retryAfter(http.value(forHTTPHeaderField: "retry-after")) ?? retryDelays[attempt - 1], 30)
@@ -265,6 +269,31 @@ package final class ClaudeClient: ConversationClient, ModelSwitchable {
             }
             throw ClaudeError(message: "API error \(http.statusCode): \(msg)" + (attempt > 1 ? " (tried \(attempt) times)" : ""))
         }
+    }
+
+    /// One request: a success's reply, or the HTTP response and its body to judge. Streamed, the reply is put back
+    /// together as it arrives (`MessageStream`) and each change to its text goes to `onText`.
+    private func exchange(_ req: URLRequest, streaming: Bool) async throws -> (HTTPURLResponse, Data, [String: Any]?) {
+        if !streaming {
+            let (data, resp) = try await session.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { throw ClaudeError(message: "No HTTP response.") }
+            guard (200..<300).contains(http.statusCode) else { return (http, data, nil) }
+            return (http, data, (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:])
+        }
+        let (bytes, resp) = try await session.bytes(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw ClaudeError(message: "No HTTP response.") }
+        guard (200..<300).contains(http.statusCode) else {
+            var data = Data()
+            for try await byte in bytes { data.append(byte) }
+            return (http, data, nil)
+        }
+        var stream = MessageStream()
+        onText?("")   // a new round starts with nothing written
+        for try await line in bytes.lines {
+            if try stream.apply(line: line) { onText?(stream.text) }
+        }
+        guard let message = stream.message else { throw ClaudeError(message: "The answer stopped before it finished. Try again.") }
+        return (http, Data(), message)
     }
 
     /// What someone can act on when Claude can't be reached: where, what happened, how long, and what to try.

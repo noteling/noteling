@@ -9,7 +9,7 @@ struct ChatMessage: Identifiable {
     enum Role { case user, wand, assistant, error, draft, learned, note, receipt, check, glance }   // draft/learned: a note Noteling starts itself (a watched workflow's title), before and after Keep; note: a sticky note someone left on the control; receipt: the last frame of a background job
     let id = UUID()
     let role: Role
-    let text: String
+    var text: String               // an answer's grows while it is written
     var meta: String? = nil        // note: who left it and when
     var warning = false            // note: a warning rather than a tip
     var image: CGImage? = nil      // receipt: the target window when the job ended
@@ -85,6 +85,10 @@ final class Assistant: ObservableObject {
     var chatPresentationBusy: Bool { chatResponding || learning.busy }
     private var requestMessageID: UUID?
     private var diagnosticTurnID: UUID?
+    /// The answer on the pad while it is being written, replaced by the finished one when the turn ends.
+    private var writingID: UUID?
+    /// When the answer under way first showed words, for the pen's timing line.
+    private var firstWordsAt: Date?
 
     /// The pad's hand: on = work in the window you asked from. Clicking it while control is off turns control on
     /// (the user is flipping the gate themselves), in the background lane, which never takes the mouse unasked.
@@ -169,6 +173,7 @@ final class Assistant: ObservableObject {
         pendingPick?.ready.cancel()
         pendingPick = nil
         pendingPickID = nil
+        writingID = nil
         captureGeneration += 1
         transcript.removeAll()
         execution.conversation.clear()
@@ -726,8 +731,9 @@ final class Assistant: ObservableObject {
             let asking = Date()
             await send(content: content, ctx: ctx, title: asked ?? target.shortLabel, allowsControl: false, packScripts: !lean,
                        pen: true, held: ready.held, seenOn: pick.messageID)
-            Log.info("pen: picked→asked \(Self.seconds(asking.timeIntervalSince(pick.at))), asked→answered \(Self.seconds(Date().timeIntervalSince(asking))), "
-                     + "brief \(lean ? "in" : "none"), pictures \(pictures.count)")
+            let firstWords = firstWordsAt.map { Self.seconds($0.timeIntervalSince(asking)) } ?? "none"
+            Log.info("pen: picked→asked \(Self.seconds(asking.timeIntervalSince(pick.at))), asked→first words \(firstWords), "
+                     + "asked→answered \(Self.seconds(Date().timeIntervalSince(asking))), brief \(lean ? "in" : "none"), pictures \(pictures.count)")
         }
     }
 
@@ -1065,6 +1071,17 @@ final class Assistant: ObservableObject {
         }
         let discussingCard = cardConversation?.card != nil
         let controlAllowed = allowsControl && config.allowControl && desktop != nil && !watching && !discussingCard
+        // The answer shows on the pad as it is written (when the connection can), at most about twelve times a second.
+        // Not yet for a turn that may control the computer: its work moves to the task screen.
+        let streams = controlAllowed ? nil : client as? StreamsText
+        let writing = PartialText { [weak self] text in self?.showWriting(text) }
+        writingID = nil
+        firstWordsAt = nil
+        streams?.onText = { text in writing.put(text) }
+        defer {
+            streams?.onText = nil
+            writing.cancel()
+        }
         let background = controlAllowed && backgroundControl
         let id = UUID()
         requestMessageID = messageID
@@ -1119,6 +1136,7 @@ final class Assistant: ObservableObject {
                     prepareImages: plan.prepareImages, prepare: plan.prepare, onStatus: onStatus)
             }
             diagnoseChat(.executionReturned)
+            writing.cancel()   // the finished answer replaces what was written so far
             completeExecution(result, task: task)
         } catch {
             let wasTask = task?.isPresented == true
@@ -1153,22 +1171,31 @@ final class Assistant: ObservableObject {
     func presentExecutionResult(_ result: ExecutionResult, wasTask: Bool = false) {
         diagnoseChat(.presentationStarted)
         defer { diagnoseChat(.transcriptUpdated) }
+        let written = writingID.flatMap { id in transcript.firstIndex { $0.id == id } }
+        writingID = nil
         if wasTask {
+            if let written { transcript.remove(at: written) }   // the task screen has it now
             status = ""
             suggestions = []
             return
         }
-        guard result.accepted else { status = ""; return }
+        guard result.accepted else {
+            if let written { transcript.remove(at: written) }
+            status = ""
+            return
+        }
         switch result.outcome {
         case .reply(let reply):
             let (text, tabs) = Self.splitSuggestions(reply.text)
-            transcript.append(ChatMessage(role: .assistant, text: text))
+            if let written { transcript[written].text = text }
+            else { transcript.append(ChatMessage(role: .assistant, text: text)) }
             suggestions = reviewTabs(tabs) + takeSourceTabs(excluding: tabs)
             let secs = String(format: "%.1f", result.elapsed)
             status = "\(reply.inputTokens) in · \(reply.outputTokens) out · \(reply.toolCalls) tool call\(reply.toolCalls == 1 ? "" : "s") · \(secs)s"
             Log.info("reply: \(reply.outputTokens) out, \(reply.inputTokens) in (cache read \(reply.cacheRead)), \(reply.toolCalls) tool calls, \(secs)s")
         case .cancelled:
-            transcript.append(ChatMessage(role: .assistant, text: "Stopped."))
+            if let written { transcript[written].text += "\n\n_Stopped._" }
+            else { transcript.append(ChatMessage(role: .assistant, text: "Stopped.")) }
             suggestions = reviewTabs([]) + takeSourceTabs(excluding: [])
             status = ""
         case .failed(let error):
@@ -1227,6 +1254,31 @@ final class Assistant: ObservableObject {
 
     private static var cardConversationSystem: String { CardConversation.system }
 
+    /// The answer so far on the pad, while it is being written: never the Suggestions line, even half written.
+    private func showWriting(_ text: String) {
+        guard chatBusy, !backgroundTaskRunning else { return }
+        let shown = Self.writingText(text)
+        guard !shown.isEmpty else { return }   // a new round starts empty: keep what is there until it writes
+        if firstWordsAt == nil { firstWordsAt = Date() }
+        status = "Writing…"
+        if let id = writingID, let i = transcript.firstIndex(where: { $0.id == id }) {
+            transcript[i].text = shown
+            return
+        }
+        let m = ChatMessage(role: .assistant, text: shown)
+        writingID = m.id
+        transcript.append(m)
+    }
+
+    static func writingText(_ text: String) -> String {
+        var lines = splitSuggestions(text).0.components(separatedBy: "\n")
+        if let last = lines.last?.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "*")).lowercased(),
+           !last.isEmpty, "suggestions:".hasPrefix(last) {
+            lines.removeLast()
+        }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     static func splitSuggestions(_ text: String) -> (String, [String]) {
         var lines = text.components(separatedBy: "\n")
         while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
@@ -1237,5 +1289,44 @@ final class Assistant: ObservableObject {
             .filter { !$0.isEmpty }
         lines.removeLast()
         return (lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines), Array(items.prefix(3)))
+    }
+}
+
+/// The latest text from a connection writing an answer, handed to the main thread at most about twelve times a
+/// second; whatever came in between is skipped, since each piece is the whole answer so far.
+final class PartialText: @unchecked Sendable {
+    private let lock = NSLock()
+    private var latest: String?
+    private var scheduled = false
+    private var cancelled = false
+    private let deliver: @MainActor (String) -> Void
+
+    init(deliver: @escaping @MainActor (String) -> Void) { self.deliver = deliver }
+
+    func put(_ text: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !cancelled else { return }
+        latest = text
+        guard !scheduled else { return }
+        scheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [self] in flush() }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        latest = nil
+        lock.unlock()
+    }
+
+    private func flush() {
+        lock.lock()
+        let text = cancelled ? nil : latest
+        latest = nil
+        scheduled = false
+        lock.unlock()
+        guard let text else { return }
+        MainActor.assumeIsolated { deliver(text) }
     }
 }
