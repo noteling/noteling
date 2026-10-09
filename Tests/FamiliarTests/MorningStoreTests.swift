@@ -32,8 +32,9 @@ struct MorningStoreTests {
         let reopened = MorningStore(directory: fixture.directory)
         #expect(reopened.folders.first { $0.id == replies.id }?.isHidden == true)
         #expect(reopened.cards.contains { $0.id == card.id && $0.folderID == replies.id })   // its files stay
-        #expect(MorningFilesView.shownFolders(reopened.folders, showingHidden: false).map(\.name) == ["Unfinished", "Housekeeping"])
-        #expect(MorningFilesView.shownFolders(reopened.folders, showingHidden: true).map(\.name) == ["Unfinished", "Housekeeping", "Replies"])
+        let all = Dictionary(uniqueKeysWithValues: reopened.folders.map { ($0.id, 1) })   // every folder has files
+        #expect(MorningFilesView.shownFolders(reopened.folders, counts: all, showingQuiet: false, showingHidden: false).map(\.name) == ["Unfinished", "Housekeeping"])
+        #expect(MorningFilesView.shownFolders(reopened.folders, counts: all, showingQuiet: false, showingHidden: true).map(\.name) == ["Unfinished", "Housekeeping", "Replies"])
         #expect(MorningFilesView.hiddenFoldersLine(reopened.folders, showingHidden: false) == "Hidden folders (1) · Show")
         #expect(MorningFilesView.hiddenFoldersLine(reopened.folders, showingHidden: true) == "Hide them again")
 

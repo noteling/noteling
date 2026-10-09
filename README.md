@@ -99,7 +99,9 @@ The card also carries the run’s full results as a file for Excel, however long
 
 Your team’s scripts can put cards in Morning Files too, by writing a small file (see the [developer guide](docs/development/guide.md)). Such a card only opens its page or asks Noteling about it; Noteling never acts on it by itself.
 
-A folder you don’t need in Morning Files can be hidden: right-click it, or open it, and choose **Hide folder**. Nothing in it is deleted and new files still arrive; **Hidden folders · Show** at the bottom of the home brings it back.
+To decide several cards at once, open a folder and choose **Select** (or ⌘-click a card), tick the ones you want, and choose **Resolve**, **File away** or **I’ll do it**; **Select all** takes every card the folder shows. One **Undo** puts them all back. Cards with work under way stay as they are.
+
+Folders with nothing to show step aside: they fold into **Quiet folders · Show** at the bottom of the home, and come back on their own when a card arrives. A folder you don’t need at all can be hidden: right-click it, or open it, and choose **Hide folder**. Nothing in it is deleted and new files still arrive; **Hidden folders · Show** at the bottom of the home brings it back.
 
 The little Morning folder on your screen can be put away too: right-click it and choose **Hide Morning folder**, or use **Hide Morning Folder** in the menu bar, or the switch in Settings. Morning Files still opens from the menu bar, and **Show Morning Folder** brings the folder back.
 

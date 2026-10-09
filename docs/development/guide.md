@@ -140,6 +140,11 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    to see its three parts: what it is, what it means for you, and one to three options, best first (hover an option for its
    exact instruction). **Show original** shows what Noteling read. **Ignore** files it away, **I'll do it**
    keeps it yours, and handing it to Noteling saves the action before the file flies to the background task screen.
+   **Select** on a folder (or ⌘-click a file) chooses several files to decide together: the bar offers what changes the
+   files the folder shows (Resolve, File away, I'll do it, Back to review, or Reopen), one save does them all
+   (`MorningStore.decide(cardIDs:_:)`), and one Undo puts them back (`restoreDecisions`). A file with work under way stays
+   as it is. A save that decides more than one card isn't read by the attention test as a judgment of each
+   (`AttentionImplicit.decisions`). On the home, folders with nothing under the decision shown fold into **Quiet folders**.
    Drag the small folder itself or a window's header to move it; the morning windows and background task list remember
    their positions. Add your own folders and files, and configure roles, relationships and identities through
    **… → Who's Who**. The retrieval menu
