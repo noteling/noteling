@@ -56,7 +56,9 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    screen (`FrozenScreen`): `look_at_screen` returns it and `read_screen` the window that was in front, so the person can
    switch away; a read after they've moved on says so rather than reading the wrong window. An answer that controls the
    computer in the foreground looks live instead. A chip under the question (`SeenScreen`) says what Claude was shown,
-   and clicking it shows exactly that.
+   and clicking it shows exactly that. Before a question is sent, a line over the input says whether it will take the
+   screen ("Looks at “New Report”", or "Doesn't look at your screen"), following the guess as the question is written
+   (`Assistant.evidence`); a click flips it for that one question (`lookOverride`).
    **Answers as they're written:** a turn that can't control the computer (every pen question, and typed questions
    while control is off) streams, and the pad shows the answer as it grows, about twelve times a second, never with
    its Suggestions line; the finished answer takes its place. The API connection asks for `stream: true` and puts the

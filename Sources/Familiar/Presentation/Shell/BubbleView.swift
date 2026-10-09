@@ -352,7 +352,21 @@ struct BubbleView: View {
     private var inputRow: some View {
         HStack(alignment: .bottom, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                TextField("", text: $state.question, prompt: Text(state.pendingPickID != nil ? "Ask about it, or ⏎ to just explain it…" : "Write to me…")
+                let look = state.lookLine(for: state.question)
+                if let look {
+                    // Whether this question takes the screen, said before it's sent; a click changes it for this one.
+                    Button { state.toggleLook(for: state.question) } label: {
+                        Label(look.text, systemImage: look.looks ? "eye" : "eye.slash")
+                            .font(.system(size: 10.5)).lineLimit(1).truncationMode(.middle)
+                            .foregroundStyle(look.looks ? Pad.penInk : Pad.inkSoft)
+                    }
+                    .buttonStyle(.plain)
+                    .help(look.looks ? "This question takes your screen when you send it. Click to send only your words."
+                                     : "This question goes without your screen. Click to include it.")
+                }
+                TextField("", text: $state.question, prompt: Text(state.pendingPickID != nil ? "Ask about it, or ⏎ to just explain it…"
+                                                                  : look?.looks == true ? "Ask about \(state.inFront.map(Assistant.sceneName) ?? "it")…"
+                                                                  : "Write to me…")
                     .foregroundStyle(Pad.ink.opacity(0.42)), axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(Pad.body).foregroundStyle(Pad.ink)

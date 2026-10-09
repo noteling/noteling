@@ -130,6 +130,8 @@ func runRenderCard() {
     let state = Assistant(config: config, watcher: watcher, registry: registry, shell: shell, learning: learning)
     shell.expanded = true
     state.contextLine = "Google Chrome · New Report - Concur"
+    state.inFront = ScreenContext(appName: "Google Chrome", bundleID: "com.google.Chrome", windowTitle: "New Report",
+                                  url: "https://expenses.example.com/report/new", focused: nil, timestamp: Date())
     let shot = renderFakeScreen()
     let taken = Date(timeIntervalSince1970: 1_790_000_000)
     state.transcript = [
@@ -200,6 +202,11 @@ func runRenderCard() {
                                                          pictures: [shot], held: true))]
         state.status = "Thinking…"
         render(BubblePanel.defaultExpandedSize, dark: false, "pad-400-held.png")
+        // a question that doesn't sound like it's about the screen: the line over the input says it goes without it
+        state.transcript = full; state.suggestions = sugg; state.chatBusy = false; state.status = ""
+        state.question = "how many vacation days do I get a year"
+        render(BubblePanel.defaultExpandedSize, dark: false, "pad-400-words.png")
+        state.question = ""
         // a circle waiting for its question: the questions as tabs, the hint, nothing sent
         state.transcript = []; state.suggestions = []; state.chatBusy = false; state.status = ""
         let screen = NSScreen.main ?? NSScreen.screens[0]

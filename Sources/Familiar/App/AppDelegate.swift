@@ -420,6 +420,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if !here.isEmpty {
                 self.notesUsage.record("arrive", counts: ["notes": here.count, "warnings": here.filter(\.isWarning).count], notes: here.map(\.id))
             }
+            self.assistant.inFront = ctx
             guard !self.assistant.watching else { return }   // the line reads "Watching…" while recording
             self.assistant.contextLine = ctx.summaryLine
         }
