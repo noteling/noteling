@@ -27,6 +27,10 @@ final class Assistant: ObservableObject {
     var busy: Bool { chatBusy || learning.busy }
     @Published var status = ""
     @Published var contextLine = "Watching…"
+    /// What is in front: the last app and window that weren't Noteling, for the input's "Looks at" line.
+    @Published var inFront: ScreenContext?
+    /// The person's say on whether the next typed question takes the screen; nil follows the guess. Reset once sent.
+    @Published var lookOverride: Bool?
     @Published var suggestions: [String] = []
     var watching: Bool { learning.watching }
     var pendingDraft: PackDraft? { learning.pendingDraft }
@@ -135,6 +139,7 @@ final class Assistant: ObservableObject {
         self.registry = registry
         backgroundControl = config.controlInBackground
         client = ConversationBackend.make(config: config)
+        inFront = watcher.current
         desktop?.tasks.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &subscriptions)
         learning.onEvent = { [weak self] in self?.presentLearning($0) }
         learning.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &subscriptions)
@@ -174,6 +179,7 @@ final class Assistant: ObservableObject {
         pendingPick = nil
         pendingPickID = nil
         writingID = nil
+        lookOverride = nil
         captureGeneration += 1
         transcript.removeAll()
         execution.conversation.clear()
@@ -542,10 +548,10 @@ final class Assistant: ObservableObject {
         let briefing = cardConversation?.card == nil && briefs?.source(for: ctx) != nil
         if briefing { briefs?.prefetch(ctx) }
 
+        let evidence = evidence(for: q, ctx: ctx)
+        lookOverride = nil   // the choice was for this question
         Task {
             var content: [[String: Any]] = []
-            let evidence = cardConversation?.card != nil ? ScreenEvidence.none
-                : Self.evidence(for: q, mode: config.screenshotMode, bundleID: ctx?.bundleID)
             var attach = evidence == .screenshot, page = ""
             // A question about the screen takes it now, for the whole answer, and shows that it did (the flash and the
             // chip): after that the person can switch away. The picture is taken beside the page read.
@@ -908,6 +914,43 @@ final class Assistant: ObservableObject {
     /// "always" setting, keep the picture; "never" takes nothing. The model can always ask for a picture with
     /// look_at_screen, or for the page with read_screen.
     enum ScreenEvidence: Equatable { case none, page, screenshot }
+
+    /// What a typed question will take from the screen: nothing while a card is discussed; the person's choice when they
+    /// made one (the input's "Looks at" line); else the guess from the question's words and the screenshot setting.
+    func evidence(for question: String, ctx: ScreenContext?) -> ScreenEvidence {
+        if cardConversation?.card != nil { return .none }
+        switch lookOverride {
+        case false?:
+            return .none
+        case true?:
+            if let id = ctx?.bundleID, ContextWatcher.browserBundles.contains(id), !Self.soundsVisual(question) { return .page }
+            return .screenshot
+        case nil:
+            return Self.evidence(for: question, mode: config.screenshotMode, bundleID: ctx?.bundleID)
+        }
+    }
+
+    /// The line over the input: whether the question being written will take the screen, and what is in front. Nil when
+    /// a typed question can't take it (a card is discussed, a pick or Watch Me is waiting) or nothing is in front.
+    func lookLine(for question: String) -> (looks: Bool, text: String)? {
+        guard cardConversation?.card == nil, pendingPickID == nil, !awaitingPurpose, !awaitingContext, pendingDraft == nil,
+              let scene = inFront else { return nil }
+        let looks = evidence(for: question, ctx: scene) != .none
+        return (looks, looks ? "Looks at \(Self.sceneName(scene))" : "Doesn't look at your screen")
+    }
+
+    /// A click on the line: the other way, for this question.
+    func toggleLook(for question: String) {
+        guard let line = lookLine(for: question) else { return }
+        lookOverride = !line.looks
+    }
+
+    /// The window's title in quotes, shortened; the app's name when it has none.
+    static func sceneName(_ ctx: ScreenContext) -> String {
+        let title = ctx.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return ctx.appName }
+        return "“" + (title.count > 40 ? String(title.prefix(39)) + "…" : title) + "”"
+    }
 
     static func evidence(for question: String, mode: String, bundleID: String?) -> ScreenEvidence {
         switch mode {

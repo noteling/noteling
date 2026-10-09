@@ -1,8 +1,10 @@
 # Polish: the pen and the screen
 
 Written 2026-10-07, at 0.6.5, after the first pilot. Noteling does many things, and each one stops halfway. This plan
-takes one loop, pointing at something and getting an answer, and makes it fast, clear and worth the wait. Nothing
-here is built yet.
+takes one loop, pointing at something and getting an answer, and makes it fast, clear and worth the wait.
+
+**Status (2026-10-09):** 1 and 2 shipped in #20, 4 in #21, 5 and 6 in #22 and #23 (all in 0.6.6), and 3 in the PR
+after it. Still to measure: the pass bar below, from the `pen:` lines in the log.
 
 ## What's wrong now
 
