@@ -51,6 +51,7 @@ match:
 requires: [SHOP_API_KEY]                # secrets Settings asks each person for
 brief: brief                            # run as soon as a matching page comes to the front
 watch: watch_check                      # the check watch jobs use by default
+pen: [Why this price?, What should I do?]   # up to 3 questions the pen offers as taps on these pages
 ---
 Free text for the model: who uses this page, how the page is put together, and exactly how to answer.
 ```
@@ -104,6 +105,20 @@ The `brief:` script runs with no arguments as soon as a matching page comes to t
 `NOTELING_CONTEXT`). Its result is kept for two minutes and goes with every question and pen pick on that page, so the
 model answers from it without calling tools. Make it the one call that gathers everything a question about this page
 needs, and say where the sources disagree: that is usually the answer.
+
+Give it a `glance` too, and the pen answers before any model is asked: it shows on the pick the moment someone circles
+something on the page, as written. Up to three lines each; a line is a string or `{"text", "source"}`:
+
+```json
+{"glance": {"headline": "ADS Inc's offer, $12.33, for 07960: 1 thing looks off",
+            "why": [{"text": "The page shows $12.33, but the price of record is $11.99", "source": "pricing"}],
+            "do": ["Wait 15 minutes; if it still differs, post in the pricing channel with the item id"]},
+ "facts": {…}}
+```
+
+Say what is wrong and what to do in the person's terms, with the step from your playbook. When nothing is wrong, say so
+("Nothing to fix") and what is coming up. A question someone then asks about the pick is one quick turn: the brief is in
+it, so the pack's scripts aren't offered again.
 
 ## Watch checks
 
