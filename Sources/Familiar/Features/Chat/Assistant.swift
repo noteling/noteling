@@ -62,16 +62,14 @@ final class Assistant: ObservableObject {
             sourceConversation?.onOfferConnect = { [weak self] _ in self?.offerConnect() }
         }
     }
-    /// The Open Jobs tab: Jobs in Morning Files, every reading job and watch in one list.
+    /// The Open Jobs tab: Jobs in Morning Files, every job in one list.
     var onOpenJobs: (() -> Void)?
     var onOpenSettings: (() -> Void)?
     var onRunSource: ((UUID) -> Void)?
-    /// The watch list in general chat: tools to watch items on a schedule, and to list, check, change or stop watches.
-    var watchList: WatchListConversation? {
-        didSet {
-            watchList?.onChange = { [weak self] receipt in self?.watchListChanged(receipt) }
-            watchList?.onOfferConnect = { [weak self] _ in self?.offerConnect() }
-        }
+    /// The jobs kept as folders in general chat: tools to list them, run one now, turn one of the team's on or off, and
+    /// read one's latest result.
+    var folderJobs: FolderJobConversation? {
+        didSet { folderJobs?.onChange = { [weak self] receipt in self?.jobChanged(receipt) } }
     }
     private var pendingSourceTabs: [String] = []   // added to the reply's tabs when the turn ends
     private var offeredRuns: [String: UUID] = [:]  // Run now tab title → job
@@ -122,7 +120,7 @@ final class Assistant: ObservableObject {
     static let fullDraftTab = "Open full draft"
     static let discardTab = "Discard"
     static let retryTab = "Try again"
-    /// A saved job or a watch changed in chat: where to see it.
+    /// A saved job changed, or a job ran, in chat: where to see it.
     static let openJobsTab = "Open Jobs"
     static let openSettingsTab = "Open Settings"
     static let reservedTabs = [continueTab, skipContextTab, keepTab, fullDraftTab, discardTab, retryTab]
@@ -1151,7 +1149,7 @@ final class Assistant: ObservableObject {
                     guard let self else { return .text("unavailable", isError: true) }
                     return await self.readScreen(held: holding, seenOn: chip, ctx: ctx)
                 }
-                let sourceRoutes = (sourceConversation?.routes() ?? []) + (watchList?.routes() ?? [])
+                let sourceRoutes = (sourceConversation?.routes() ?? []) + (folderJobs?.routes() ?? [])
                 if controlAllowed, let desktop {
                     return try await desktop.prepare(id: id, registry: registry, context: ctx, background: background,
                                                      title: title, additionalRoutes: sourceRoutes, lookAtScreen: capture, readScreen: read)
@@ -1257,8 +1255,8 @@ final class Assistant: ObservableObject {
         if !pendingSourceTabs.contains(Self.openJobsTab) { pendingSourceTabs.append(Self.openJobsTab) }
     }
 
-    /// A watch-list tool changed something: a factual line on the pad, and a way to see it in Jobs.
-    private func watchListChanged(_ receipt: String) {
+    /// A job tool ran or turned on a job: a factual line on the pad, and a way to see it in Jobs.
+    private func jobChanged(_ receipt: String) {
         transcript.append(ChatMessage(role: .receipt, text: receipt))
         if !pendingSourceTabs.contains(Self.openJobsTab) { pendingSourceTabs.append(Self.openJobsTab) }
     }

@@ -2,7 +2,7 @@
 
 ## Why
 
-A watch job puts its data in JSON and its meaning in Noteling: `watch.json` lists items, `items.psv` holds
+A watch job put its data in JSON and its meaning in Noteling: `watch.json` lists items, `items.psv` holds
 expectations, and Swift compares them. Noteling has to understand "items" to render anything. The person writing jobs is
 a developer, and the people using them are not. So the contract should be the dumbest one that works: folders, one entry
 point, and metadata-only JSON. Noteling runs the job and shows files. What the files mean is the job's business.
@@ -54,13 +54,13 @@ is looked at for another job. `job.json` says nothing about data.
   job's folder in Morning Files. The redundancy is deliberate: we're testing whether either way, or both, earns its
   place.
 - **Previews must be stable.** No "checked at" or any other time goes in them, or every run notifies.
-- **The attention window from watches applies.** Before `starts` and after `ends`, a job doesn't run and has no card,
+- **The attention window applies.** Before `starts` and after `ends`, a job doesn't run and has no card,
   and it waits under Upcoming or Ended in Jobs.
 - **People turn on as many of the team's jobs as are theirs.** There is no limit. Their own jobs are on while their
   folder is there, which is how a job is tried before it's pushed.
 
 ## Not in v1
 
-- Chat doesn't list or run these jobs yet.
-- Watches keep working as they are; retiring them is a separate decision.
+- Chat doesn't list or run these jobs yet. (Added in the next step, which also retired watches: they no longer run,
+  and chat no longer makes them.)
 - No history of outputs, no per-person input, no actions beyond opening and saving files.

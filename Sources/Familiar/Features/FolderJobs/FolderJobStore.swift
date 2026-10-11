@@ -66,12 +66,19 @@ final class FolderJobStore: ObservableObject {
     /// Its input folder, in its own folder.
     func input(for job: FolderJob) -> URL? { folder(for: job)?.appendingPathComponent(FolderJobFiles.input) }
 
+    /// Where watches were kept before jobs: `watches/` beside your `jobs/`, and beside your team's. Watches no longer
+    /// run; Jobs says so while one of these still holds one.
+    var retiredWatches: URL { directory.deletingLastPathComponent().appendingPathComponent(ToolRegistry.watchesFolder) }
+    func teamRetiredWatches() -> URL? {
+        teamDirectory()?.deletingLastPathComponent().appendingPathComponent(ToolRegistry.watchesFolder)
+    }
+
     /// Looks at both `jobs/` folders and takes in what changed. Returns the jobs that went away.
     @discardableResult
     func refresh() -> [UUID] {
         var found: [FolderJob] = []
         var seen = Set<String>()
-        for (source, root, limit) in [(WatchListSource.own, Optional(directory), Self.ownLimit), (.team, teamDirectory(), Self.teamLimit)] {
+        for (source, root, limit) in [(JobSource.own, Optional(directory), Self.ownLimit), (.team, teamDirectory(), Self.teamLimit)] {
             guard let root else {
                 if source == .team, !teamUnreadable.isEmpty { teamUnreadable = [:] }
                 continue
@@ -137,7 +144,7 @@ final class FolderJobStore: ObservableObject {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try WatchListFiles.write(try encoder.encode(state), to: folder.appendingPathComponent(FolderJobFiles.state))
+        try JobFiles.write(try encoder.encode(state), to: folder.appendingPathComponent(FolderJobFiles.state))
     }
 
     private func state(for job: FolderJob) -> FolderJobState {
@@ -162,7 +169,7 @@ final class FolderJobStore: ObservableObject {
 
     private func writeOn(_ paths: Set<String>) throws {
         try FileManager.default.createDirectory(at: results, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        try WatchListFiles.write(WatchListJSON.pretty(["on": paths.sorted()], indent: "") + "\n", to: Self.onFile(results))
+        try JobFiles.write(JSONText.pretty(["on": paths.sorted()], indent: "") + "\n", to: Self.onFile(results))
     }
 
     /// At launch: what team jobs that are no longer in the team's tools left, and whether they were on, go. Only while

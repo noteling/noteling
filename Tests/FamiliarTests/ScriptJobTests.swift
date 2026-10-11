@@ -40,10 +40,9 @@ struct ScriptJobTests {
         }
 
         #expect(shop.brief == "summary")
-        #expect(shop.watch == "summary.py")
         #expect(registry.script(shop.brief, in: shop)?.id == "shop__summary")
-        #expect(registry.script(shop.watch, in: shop)?.id == "shop__summary")
-        #expect(plain.brief == nil && plain.watch == nil)
+        #expect(registry.script("summary.py", in: shop)?.id == "shop__summary")   // a name with .py finds it too; `watch:` is ignored now
+        #expect(plain.brief == nil)
         #expect(registry.script(plain.brief, in: plain) == nil)
         #expect(registry.script("missing", in: shop) == nil)
     }

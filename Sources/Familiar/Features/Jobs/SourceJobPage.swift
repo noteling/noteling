@@ -46,7 +46,7 @@ struct SourceJobPage: View {
         _editing = State(initialValue: editing)
     }
 
-    private var input: Jobs.Input { Jobs.Input(sources: store, watches: nil, morning: morning, setup: setup, now: now()) }
+    private var input: Jobs.Input { Jobs.Input(sources: store, morning: morning, setup: setup, now: now()) }
     private var reading: LearnedReadingSource? { store.readingSources.first { $0.id == id } }
     private var calendar: LearnedCalendarSource? { store.sources.first { $0.id == id } }
 

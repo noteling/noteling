@@ -67,7 +67,7 @@ enum FolderJobFiles {
 
     /// Reads job.json as someone may have left it, saying what is wrong in plain words. Every key is optional: the
     /// name is the folder's, and with no `every_minutes` the job runs only when someone runs it.
-    static func parse(_ data: Data, path: String, source: WatchListSource) throws -> FolderJob {
+    static func parse(_ data: Data, path: String, source: JobSource) throws -> FolderJob {
         let value: Any
         do { value = try JSONSerialization.jsonObject(with: data) }
         catch {
@@ -85,9 +85,9 @@ enum FolderJobFiles {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
         }
-        func moment(_ key: String) throws -> WatchListMoment? {
+        func moment(_ key: String) throws -> JobMoment? {
             guard let raw = try text(key) else { return nil }
-            guard let moment = WatchListMoment.parse(raw) else {
+            guard let moment = JobMoment.parse(raw) else {
                 throw FolderJobError("In its job.json, \(key) must be a date and time like 2026-10-05T00:00:00-04:00 (without the offset, it's this Mac's time).")
             }
             return moment
@@ -115,8 +115,8 @@ enum FolderJobFiles {
     }
 
     /// A job's id, the same on every Mac and through every update: made from whose it is and its path.
-    static func id(_ source: WatchListSource, _ path: String) -> UUID {
-        WatchListFiles.derivedID(folder: (source == .team ? "job-team:" : "job-own:") + path)
+    static func id(_ source: JobSource, _ path: String) -> UUID {
+        JobFiles.derivedID((source == .team ? "job-team:" : "job-own:") + path)
     }
 
     // MARK: files

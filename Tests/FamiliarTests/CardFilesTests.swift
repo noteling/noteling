@@ -52,7 +52,7 @@ struct CardFilesTests {
         let folder = stored(fixture, "pack-shop/refunds")
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["problems.csv", "report.pdf"])   // only what it lists
         #expect(try String(contentsOf: folder.appendingPathComponent("problems.csv"), encoding: .utf8) == table)
-        #expect(WatchListFiles.modified(folder.appendingPathComponent("report.pdf")) == written.addingTimeInterval(60))
+        #expect(JobFiles.modified(folder.appendingPathComponent("report.pdf")) == written.addingTimeInterval(60))
         // Only the person can get at them, and a copy can only be read, so a change made in Excel is saved elsewhere.
         #expect(try permissions(folder) == 0o700 && permissions(folder.deletingLastPathComponent()) == 0o700)
         #expect(try permissions(folder.appendingPathComponent("problems.csv")) == 0o400)

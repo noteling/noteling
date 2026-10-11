@@ -2,26 +2,23 @@ import Foundation
 
 /// Something Noteling runs that produces results and a card. A reading job is a saved source: it reads mail, a web
 /// page or a calendar, through the screen or a script, and the card step decides what becomes a card (`CalendarStore`,
-/// run by `CalendarCollectionRunner`). A watch checks items on a schedule and keeps one card for what it finds
-/// (`WatchListStore`, run by `WatchListRunner`). A job kept as a folder runs its job.py on a schedule and keeps one card
-/// while its output has a preview (`FolderJobStore`, run by `FolderJobRunner`). To a person they are all jobs: the Jobs
-/// page lists them as one, and each kind keeps its own storage and runner.
+/// run by `CalendarCollectionRunner`). A job kept as a folder runs its job.py on a schedule and keeps one card while its
+/// output has a preview (`FolderJobStore`, run by `FolderJobRunner`). To a person they are all jobs: the Jobs page lists
+/// them as one, and each kind keeps its own storage and runner.
 struct Job: Identifiable, Equatable {
     enum Kind: Equatable {
-        case mail, web, calendar, watch, teamWatch, job, teamJob
+        case mail, web, calendar, job, teamJob
     }
 
     /// How a job stands, on its row and its page. A job that is ready says nothing.
     enum Status: Equatable {
-        case ready, running, waiting, paused, pausedByTeam, off, needsSettings, needsReview, cantRunYet, failed
+        case ready, running, waiting, off, needsSettings, needsReview, cantRunYet, failed
 
         var label: String? {
             switch self {
             case .ready: return nil
             case .running: return "Running"
             case .waiting: return "Waiting to run"
-            case .paused: return "Paused"
-            case .pausedByTeam: return "Paused in the team's tools"
             case .off: return "Off"
             case .needsSettings: return "Needs Settings"
             case .needsReview: return "Needs review"
@@ -39,7 +36,7 @@ struct Job: Identifiable, Equatable {
     var name: String
     /// A team job's path in the team's tools; empty for any other job.
     var path = ""
-    /// What it does: "Reads mail", "Checks 3 items", "Checks 3 items · from your team's tools".
+    /// What it does: "Reads mail", "Price and badge on the event items · from your team's tools".
     var does: String
     /// How often it runs: "Every 15 minutes", "Every 2 hours · Ends Sat Oct 31, 11:59 PM", "When you run it".
     var every: String
@@ -47,30 +44,26 @@ struct Job: Identifiable, Equatable {
     var lastRun: String
     var lastRunAt: Date? = nil
     var status: Job.Status
-    /// What its last run came to is a problem (items not as expected, a partial read): its last-run line is red.
+    /// What its last run came to is a problem (a failed run, a partial read): its last-run line is red.
     var resultIsProblem = false
     /// What needs the person before it can run well, one line each, in red: why it can't run, what Settings lacks, or
-    /// what is wrong with its files.
+    /// what is wrong with its folder.
     var problems: [String] = []
     /// Why its last run failed or fell short, in red on its row; its page shows it with that run's results.
     var runProblem: String? = nil
-    /// What to know about it, said quietly: a watch's items file, the rows it leaves out, columns its check doesn't report.
-    var notes: [String] = []
-    /// Listed first: a failure, a problem, something missing in Settings, or items that aren't as expected.
+    /// Listed first: a failure, a problem, or something missing in Settings.
     var needsAttention = false
     /// What it is for, in the person's words: a reading job's meaning.
     var meaning = ""
-    /// A watch that is paused (yours by you, your team's in its tools), and whether your team's job is on for you.
-    var paused = false
+    /// Whether your team's job is on for you.
     var on = true
-    /// A watch before its start or after its end: out of the way, under Upcoming or Ended, only to be looked at. Every
+    /// A job before its start or after its end: out of the way, under Upcoming or Ended, only to be looked at. Every
     /// other job is live.
-    var phase = WatchListPhase.live
+    var phase = JobPhase.live
     /// When an upcoming job starts, or when an ended one ended: the order they're listed in.
     var phaseAt: Date? = nil
 
-    var isTeam: Bool { kind == .teamWatch || kind == .teamJob }
-    var isWatch: Bool { kind == .watch || kind == .teamWatch }
+    var isTeam: Bool { kind == .teamJob }
     /// A job kept as a folder, yours or your team's.
     var isFolderJob: Bool { kind == .job || kind == .teamJob }
     /// A reading job: one that reads mail, a web page or a calendar.
@@ -86,7 +79,6 @@ struct Job: Identifiable, Equatable {
 /// is on (a reading job that reads from the screen needs it), and how to open Settings. Tests and renders leave it empty.
 struct JobsSetup {
     var missingSecrets: (LearnedReadingSource) -> [String] = { _ in [] }
-    var missingWatchSecrets: (WatchListWatch) -> [String] = { _ in [] }
     var missingJobSecrets: (FolderJob) -> [String] = { _ in [] }
     var controlAllowed: () -> Bool = { true }
     var openSettings: (() -> Void)? = nil
@@ -101,15 +93,14 @@ struct JobRun: Equatable {
 }
 
 /// The jobs as the Jobs page, a job's page and the Morning Files home say them: one list made of the reading jobs and
-/// the watches, each job's words, how it stands, the order they come in, and the cards each one made.
+/// the jobs kept as folders, each job's words, how it stands, the order they come in, and the cards each one made.
 @MainActor
 enum Jobs {
     static let whenYouRunIt = "When you run it"
     static let notRunYet = "Not run yet"
     static let fromTeam = "from your team's tools"
     static let teamIntro = "From your team's tools. Turn on the ones that are yours: only those run and tell you."
-    static let empty = "No jobs yet. A job reads your mail, a web page or a calendar, or checks items on a schedule, and puts what matters on a card."
-    static let watchHint = "To check items on a schedule, ask in chat: “watch these items: …”"
+    static let empty = "No jobs yet. A job reads your mail, a web page or a calendar, or runs a script your team shares, and puts what matters on a card."
     static let needsReview = "Confirm its address and what to read before it runs."
     static let readsFromScreen = "It reads from the screen, so it needs mouse and keyboard control: turn that on in Settings."
     /// The Jobs page and the home's box when every job is before its start or past its end.
@@ -128,11 +119,6 @@ enum Jobs {
         var readings: [LearnedReadingSource] = []
         /// Every run of the reading jobs, newest first, as `SourceRunStore` keeps them.
         var runs: [SourceRunRecord] = []
-        var watches: [WatchListWatch] = []
-        /// The watches being checked right now.
-        var checking: Set<UUID> = []
-        /// Watches whose watch.json or items file can't be read right now, and why.
-        var problems: [UUID: String] = [:]
         /// The jobs kept as folders, the one running and those waiting their turn.
         var folderJobs: [FolderJob] = []
         var runningJob: UUID?
@@ -149,15 +135,14 @@ enum Jobs {
     /// Every job, live or not, in the order the Jobs page lists the live ones (`outside` orders the rest).
     static func list(_ input: Input) -> [Job] {
         sorted(input.calendars.map { calendarJob($0, input) } + input.readings.map { readingJob($0, input) }
-               + input.watches.map { watchJob($0, input) } + input.folderJobs.map { folderJob($0, input) })
+               + input.folderJobs.map { folderJob($0, input) })
     }
 
     /// One job, as its page shows it; nil once it is gone.
     static func job(_ id: UUID, _ input: Input) -> Job? {
         if let source = input.readings.first(where: { $0.id == id }) { return readingJob(source, input) }
         if let source = input.calendars.first(where: { $0.id == id }) { return calendarJob(source, input) }
-        if let job = input.folderJobs.first(where: { $0.id == id }) { return folderJob(job, input) }
-        return input.watches.first { $0.id == id }.map { watchJob($0, input) }
+        return input.folderJobs.first { $0.id == id }.map { folderJob($0, input) }
     }
 
     /// The jobs out of the way, as the Jobs page lists them under its Upcoming and Ended line: those that start
@@ -241,7 +226,7 @@ enum Jobs {
             if calendarHasText(why) { runProblem = SourceResultPresentation.excerpt(why, limit: 240) }
         }
         let lastRun = finished.map { run in
-            "Last run " + WatchListWords.time(run.at, now: input.now) + " · "
+            "Last run " + JobWords.time(run.at, now: input.now) + " · "
                 + result(run, cards: cardCount(id, run: run.run.id, input.cards), sorted: input.sorted.contains(run.run.id))
         } ?? notRunYet
         let troubled = state == .partial || state == .notRun || state == .failed || state == .interrupted
@@ -296,74 +281,12 @@ enum Jobs {
         cards.filter { $0.tracking?.sourceID == sourceID && $0.tracking?.lastRunID == run }.count
     }
 
-    // MARK: watches
-
-    /// A watch as a job. Before its start or after its end, nothing about it asks for the person: no problem status,
-    /// no red, never first in the list; an upcoming one still says what it lacks (quietly, under Upcoming), so it can
-    /// be put right before it starts.
-    static func watchJob(_ watch: WatchListWatch, _ input: Input) -> Job {
-        let now = input.now
-        let phase = watch.phase(at: now)
-        let live = phase == .live
-        let missing = input.setup.missingWatchSecrets(watch)
-        let checked = watch.items.filter { $0.status != nil }
-        let grey = watch.items.filter { if case .couldNotCheck? = $0.status { return true }; return false }
-        let red = watch.items.filter(\.isRed)
-        let failed = !checked.isEmpty && grey.count == checked.count
-        let status: Job.Status = input.checking.contains(watch.id) ? .running
-            : watch.isTeam && !watch.on ? .off
-            : watch.paused ? (watch.isTeam ? .pausedByTeam : .paused)
-            : !live ? .ready
-            : !missing.isEmpty ? .needsSettings
-            : failed ? .failed : .ready
-        var problems: [String] = []
-        if let problem = WatchListWords.problem(input.problems[watch.id]) { problems.append(problem) }
-        if !missing.isEmpty { problems.append(needs(missing)) }
-        if phase == .ended { problems = [] }
-        var runProblem: String?
-        if status == .failed, case .couldNotCheck(let reason)? = grey.first?.status { runProblem = "Couldn't check: " + reason }
-        let last = ([watch.lastRunAt] + watch.items.map(\.checkedAt)).compactMap { $0 }.max()
-        let lastRun = last.map { "Last run " + WatchListWords.time($0, now: now) + (watchResult(watch).map { " · " + $0 } ?? "") } ?? notRunYet
-        let items = watch.items.isEmpty ? "Checks no items yet" : "Checks " + WatchListWords.itemCount(watch.items.count)
-        let running = watch.checking(at: now)
-        let troubled = !red.isEmpty || !grey.isEmpty
-        return Job(id: watch.id, kind: watch.isTeam ? .teamWatch : .watch, name: watch.name, path: watch.isTeam ? watch.path : "",
-                   does: items + (watch.isTeam ? " · " + fromTeam : ""), every: WatchListWords.schedule(watch, now: now),
-                   lastRun: lastRun, lastRunAt: last, status: status, resultIsProblem: live && watch.on && troubled, problems: problems,
-                   runProblem: runProblem, notes: WatchListWords.notes(watch),
-                   needsAttention: live && ((watch.on && input.problems[watch.id] != nil) || (running && (!missing.isEmpty || troubled))),
-                   paused: watch.paused, on: watch.on, phase: phase,
-                   phaseAt: phase == .upcoming ? watch.starts?.date : phase == .ended ? watch.ends?.date : nil)
-    }
-
-    /// How a watch's items stand after its runs, in a few words: "2 of 8 not as expected · 1 couldn't check",
-    /// "couldn't check 1 of 8", "all 8 as expected", "3 of 4 as expected · 1 not checked yet"; nil before any is checked.
-    static func watchResult(_ watch: WatchListWatch) -> String? {
-        let count = watch.items.count
-        guard count > 0 else { return "no items" }
-        var red = 0, grey = 0, green = 0, unchecked = 0
-        for item in watch.items {
-            switch item.status {
-            case .asExpected?: green += 1
-            case .notAsExpected?: red += 1
-            case .couldNotCheck?: grey += 1
-            case nil: unchecked += 1
-            }
-        }
-        guard unchecked < count else { return nil }
-        var words: [String] = []
-        if red > 0 { words.append("\(red) of \(count) not as expected") }
-        if grey > 0 { words.append(red > 0 ? "\(grey) couldn't check" : "couldn't check \(grey) of \(count)") }
-        if red == 0 && grey == 0 { words.append(green == count ? "all \(count) as expected" : "\(green) of \(count) as expected") }
-        if unchecked > 0 { words.append("\(unchecked) not checked yet") }
-        return words.joined(separator: " · ")
-    }
-
     // MARK: jobs kept as folders
 
     /// A job kept as a folder as a job: what it's about, how often it runs, how its last run went (what its `run()`
-    /// said, or that it failed, and why), and whether it's on. Before its start or after its end, as a watch: nothing
-    /// asks for the person.
+    /// said, or that it failed, and why), and whether it's on. Before its start or after its end, nothing about it asks
+    /// for the person: no problem status, no red, never first in the list; an upcoming one still says what it lacks
+    /// (quietly, under Upcoming), so it can be put right before it starts.
     static func folderJob(_ job: FolderJob, _ input: Input) -> Job {
         let now = input.now
         let phase = job.phase(at: now)
@@ -377,7 +300,8 @@ enum Jobs {
             : failed ? .failed : .ready
         var problems = missing.isEmpty ? [] : [needs(missing)]
         if phase == .ended { problems = [] }
-        let about = job.about.isEmpty ? "Runs its job.py" : WatchListValue.clip(job.about.components(separatedBy: .newlines).first ?? "", 90)
+        let line = aboutLine(job)
+        let about = line.isEmpty ? "Runs its job.py" : line
         return Job(id: job.id, kind: job.isTeam ? .teamJob : .job, name: job.name, path: job.isTeam ? job.path : "",
                    does: about + (job.isTeam ? " · " + fromTeam : ""), every: FolderJobWords.schedule(job, now: now),
                    lastRun: FolderJobWords.lastRun(job, now: now), lastRunAt: job.state.lastRunAt, status: status,
@@ -387,22 +311,31 @@ enum Jobs {
                    phaseAt: phase == .upcoming ? job.starts?.date : phase == .ended ? job.ends?.date : nil)
     }
 
+    /// What a job is for, on its row: the first line of its `about`, up to 90 characters, without a closing full stop,
+    /// since more follows it on the row. Empty when it says nothing.
+    static func aboutLine(_ job: FolderJob) -> String {
+        var line = JobWords.clip(job.about.components(separatedBy: .newlines).first ?? "", 90)
+        if line.hasSuffix("."), !line.hasSuffix("..") { line.removeLast() }
+        return line
+    }
+
+    /// Its row had to shorten what it is for, so its page says all of it.
+    static func aboutShortened(_ job: FolderJob) -> Bool {
+        let line = aboutLine(job), about = job.about.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !about.isEmpty && line != about && line + "." != about
+    }
+
     // MARK: cards
 
-    /// The cards a job made, to open from its page: a watch's one card (its job.json in the cards inbox), whether open
-    /// or resolved; a job kept as a folder's preview card, and the open cards its script wrote itself; or a reading
-    /// job's open cards, those its latest run made or saw first, then the newest.
+    /// The cards a job made, to open from its page: a job kept as a folder's preview card, whether open or resolved, and
+    /// the open cards its script wrote itself; or a reading job's open cards, those its latest run made or saw first,
+    /// then the newest.
     static func cards(for job: Job, _ input: Input) -> [MorningCard] {
         if job.isFolderJob {
             guard let folderJob = input.folderJobs.first(where: { $0.id == job.id }) else { return [] }
             let id = CardInboxFormat.cardID(FolderJobCards.key(for: folderJob))
             let own = FolderJobCards.scriptSource(for: folderJob) + "/"
             return input.cards.filter { $0.id == id } + input.cards.filter { !$0.isResolved && $0.inbox?.key.hasPrefix(own) == true }
-        }
-        if job.isWatch {
-            guard let watch = input.watches.first(where: { $0.id == job.id }) else { return [] }
-            let id = CardInboxFormat.cardID(WatchListCards.key(for: watch))
-            return input.cards.filter { $0.id == id }
         }
         let newest = latest(job.id, in: input.runs, finished: true)?.run.id
         return input.cards.filter { $0.tracking?.sourceID == job.id && !$0.isResolved }.sorted { a, b in
@@ -423,7 +356,7 @@ enum Jobs {
 
     // MARK: the rest of the page
 
-    /// A folder among the watches that isn't a job, and why: listed with the jobs that need attention.
+    /// A folder among the jobs that can't be a job, and why: listed with the jobs that need attention.
     struct Unreadable: Identifiable, Equatable {
         var id: String
         var text: String
@@ -431,14 +364,31 @@ enum Jobs {
         var folder: URL?
     }
 
-    static func unreadable(own: [String: String], team: [String: String], directory: URL, ownJobs: [String: String] = [:],
-                           teamJobs: [String: String] = [:], jobsDirectory: URL? = nil) -> [Unreadable] {
-        own.keys.sorted().map { Unreadable(id: "own:" + $0, text: "The job in the “\($0)” folder can't run. \(own[$0] ?? "")",
-                                           folder: directory.appendingPathComponent($0)) }
-            + team.keys.sorted().map { Unreadable(id: "team:" + $0, text: "Not listing your team's job \($0). \(team[$0] ?? "")") }
-            + ownJobs.keys.sorted().map { Unreadable(id: "own-job:" + $0, text: "The job in the “\($0)” folder can't run. \(ownJobs[$0] ?? "")",
-                                                     folder: jobsDirectory?.appendingPathComponent($0)) }
-            + teamJobs.keys.sorted().map { Unreadable(id: "team-job:" + $0, text: "Not listing your team's job \($0). \(teamJobs[$0] ?? "")") }
+    static func unreadable(own: [String: String], team: [String: String], directory: URL?) -> [Unreadable] {
+        own.keys.sorted().map { Unreadable(id: "own-job:" + $0, text: "The job in the “\($0)” folder can't run. \(own[$0] ?? "")",
+                                           folder: directory?.appendingPathComponent($0)) }
+            + team.keys.sorted().map { Unreadable(id: "team-job:" + $0, text: "Not listing your team's job \($0). \(team[$0] ?? "")") }
+    }
+
+    /// Watches no longer run: a `watches/` folder that still holds one, yours or your team's, said once each, so whoever
+    /// keeps it knows to move it to `jobs/`.
+    static func retiredWatches(own: URL?, team: URL?) -> [Unreadable] {
+        func holdsWatch(_ folder: URL?) -> Bool {
+            guard let folder, let walk = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: nil,
+                                                                       options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { return false }
+            for case let url as URL in walk.prefix(2_000) where url.lastPathComponent == "watch.json" { return true }
+            return false
+        }
+        var rows: [Unreadable] = []
+        if holdsWatch(team) {
+            rows.append(Unreadable(id: "team-watches", text: "Your team's tools still have a watches/ folder. Watches no longer run: "
+                + "whoever keeps the tools can move each one to jobs/, with a job.py that does its check."))
+        }
+        if holdsWatch(own) {
+            rows.append(Unreadable(id: "own-watches", text: "Watches no longer run, so the watches/ folder in Noteling's folder isn't read. "
+                + "A job in jobs/, with a job.py, does what a watch did.", folder: own))
+        }
+        return rows
     }
 
     /// Saved demonstrations that aren't jobs yet: each needs a review before it can be added.
@@ -462,18 +412,18 @@ enum Jobs {
             if running > 0 { words.append("\(running) running") }
             let attention = yours.filter(\.needsAttention).count
             if attention > 0 { words.append("\(attention) need\(attention == 1 ? "s" : "") attention") }
-            if let last = yours.compactMap(\.lastRunAt).max() { words.append("last run " + WatchListWords.time(last, now: now)) }
+            if let last = yours.compactMap(\.lastRunAt).max() { words.append("last run " + JobWords.time(last, now: now)) }
         }
         if demonstrations > 0 { words.append("\(demonstrations) demonstration\(demonstrations == 1 ? "" : "s") to review") }
         return words.joined(separator: " · ")
     }
 
     /// The buttons a job has on its row and its page: Run now, or Stop while it reads, or Open Settings when it needs
-    /// something there; and Pause or Resume for a watch of your own, or the on/off switch for your team's job. Before
+    /// something there; and the on/off switch for your team's job. Before
     /// its start or after its end a job is only to be looked at, and has none, except that an upcoming team job keeps
     /// its switch, so it can be turned on ahead of a start in the night.
     enum Control: Hashable {
-        case runNow, stop, openSettings, pause, resume, onOff
+        case runNow, stop, openSettings, onOff
     }
 
     static func controls(_ job: Job, canOpenSettings: Bool) -> [Control] {
@@ -483,7 +433,6 @@ enum Jobs {
         else if job.status == .needsSettings && canOpenSettings { controls.append(.openSettings) }
         else if job.on { controls.append(.runNow) }
         if job.isTeam { controls.append(.onOff) }
-        else if job.isWatch { controls.append(job.paused ? .resume : .pause) }
         return controls
     }
 
@@ -498,15 +447,12 @@ enum Jobs {
 extension Jobs.Input {
     /// The jobs as the stores have them now; either kind may be missing (a test, a render).
     @MainActor
-    init(sources: CalendarStore?, watches: WatchListPanel?, morning: MorningStore, setup: JobsSetup = JobsSetup(), now: Date = Date(),
+    init(sources: CalendarStore?, morning: MorningStore, setup: JobsSetup = JobsSetup(), now: Date = Date(),
          folderJobs: FolderJobsPanel? = nil) {
         self.init()
         calendars = sources?.sources ?? []
         readings = sources?.readingSources ?? []
         runs = sources?.runStore.runs ?? []
-        self.watches = watches?.store.watches ?? []
-        checking = watches?.runner.checking ?? []
-        problems = watches?.store.problems ?? [:]
         self.setup = setup
         if let folderJobs {
             self.folderJobs = folderJobs.store.jobs

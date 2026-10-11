@@ -31,21 +31,37 @@ enum FolderJobWords {
         guard let last = job.state.lastRunAt else { return Jobs.notRunYet }
         let how: String
         if job.state.error != nil { how = "failed" }
-        else if let said = job.state.said { how = WatchListValue.clip(said.components(separatedBy: .newlines).first ?? said, 80) }
+        else if let said = job.state.said { how = JobWords.clip(said.components(separatedBy: .newlines).first ?? said, 80) }
         else { how = job.state.preview == nil ? "nothing to look at" : "something to look at" }
-        return "Last run " + WatchListWords.time(last, now: now) + " · " + how
+        return "Last run " + JobWords.time(last, now: now) + " · " + how
     }
 
     /// The line on a job's folder in Morning Files: "Last run 6:31 PM · every hour", or "Running now · every hour".
     static func folderLine(_ job: FolderJob, running: Bool, now: Date) -> String {
-        (running ? "Running now" : job.state.lastRunAt.map { "Last run " + WatchListWords.time($0, now: now) } ?? Jobs.notRunYet)
+        (running ? "Running now" : job.state.lastRunAt.map { "Last run " + JobWords.time($0, now: now) } ?? Jobs.notRunYet)
             + " · " + every(job)
     }
 
     /// Above the latest result when the last run failed and an earlier one worked: whose result it is.
     static func from(_ job: FolderJob, now: Date) -> String? {
         guard job.state.error != nil, let success = job.state.lastSuccessAt else { return nil }
-        return "From the last run that worked, " + WatchListWords.time(success, now: now) + "."
+        return "From the last run that worked, " + JobWords.time(success, now: now) + "."
+    }
+
+    /// Why a job's card was put away, said on the card in place of "Its script no longer reports this": the job ended,
+    /// hasn't started, or is off. Nil while it runs, or when the card went away before the job ended (`gone`, when the
+    /// inbox found its file gone), for another reason.
+    static func putAway(_ job: FolderJob, gone: Date, now: Date) -> String? {
+        switch job.phase(at: now) {
+        case .ended:
+            guard let ends = job.ends, gone >= ends.date else { return nil }
+            return "This job ended \(ends.words), so its card was put away."
+        case .upcoming:
+            guard let starts = job.starts else { return nil }
+            return "This job starts \(starts.words); its card is put away until then."
+        case .live:
+            return job.on ? nil : "This job is off, so its card was put away."
+        }
     }
 
     private static func capitalized(_ text: String) -> String { text.prefix(1).uppercased() + text.dropFirst() }
@@ -63,11 +79,13 @@ struct FolderJobPage: View {
     var files = CardFileActions()
     var setup = JobsSetup()
     var now: () -> Date = Date.init
+    /// Asked for permission when a team job is turned on here.
+    var notifier: JobNotifier? = nil
     @State private var problem: String?
     @State private var notice: String?
 
-    private var panel: FolderJobsPanel { FolderJobsPanel(store: store, runner: runner) }
-    private var input: Jobs.Input { Jobs.Input(sources: nil, watches: nil, morning: morning, setup: setup, now: now(), folderJobs: panel) }
+    private var panel: FolderJobsPanel { FolderJobsPanel(store: store, runner: runner, notifier: notifier) }
+    private var input: Jobs.Input { Jobs.Input(sources: nil, morning: morning, setup: setup, now: now(), folderJobs: panel) }
 
     var body: some View {
         if let folderJob = store.job(id: id) {
@@ -85,7 +103,7 @@ struct FolderJobPage: View {
                                                 problem: { problem = $0 }),
                           card: JobCardLink(cards: Jobs.cards(for: job, input), open: openCard))
                 // All of what it's for, when its line above had to shorten it.
-                if !folderJob.about.isEmpty && !job.does.hasPrefix(folderJob.about) {
+                if Jobs.aboutShortened(folderJob) {
                     Text(folderJob.about).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 }
                 if !folderJob.isTeam, let folder = store.folder(for: folderJob) {

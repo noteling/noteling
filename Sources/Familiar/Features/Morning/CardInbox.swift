@@ -59,7 +59,7 @@ enum CardInboxFormat {
     static let partLength = 300
 
     /// Reads one card file. Only `title` is required; keys it doesn't know are left out, and so is any button that
-    /// would do more than open a web page, ask a question or open a watch's page.
+    /// would do more than open a web page or ask a question.
     static func parse(_ data: Data, source: String, id: String, modifiedAt: Date) throws -> CardInboxEntry {
         let value: Any
         do { value = try JSONSerialization.jsonObject(with: data) }
@@ -100,8 +100,6 @@ enum CardInboxFormat {
                 entry.actions.append(CardInboxAction(label: short, url: webAddress(url)))
             } else if let ask = (action["ask"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !ask.isEmpty {
                 entry.actions.append(CardInboxAction(label: short, ask: ask.count > askLimit ? String(ask.prefix(askLimit - 1)) + "…" : ask))
-            } else if let watch = (action["watch"] as? String).flatMap({ UUID(uuidString: $0.trimmingCharacters(in: .whitespaces)) }) {
-                entry.actions.append(CardInboxAction(label: short, watch: watch.uuidString))   // only ever opens that watch's page
             }
         }
         let parts = (object["parts"] as? [Any] ?? []).compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -238,8 +236,7 @@ enum CardInboxFormat {
         card.title = entry.title
         card.summary = entry.body
         card.rationale = ""
-        let kind = entry.source.hasPrefix("watch-") ? "Watch"
-            : entry.source.hasPrefix(FolderJobCards.prefix) || entry.source.hasPrefix(FolderJobCards.scriptPrefix) ? "Job" : "Card"
+        let kind = entry.source.hasPrefix(FolderJobCards.prefix) || entry.source.hasPrefix(FolderJobCards.scriptPrefix) ? "Job" : "Card"
         var sources = [MorningSource(id: sourceID(entry.key, 0), title: entry.title, kind: kind, excerpt: entry.body, url: entry.url,
                                      capturedAt: entry.modifiedAt)]
         if !entry.details.isEmpty {
@@ -272,7 +269,7 @@ final class CardInbox {
     /// Where cards keep their files: `cards/files/`, beside the inbox.
     let files: URL
     let store: MorningStore
-    /// The card view's folder name for a source: a watch's name, a pack's; nil keeps the folder's own name.
+    /// The card view's folder name for a source: a job's name; nil keeps the folder's own name.
     var folderName: (String) -> String? = { _ in nil }
     private var cache: [String: (stamp: Stamp, result: Result<CardInboxEntry, CardInboxError>)] = [:]
     private var logged: Set<String> = []
@@ -402,5 +399,40 @@ final class CardInbox {
         for line in attached.notes where logged.insert(entry.key + "/" + line).inserted { Log.info("cards inbox: \(entry.key): \(line)") }
         entry.attached = attached
         return entry
+    }
+}
+
+/// Watches wrote their cards into the inbox themselves: `watch-<path>/job.json`, the CSV files it carried (`problems.csv`,
+/// `all.csv` and their numbered parts) and, in earlier versions, one `item-….json` per item. Watches no longer run, so
+/// at launch Noteling deletes what they wrote there, and those cards resolve as any card whose file went away does.
+/// Anything else in those folders, such as a card a watch's own check.py wrote, is left as it is; an emptied folder goes.
+enum RetiredWatchCards {
+    /// Deletes the files watches wrote into `inbox`. Returns how many it deleted; none once they're gone.
+    @discardableResult
+    static func cleanUp(inbox: URL) -> Int {
+        let manager = FileManager.default
+        let folders = ((try? manager.contentsOfDirectory(atPath: inbox.path)) ?? []).filter { $0.hasPrefix("watch-") }
+        var deleted = 0
+        for folder in folders {
+            let url = inbox.appendingPathComponent(folder)
+            for name in (try? manager.contentsOfDirectory(atPath: url.path)) ?? [] where watchWrote(name) {
+                if (try? manager.removeItem(at: url.appendingPathComponent(name))) != nil { deleted += 1 }
+            }
+            if ((try? manager.contentsOfDirectory(atPath: url.path)) ?? ["?"]).isEmpty { try? manager.removeItem(at: url) }
+        }
+        if deleted > 0 { Log.info("cards inbox: watches no longer run, so the \(deleted) file(s) they wrote were deleted") }
+        return deleted
+    }
+
+    /// One of the files a watch wrote: job.json, an item file, or one of its CSV files.
+    static func watchWrote(_ name: String) -> Bool {
+        if name == "job.json" || name.hasPrefix("item-") && name.hasSuffix(".json") { return true }
+        guard name.hasSuffix(".csv") else { return false }
+        let stem = name.dropLast(4)
+        for kind in ["problems", "all"] {
+            if stem == kind { return true }
+            if stem.hasPrefix(kind + "-"), let number = Int(stem.dropFirst(kind.count + 1)), number > 0 { return true }
+        }
+        return false
     }
 }

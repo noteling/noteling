@@ -4,19 +4,25 @@ import Testing
 import FamiliarContracts
 @testable import Familiar
 
-/// Jobs: every reading job and every watch in one list, each row's words, a job's page and its card, the home's Jobs
-/// box, and every way in. Temp folders only; nothing reads a real source, runs a script or reaches a model.
+/// Jobs: every reading job and every job kept as a folder in one list, each row's words, a job's page and its card, the
+/// home's Jobs box, and every way in. Temp folders only; nothing reads a real source, runs a script or reaches a model.
 @Suite @MainActor
 struct JobsPageTests {
     private let now = Date(timeIntervalSince1970: 1_790_000_000)
-    private var time: String { WatchListWords.time(now, now: now) }
-    private let red = WatchListStatus.notAsExpected([WatchListDifference(field: "price", now: .number(12), expected: .number(10))])
+    private var time: String { JobWords.time(now, now: now) }
 
-    private func item(_ key: String, _ status: WatchListStatus?) -> WatchListItem {
-        var item = WatchListItem(key: key)
-        item.status = status
-        item.checkedAt = status == nil ? nil : now
-        return item
+    /// A job kept as a folder, as its store would have it.
+    private func folderJob(_ name: String, path: String, team: Bool = false, on: Bool = true, every: Int? = 120, about: String = "",
+                           state: FolderJobState = FolderJobState()) -> FolderJob {
+        var job = FolderJob(id: UUID(), source: team ? .team : .own, path: path, name: name, about: about, everyMinutes: every)
+        job.on = on
+        job.state = state
+        return job
+    }
+
+    private func failed(_ why: String, at: Date? = nil) -> FolderJobState { FolderJobState(lastRunAt: at ?? now, error: why) }
+    private func found(_ said: String, at: Date? = nil) -> FolderJobState {
+        FolderJobState(lastRunAt: at ?? now, lastSuccessAt: at ?? now, said: said, preview: "digest")
     }
 
     private func mail(_ name: String = "Morning mail") -> LearnedReadingSource {
@@ -32,14 +38,6 @@ struct JobsPageTests {
     private func calendar(_ name: String = "Work calendar") -> LearnedCalendarSource {
         LearnedCalendarSource(name: name, meaning: "My meetings", application: "Calendar", account: "alex@example.test",
                               calendarName: "Work", timeZoneID: "America/New_York")
-    }
-
-    private func team(_ name: String, path: String, on: Bool, items: [WatchListItem] = []) -> WatchListWatch {
-        var watch = WatchListWatch(name: name, check: "c", items: items, everyMinutes: 120)
-        watch.source = .team
-        watch.path = path
-        watch.on = on
-        return watch
     }
 
     /// One reading job's part of a run that has ended: what it read, or why not.
@@ -88,29 +86,26 @@ struct JobsPageTests {
 
     // MARK: one list
 
-    @Test func everyReadingJobAndEveryWatchIsInOneList() throws {
+    @Test func everyReadingJobAndEveryJobKeptAsAFolderIsInOneList() throws {
         let fixture = try JobsFixture()
         defer { fixture.remove() }
         let mail = mail(), web = web(), calendar = calendar()
         try fixture.sources.saveReadingSource(mail)
         try fixture.sources.saveReadingSource(web)
         try fixture.sources.saveSource(calendar)
-        let own = try fixture.add(WatchListWatch(name: "Sale items", check: "c", items: [WatchListItem(key: "1"), WatchListItem(key: "2")]))
-        try fixture.place.job("holiday/oct/fashion", #"{"name": "Fashion", "items": ["F-1", "F-2", "F-3"], "every_minutes": 120}"#)
-        try fixture.place.job("holiday/oct/shoes", #"{"name": "Shoes", "items": ["S-1"], "every_minutes": 60}"#)
-        fixture.watches.refresh()
-        let fashion = try #require(fixture.watches.watches.first { $0.name == "Fashion" })
-        try fixture.watches.setOn(fashion.id, true)
+        let own = try fixture.job("stuck-orders", #"{"name": "Stuck orders", "about": "Orders waiting on me", "every_minutes": 15}"#)
+        let fashion = try fixture.job("holiday/oct/fashion", #"{"name": "Fashion", "about": "Prices on the fashion items", "every_minutes": 120}"#, team: true)
+        let shoes = try fixture.job("holiday/oct/shoes", #"{"name": "Shoes", "every_minutes": 60}"#, team: true)
+        try fixture.jobs.setOn(fashion.id, true)
 
-        // As Manage sources and Watches listed them: every reading job (calendars and the rest) and every watch, yours
-        // and your team's, on or off.
+        // Every reading job (calendars and the rest) and every job kept as a folder, yours and your team's, on or off.
         let jobs = Jobs.list(fixture.input())
-        #expect(jobs.map(\.name) == ["Morning mail", "Sale items", "School portal", "Work calendar", "Fashion", "Shoes"])
-        #expect(jobs.map(\.kind) == [.mail, .watch, .web, .calendar, .teamWatch, .teamWatch])
-        #expect(Set(jobs.map(\.id)) == Set([mail.id, web.id, calendar.id, own.id, fashion.id] + fixture.watches.watches.filter { $0.name == "Shoes" }.map(\.id)))
-        #expect(jobs.map(\.does) == ["Reads mail", "Checks 2 items", "Reads a web page", "Reads your calendar",
-                                     "Checks 3 items · from your team's tools", "Checks 1 item · from your team's tools"])
-        #expect(jobs.map(\.every) == ["When you run it", "Every 15 minutes", "When you run it", "When you run it", "Every 2 hours", "Every hour"])
+        #expect(jobs.map(\.name) == ["Morning mail", "School portal", "Stuck orders", "Work calendar", "Fashion", "Shoes"])
+        #expect(jobs.map(\.kind) == [.mail, .web, .job, .calendar, .teamJob, .teamJob])
+        #expect(Set(jobs.map(\.id)) == Set([mail.id, web.id, calendar.id, own.id, fashion.id, shoes.id]))
+        #expect(jobs.map(\.does) == ["Reads mail", "Reads a web page", "Orders waiting on me", "Reads your calendar",
+                                     "Prices on the fashion items · from your team's tools", "Runs its job.py · from your team's tools"])
+        #expect(jobs.map(\.every) == ["When you run it", "When you run it", "Every 15 minutes", "When you run it", "Every 2 hours", "Every hour"])
         #expect(jobs.map(\.lastRun) == Array(repeating: "Not run yet", count: 6))
         #expect(jobs.map(\.status) == [.ready, .ready, .ready, .ready, .ready, .off])
         #expect(jobs.first { $0.name == "Fashion" }?.path == "holiday/oct/fashion")
@@ -124,90 +119,82 @@ struct JobsPageTests {
 
     @Test func jobsThatNeedAttentionComeFirstThenYoursThenTheTeamsByName() {
         let mail = mail(), web = web(), calendar = calendar()
-        var sale = WatchListWatch(name: "Sale items", check: "c", items: [item("1", red), item("2", .asExpected)])
-        sale.lastRunAt = now
-        let gift = WatchListWatch(name: "Gift guide", check: "c", items: [item("1", .asExpected)])
-        let zeta = team("Zeta", path: "zeta", on: true, items: [item("Z", .couldNotCheck("Signed out"))])
-        let alpha = team("Alpha", path: "alpha", on: true, items: [item("A", .asExpected)])
-        let off = team("Off and red", path: "off", on: false, items: [item("O", red)])
+        let stuck = folderJob("Stuck orders", path: "stuck", state: failed("The orders service asked to sign in again."))
+        let gift = folderJob("Gift guide", path: "gift", state: found("Nothing to look at"))
+        let zeta = folderJob("Zeta", path: "zeta", team: true, state: failed("Signed out"))
+        let alpha = folderJob("Alpha", path: "alpha", team: true, state: found("1 of 2 wrong"))
+        let off = folderJob("Off and failed", path: "off", team: true, on: false, state: failed("Signed out"))
         var input = Jobs.Input(calendars: [calendar], readings: [mail, web],
                                runs: [run([part(web, .failed, message: "The portal asked to sign in again.")])],
-                               watches: [sale, gift, zeta, alpha, off], now: now)
+                               folderJobs: [stuck, gift, zeta, alpha, off], now: now)
         input.setup.missingSecrets = { $0.id == mail.id ? ["MAIL_APP_PASSWORD"] : [] }
 
         let jobs = Jobs.list(input)
-        // A failed read, items not as expected, a secret missing and an item that couldn't be checked first (yours,
-        // then the team's); then the rest of yours, then the rest of the team's, each by name. A team job that's off
-        // never needs attention.
-        #expect(jobs.map(\.name) == ["Morning mail", "Sale items", "School portal", "Zeta", "Gift guide", "Work calendar", "Alpha", "Off and red"])
+        // A failed read, a secret missing and a job whose last run failed first (yours, then the team's); then the
+        // rest of yours, then the rest of the team's, each by name. A team job that's off never needs attention.
+        #expect(jobs.map(\.name) == ["Morning mail", "School portal", "Stuck orders", "Zeta", "Gift guide", "Work calendar", "Alpha", "Off and failed"])
         #expect(jobs.map(\.needsAttention) == [true, true, true, true, false, false, false, false])
         let portal = jobs.first { $0.name == "School portal" }
         #expect(portal?.runProblem == "The portal asked to sign in again." && portal?.problems == [])
+        let failedJob = jobs.first { $0.name == "Stuck orders" }
+        #expect(failedJob?.status == .failed && failedJob?.runProblem == "The orders service asked to sign in again.")
+        #expect(failedJob?.lastRun == "Last run \(time) · failed" && failedJob?.resultIsProblem == true)
 
         // Sorting alone: by name within each group, whatever came first.
         let a = Job(id: UUID(), kind: .mail, name: "b job", does: "", every: "", lastRun: "", status: .ready)
-        let b = Job(id: UUID(), kind: .watch, name: "A job", does: "", every: "", lastRun: "", status: .ready)
-        let c = Job(id: UUID(), kind: .teamWatch, name: "a team job", does: "", every: "", lastRun: "", status: .ready)
-        let d = Job(id: UUID(), kind: .teamWatch, name: "z team job", does: "", every: "", lastRun: "", status: .failed, needsAttention: true)
+        let b = Job(id: UUID(), kind: .job, name: "A job", does: "", every: "", lastRun: "", status: .ready)
+        let c = Job(id: UUID(), kind: .teamJob, name: "a team job", does: "", every: "", lastRun: "", status: .ready)
+        let d = Job(id: UUID(), kind: .teamJob, name: "z team job", does: "", every: "", lastRun: "", status: .failed, needsAttention: true)
         #expect(Jobs.sorted([c, a, d, b]).map(\.name) == ["z team job", "A job", "b job", "a team job"])
     }
 
     @Test func teamJobsSayWhereTheyComeFromAndShowTheirSwitch() async throws {
         let fixture = try JobsFixture()
         defer { fixture.remove() }
-        try fixture.place.job("holiday/oct/fashion", #"{"name": "Fashion", "items": ["F-1", "F-2"], "every_minutes": 120}"#)
-        fixture.watches.refresh()
-        var fashion = try #require(fixture.watches.watches.first)
+        let fashion = try fixture.job("holiday/oct/fashion", #"{"name": "Fashion", "about": "Prices on the fashion items", "every_minutes": 120}"#, team: true)
         func job() throws -> Job { try #require(Jobs.list(fixture.input()).first { $0.id == fashion.id }) }
 
         // Off: what it is, and the switch, nothing to run.
         #expect(try job().status == .off && job().status.label == "Off")
-        #expect(try job().does == "Checks 2 items · from your team's tools")
+        #expect(try job().does == "Prices on the fashion items · from your team's tools")
         #expect(try Jobs.controls(job(), canOpenSettings: true) == [.onOff])
         #expect(try !job().needsAttention)
 
-        // The switch turns it on, as Watches' did; then it runs and has Run now.
+        // The switch turns it on; then it runs at once and has Run now.
         #expect(try fixture.actions.turn(job(), on: true) == nil)
-        fashion = try #require(fixture.watches.watch(id: fashion.id))
-        #expect(fashion.on)
+        #expect(fixture.jobs.job(id: fashion.id)?.on == true)
         #expect(try Jobs.controls(job(), canOpenSettings: true) == [.runNow, .onOff])
-        await fixture.watchRunner.current(fashion.id)?.value   // turning it on checks it at once
-
-        // Paused in the team's tools: said so, and still its switch.
-        let paused = team("Fashion", path: "holiday/oct/fashion", on: true)
-        var pausedJob = Jobs.watchJob({ var watch = paused; watch.paused = true; return watch }(), Jobs.Input(now: now))
-        #expect(pausedJob.status == .pausedByTeam && pausedJob.status.label == "Paused in the team's tools")
-        #expect(Jobs.controls(pausedJob, canOpenSettings: false) == [.runNow, .onOff])
-
-        // Yours: Pause, or Resume while paused.
-        pausedJob.kind = .watch
-        #expect(Jobs.controls(pausedJob, canOpenSettings: false) == [.runNow, .resume])
-        pausedJob.paused = false
-        #expect(Jobs.controls(pausedJob, canOpenSettings: false) == [.runNow, .pause])
+        await fixture.jobRunner.finish()   // turning it on runs it at once
+        #expect(fixture.jobs.job(id: fashion.id)?.state.said == "Ran in the test.")
         #expect(Jobs.teamIntro == "From your team's tools. Turn on the ones that are yours: only those run and tell you.")
+
+        // One of yours has no switch: it runs while its folder is there.
+        let own = try fixture.job("mine", #"{"name": "Mine"}"#)
+        let mine = try #require(Jobs.list(fixture.input()).first { $0.id == own.id })
+        #expect(Jobs.controls(mine, canOpenSettings: true) == [.runNow])
+        #expect(fixture.actions.turn(mine, on: false) == "Only your team's jobs are turned on and off. Yours run while their folder is there.")
     }
 
     @Test func nothingTheOldListsShowedIsLost() throws {
-        // Watches: how often and when it ends, how its items stand, what's wrong with its files and what to know about
-        // them, folders it can't use, and where the team's jobs come from.
-        var watch = WatchListWatch(name: "Sale items", check: "c", items: [item("1", red), item("2", .couldNotCheck("Offline")),
-                                                                           item("3", .asExpected), item("4", nil)])
-        watch.ends = WatchListMoment.parse("2026-10-31T23:59:00")
-        watch.lastRunAt = now
-        watch.file = WatchListItemsFile(name: "items.psv", columns: [], rows: [], skipped: ["row 3 has no item"])
-        watch.fileNote = "There are two items files; items.psv is used."
-        let job = Jobs.watchJob(watch, Jobs.Input(problems: [watch.id: "Can't read watch.json: it isn't valid JSON."], now: now))
-        #expect(job.every == "Every 15 minutes · Ends Sat Oct 31, 11:59 PM")
-        #expect(job.lastRun == "Last run \(time) · 1 of 4 not as expected · 1 couldn't check · 1 not checked yet")
-        #expect(job.resultIsProblem && job.needsAttention)
-        #expect(job.problems == ["Can't read watch.json: it isn't valid JSON. Until it's fixed, the job keeps what it had."])
-        #expect(job.notes == ["Items from items.psv", "Left out: row 3 has no item", "There are two items files; items.psv is used."])
-        let folders = URL(fileURLWithPath: "/watches")
-        #expect(Jobs.unreadable(own: ["sale": "Can't read watch.json: it isn't valid JSON."], team: ["shoes": "Not listed."], directory: folders)
-                == [Jobs.Unreadable(id: "own:sale", text: "The job in the “sale” folder can't run. Can't read watch.json: it isn't valid JSON.",
+        // Jobs kept as folders: how often and when it ends, how its last run went, folders that can't be a job, and
+        // where the team's jobs come from.
+        var gm = folderJob("GM", path: "holiday/oct/gm", team: true, state: found("2 of 8 prices wrong"))
+        gm.ends = JobMoment.parse("2026-10-31T23:59:00")
+        let job = Jobs.folderJob(gm, Jobs.Input(now: now))
+        #expect(job.every == "Every 2 hours · Ends Sat Oct 31, 11:59 PM")
+        #expect(job.lastRun == "Last run \(time) · 2 of 8 prices wrong")
+        // What it's for: its first line on the row, without a closing full stop; its page says all of it when that's more.
+        var about = folderJob("Orders", path: "orders", about: "Orders waiting on me for more than a day.")
+        #expect(Jobs.folderJob(about, Jobs.Input(now: now)).does == "Orders waiting on me for more than a day" && !Jobs.aboutShortened(about))
+        about.about = "Orders waiting on me.\nThe orders service lists those older than a day."
+        #expect(Jobs.aboutLine(about) == "Orders waiting on me" && Jobs.aboutShortened(about))
+        about.about = ""
+        #expect(Jobs.folderJob(about, Jobs.Input(now: now)).does == "Runs its job.py" && !Jobs.aboutShortened(about))
+        let folders = URL(fileURLWithPath: "/jobs")
+        #expect(Jobs.unreadable(own: ["sale": "It has a job.json but no job.py beside it."], team: ["shoes": "Not listed."], directory: folders)
+                == [Jobs.Unreadable(id: "own-job:sale", text: "The job in the “sale” folder can't run. It has a job.json but no job.py beside it.",
                                     folder: folders.appendingPathComponent("sale")),
-                    Jobs.Unreadable(id: "team:shoes", text: "Not listing your team's job shoes. Not listed.")])
-        #expect(Jobs.watchHint == "To check items on a schedule, ask in chat: “watch these items: …”")
+                    Jobs.Unreadable(id: "team-job:shoes", text: "Not listing your team's job shoes. Not listed.")])
         #expect(Jobs.emptyTeam(linked: false) == "Your team's jobs show here once your team's tools are linked in Settings.")
         #expect(Jobs.emptyTeam(linked: true) == "Your team's tools have no jobs yet.")
 
@@ -229,6 +216,29 @@ struct JobsPageTests {
         let allNeedAttention = jobs.allSatisfy(\.needsAttention)
         #expect(allNeedAttention)
         #expect(reviewJob.meaning == "Notes from the class")
+    }
+
+    @Test func aWatchesFolderLeftBehindIsSaidOnce() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("retired-watches-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let own = root.appendingPathComponent("watches"), team = root.appendingPathComponent("linked/watches")
+        #expect(Jobs.retiredWatches(own: own, team: team).isEmpty)   // none there: nothing said
+        try FileManager.default.createDirectory(at: own.appendingPathComponent("empty"), withIntermediateDirectories: true)
+        #expect(Jobs.retiredWatches(own: own, team: team).isEmpty)   // a folder with no watch in it: nothing either
+        try FileManager.default.createDirectory(at: team.appendingPathComponent("holiday/oct/gm"), withIntermediateDirectories: true)
+        try "{}".write(to: team.appendingPathComponent("holiday/oct/gm/watch.json"), atomically: true, encoding: .utf8)
+        #expect(Jobs.retiredWatches(own: own, team: team).map(\.id) == ["team-watches"])
+        #expect(Jobs.retiredWatches(own: own, team: team)[0].folder == nil)   // the team's: only to know, not to open
+        try "{}".write(to: own.appendingPathComponent("empty/watch.json"), atomically: true, encoding: .utf8)
+        let rows = Jobs.retiredWatches(own: own, team: team)
+        #expect(rows.map(\.id) == ["team-watches", "own-watches"] && rows[1].folder == own)
+        #expect(rows[0].text.hasPrefix("Your team's tools still have a watches/ folder. Watches no longer run"))
+
+        // A store's watches/ is beside its jobs/, and the team's beside theirs.
+        let store = FolderJobStore(directory: root.appendingPathComponent("jobs"), results: root.appendingPathComponent("results"),
+                                   teamDirectory: { root.appendingPathComponent("linked/jobs") })
+        #expect(store.retiredWatches.standardizedFileURL.path == own.standardizedFileURL.path)
+        #expect(store.teamRetiredWatches()?.standardizedFileURL.path == team.standardizedFileURL.path)
     }
 
     @Test func theJobsPageKeepsRemovedJobsSavedDemonstrationsAndTeaching() throws {
@@ -312,35 +322,20 @@ struct JobsPageTests {
         #expect(Jobs.controls(job([reading]), canOpenSettings: true) == [.stop])
     }
 
-    @Test func aWatchsRowSaysHowItsItemsStand() {
-        func job(_ items: [WatchListItem], checking: Bool = false, missing: [String] = []) -> Job {
-            var watch = WatchListWatch(name: "Sale items", check: "c", items: items)
-            watch.lastRunAt = items.contains { $0.status != nil } ? now : nil
-            var input = Jobs.Input(watches: [watch], checking: checking ? [watch.id] : [], now: now)
-            input.setup.missingWatchSecrets = { _ in missing }
-            return Jobs.list(input)[0]
-        }
-        let eight = (1...8).map { item("\($0)", .asExpected) }
-        #expect(job(eight).lastRun == "Last run \(time) · all 8 as expected")
-        #expect(!job(eight).needsAttention && !job(eight).resultIsProblem)
-        #expect(job([item("1", red), item("2", red), item("3", .couldNotCheck("Offline"))] + eight.prefix(5)).lastRun
-                == "Last run \(time) · 2 of 8 not as expected · 1 couldn't check")
-        #expect(job([item("1", .couldNotCheck("Offline"))] + eight.prefix(7)).lastRun == "Last run \(time) · couldn't check 1 of 8")
-        #expect(job(Array(eight.prefix(3)) + [item("4", nil)]).lastRun == "Last run \(time) · 3 of 4 as expected · 1 not checked yet")
-        #expect(job([item("1", nil)]).lastRun == "Not run yet")
-
-        // Nothing could be checked: failed, with why.
-        let failed = job([item("1", .couldNotCheck("The page took too long.")), item("2", .couldNotCheck("The page took too long."))])
-        #expect(failed.status == .failed && failed.runProblem == "Couldn't check: The page took too long." && failed.needsAttention)
-        #expect(job(eight, checking: true).status == .running)
-        let settings = job(eight, missing: ["SHOP_TOKEN"])
-        #expect(settings.status == .needsSettings && settings.problems == ["Needs SHOP_TOKEN in Settings."] && settings.needsAttention)
-
-        // Every state has its word, and only a problem is said in red.
-        let labels = [Job.Status.ready, .running, .waiting, .paused, .pausedByTeam, .off, .needsSettings, .needsReview, .cantRunYet, .failed]
-        #expect(labels.map(\.label) == [nil, "Running", "Waiting to run", "Paused", "Paused in the team's tools", "Off", "Needs Settings",
-                                        "Needs review", "Can't run yet", "Failed"])
+    @Test func everyStateHasItsWordAndOnlyAProblemIsRed() {
+        let labels = [Job.Status.ready, .running, .waiting, .off, .needsSettings, .needsReview, .cantRunYet, .failed]
+        #expect(labels.map(\.label) == [nil, "Running", "Waiting to run", "Off", "Needs Settings", "Needs review", "Can't run yet", "Failed"])
         #expect(labels.filter(\.isProblem) == [.needsSettings, .needsReview, .cantRunYet, .failed])
+
+        // A job kept as a folder: running, waiting its turn, or needing a secret.
+        let job = folderJob("Sale items", path: "sale", state: found("Nothing to look at"))
+        #expect(Jobs.folderJob(job, Jobs.Input(folderJobs: [job], runningJob: job.id, now: now)).status == .running)
+        #expect(Jobs.folderJob(job, Jobs.Input(folderJobs: [job], queuedJobs: [job.id], now: now)).status == .waiting)
+        var input = Jobs.Input(folderJobs: [job], now: now)
+        input.setup.missingJobSecrets = { _ in ["SHOP_TOKEN"] }
+        let settings = Jobs.folderJob(job, input)
+        #expect(settings.status == .needsSettings && settings.problems == ["Needs SHOP_TOKEN in Settings."] && settings.needsAttention)
+        #expect(Jobs.controls(settings, canOpenSettings: true) == [.openSettings])
     }
 
     @Test func theHomeBoxSumsTheJobsUpInOneLine() throws {
@@ -349,10 +344,10 @@ struct JobsPageTests {
         }
         let earlier = now.addingTimeInterval(-3_600)
         #expect(Jobs.summary([], now: now) == "No jobs yet")
-        #expect(Jobs.summary([job("Off", .off, kind: .teamWatch)], now: now) == "1 team job you can turn on")
-        #expect(Jobs.summary([job("A", .off, kind: .teamWatch), job("B", .off, kind: .teamWatch)], now: now) == "2 team jobs you can turn on")
+        #expect(Jobs.summary([job("Off", .off, kind: .teamJob)], now: now) == "1 team job you can turn on")
+        #expect(Jobs.summary([job("A", .off, kind: .teamJob), job("B", .off, kind: .teamJob)], now: now) == "2 team jobs you can turn on")
         let five = [job("Mail", .failed, attention: true, at: earlier), job("Sale", attention: true, at: now), job("Calendar"),
-                    job("Portal", at: earlier), job("Gifts", .paused), job("Shoes", .off, kind: .teamWatch)]
+                    job("Portal", at: earlier), job("Gifts", .waiting), job("Shoes", .off, kind: .teamJob)]
         #expect(Jobs.summary(five, now: now) == "5 jobs · 2 need attention · last run \(time)")
         #expect(Jobs.summary([job("Mail", .running), job("Sale", attention: true)], now: now) == "2 jobs · 1 running · 1 needs attention")
         #expect(Jobs.summary([job("Mail")], demonstrations: 2, now: now) == "1 job · 2 demonstrations to review")
@@ -372,23 +367,22 @@ struct JobsPageTests {
 
     // MARK: before the start and after the end
 
-    private func moment(_ date: Date) -> WatchListMoment { WatchListMoment(text: "", date: date) }
+    private func moment(_ date: Date) -> JobMoment { JobMoment(text: "", date: date) }
 
     @Test func jobsBeforeTheirStartOrPastTheirEndWaitUnderOneLineOnlyToBeLookedAt() throws {
-        var live = WatchListWatch(name: "Live sale", check: "c", items: [item("1", red)])
-        live.lastRunAt = now
+        var live = folderJob("Live sale", path: "live", state: failed("Signed out"))
         live.ends = moment(now + 3_600)
-        var soon = team("Soon", path: "soon", on: false, items: [WatchListItem(key: "S")])
+        var soon = folderJob("Soon", path: "soon", team: true, on: false)
         soon.starts = moment(now + 7_200)
-        var later = WatchListWatch(name: "Later", check: "c", items: [WatchListItem(key: "L")])
+        var later = folderJob("Later", path: "later")
         later.starts = moment(now + 86_400)
-        var ended = team("Ended red", path: "ended", on: true, items: [item("E", red)])
+        let ranBefore = now - 7_200
+        var ended = folderJob("Ended red", path: "ended", team: true, state: found("1 of 1 wrong", at: ranBefore))
         ended.ends = moment(now - 3_600)
-        ended.lastRunAt = now - 7_200
-        var gone = WatchListWatch(name: "Long gone", check: "c", items: [item("G", .couldNotCheck("Signed out"))])
+        var gone = folderJob("Long gone", path: "gone", state: failed("Signed out", at: now - 2 * 86_400))
         gone.ends = moment(now - 86_400)
-        var input = Jobs.Input(readings: [mail()], watches: [live, soon, later, ended, gone], now: now)
-        input.setup.missingWatchSecrets = { ["Soon", "Ended red"].contains($0.name) ? ["SHOP_API_KEY"] : [] }
+        var input = Jobs.Input(readings: [mail()], folderJobs: [live, soon, later, ended, gone], now: now)
+        input.setup.missingJobSecrets = { ["Soon", "Ended red"].contains($0.name) ? ["SHOP_API_KEY"] : [] }
 
         // The list holds the live jobs; the rest wait, the soonest to start first and the latest to end first.
         let jobs = Jobs.list(input)
@@ -404,8 +398,8 @@ struct JobsPageTests {
         let endedRed = outside.ended[0]
         #expect(endedRed.status == .ready && endedRed.problems.isEmpty)
         #expect(endedRed.every == "Every 2 hours · Ended " + (ended.ends?.words ?? ""))
-        #expect(endedRed.lastRun == "Last run \(time) · 1 of 1 not as expected")   // still there to look at
-        #expect(outside.ended[1].status == .ready)                                  // all couldn't check: not Failed
+        #expect(endedRed.lastRun == "Last run \(JobWords.time(ranBefore, now: now)) · 1 of 1 wrong")   // still there to look at
+        #expect(outside.ended[1].status == .ready)                                                    // its last run failed: not Failed
         // An upcoming one still says, quietly, what it lacks, so it can be put right before it starts.
         #expect(outside.upcoming[0].status == .off && outside.upcoming[0].problems == ["Needs SHOP_API_KEY in Settings."])
 
@@ -422,23 +416,15 @@ struct JobsPageTests {
         #expect(Jobs.outsideLine(upcoming: 0, ended: 0, showing: false) == nil)
         #expect(Jobs.summary(jobs, now: now) == "2 jobs · 1 needs attention · last run \(time)")
         #expect(Jobs.summary(outside.upcoming + outside.ended, now: now) == "No jobs running now")
-    }
 
-    @Test func aWatchsPageSaysWhatItShowsInPlaceOfItsItems() {
-        var fashion = team("Fashion", path: "fashion", on: false, items: [WatchListItem(key: "1"), WatchListItem(key: "2")])
-        #expect(WatchListWords.instead(fashion, now: now) == "Turn it on to check its 2 items and hear about them.")
-        let starts = moment(now + 3_600)
-        fashion.starts = starts
-        #expect(WatchListWords.instead(fashion, now: now) == "Turn it on to have it check its 2 items from its start, \(starts.words).")
-        fashion.on = true
-        #expect(WatchListWords.instead(fashion, now: now) == nil)   // its items, not checked yet
-        let ends = moment(now - 60)
-        fashion.starts = nil
-        fashion.ends = ends
-        #expect(WatchListWords.instead(fashion, now: now) == "It ended \(ends.words), before any of its 2 items were checked.")
-        fashion.on = false
-        fashion.items = [item("1", red), WatchListItem(key: "2")]
-        #expect(WatchListWords.instead(fashion, now: now) == nil)   // what its checks found, to look at
+        // A card put away says why: the job ended, hasn't started, or is off.
+        #expect(FolderJobWords.putAway(ended, gone: now, now: now) == "This job ended \(ended.ends?.words ?? ""), so its card was put away.")
+        #expect(FolderJobWords.putAway(ended, gone: now - 86_400, now: now) == nil)   // it went before the job ended, for another reason
+        #expect(FolderJobWords.putAway(later, gone: now, now: now) == "This job starts \(later.starts?.words ?? ""); its card is put away until then.")
+        var off = folderJob("Off", path: "off", team: true, on: false)
+        #expect(FolderJobWords.putAway(off, gone: now, now: now) == "This job is off, so its card was put away.")
+        off.on = true
+        #expect(FolderJobWords.putAway(off, gone: now, now: now) == nil)
     }
 
     @Test func jobsRoutesHaveTitlesHeightsAndBackLeadsToJobs() throws {
@@ -446,7 +432,7 @@ struct JobsPageTests {
         func title(_ route: MorningNavigation.Route) -> String {
             MorningFilesView.title(for: route, folderName: { _ in nil }, jobName: { $0 == id ? "Morning mail" : nil })
         }
-        #expect(title(.jobs) == "Jobs" && title(.watches) == "Jobs")
+        #expect(title(.jobs) == "Jobs")
         #expect(title(.sourceJob(id)) == "Morning mail" && title(.sourceJob(UUID())) == "Job")
         #expect(title(.sources) == "Manage sources")   // the old screen still works for anything that opens it
         for route: MorningNavigation.Route in [.jobs, .sourceJob(id)] {
@@ -458,15 +444,15 @@ struct JobsPageTests {
         defer { fixture.remove() }
         let mail = mail()
         try fixture.sources.saveReadingSource(mail)
-        let watch = try fixture.add(WatchListWatch(name: "Sale items", check: "c", items: [WatchListItem(key: "1")]))
+        let own = try fixture.job("stuck-orders", #"{"name": "Stuck orders"}"#)
         #expect(MorningFilesView.title(for: .sourceJob(mail.id), folderName: { _ in nil }, jobName: { _ in nil }) == "Job")
         fixture.navigation.route = .sourceJob(mail.id)
         #expect(find(SourceJobPage.self, in: fixture.files().body)?.id == mail.id)
-        fixture.navigation.route = .watch(watch.id)
-        #expect(find(WatchJobPage.self, in: fixture.files().body)?.id == watch.id)
+        fixture.navigation.route = .folderJob(own.id)
+        #expect(find(FolderJobPage.self, in: fixture.files().body)?.id == own.id)
 
         // Back: a job's page, the latest run, Run history and the old Manage sources go to Jobs; Jobs to the home.
-        for route: MorningNavigation.Route in [.sourceJob(mail.id), .watch(watch.id), .latestRun, .sourceRuns, .sources] {
+        for route: MorningNavigation.Route in [.sourceJob(mail.id), .folderJob(own.id), .latestRun, .sourceRuns, .sources] {
             fixture.navigation.route = route
             fixture.files().back()
             #expect(fixture.navigation.route == .jobs, "Back from \(route)")
@@ -485,7 +471,7 @@ struct JobsPageTests {
         fixture.files().back()
         #expect(fixture.navigation.route == .sourceRuns)
 
-        // Without reading jobs or watches there is no Jobs to go back to.
+        // Without reading jobs or jobs kept as folders there is no Jobs to go back to.
         let plain = MorningFilesView(store: fixture.morning, navigation: fixture.navigation, close: {}, filed: {}, handoff: { _ in })
         fixture.navigation.route = .latestRun
         plain.back()
@@ -523,9 +509,9 @@ struct JobsPageTests {
         defer { fixture.remove() }
         let mail = mail()
         try fixture.sources.saveReadingSource(mail)
-        let watch = try fixture.add(WatchListWatch(name: "Sale items", check: "c", items: [WatchListItem(key: "1")]))
+        let own = try fixture.job("stuck-orders", #"{"name": "Stuck orders"}"#)
 
-        // The panel's ⋯ menu has Jobs instead of Manage sources, Run history and Watches.
+        // The panel's ⋯ menu has Jobs instead of Manage sources and Run history.
         let files = fixture.files()
         #expect(files.menuItems().map(\.title) == ["Jobs", "Create a note", "Who’s Who", "Add folder"])
         files.menuItems()[0].action()
@@ -536,15 +522,15 @@ struct JobsPageTests {
         // The menu bar's Jobs…, the chat's Open Jobs tab and its Run now tab open the panel on Jobs, or on the job.
         #expect(AppDelegate.jobsMenuTitle == "Jobs…")
         let panel = MorningPanelController(store: fixture.morning, hideFromScreenShare: true, calendarSources: fixture.sources,
-                                           calendarRunner: fixture.runner, watches: fixture.panel, showLauncher: false)
+                                           calendarRunner: fixture.runner, showLauncher: false, folderJobs: fixture.panel)
         defer { panel.close() }
         panel.setHiddenForForegroundGrant(true)   // nothing comes on screen in a test
         panel.showJobs()
         #expect(panel.route == .jobs)
         panel.showSourceJob(id: mail.id)
         #expect(panel.route == .sourceJob(mail.id))
-        panel.showWatch(id: watch.id)
-        #expect(panel.route == .watch(watch.id))
+        panel.showFolderJob(id: own.id)
+        #expect(panel.route == .folderJob(own.id))
         panel.showJobs(trigger: .chat)
         #expect(panel.route == .jobs)
 
@@ -559,28 +545,30 @@ struct JobsPageTests {
 
     // MARK: a job's card
 
-    @Test func aWatchsCardIsOneTapFromItsPageAndBackReturnsThere() throws {
+    @Test func aJobsCardsAreOneTapFromItsPageAndBackReturnsThere() throws {
         let fixture = try JobsFixture()
         defer { fixture.remove() }
-        let watch = try fixture.add(WatchListWatch(name: "Sale items", check: "c", items: [WatchListItem(key: "1")]))
+        let own = try fixture.job("sale", #"{"name": "Sale items"}"#)
         func job() throws -> Job { try #require(Jobs.list(fixture.input()).first) }
         #expect(try Jobs.cards(for: job(), fixture.input()).isEmpty && Jobs.cardLabel([]) == nil)   // no card yet: no link
 
-        // Its card is the one its runs write, job.json in its folder of the cards inbox; another card there isn't.
-        let source = WatchListCards.source(for: watch)
-        try fixture.card(source, "job", #"{"title": "Sale items: 1 of 1 not as expected"}"#)
-        try fixture.card(source, "deal", #"{"title": "A deal the check found"}"#)
-        let cardID = CardInboxFormat.cardID(WatchListCards.key(for: watch))
+        // Its preview card, job.json in its folder of the cards inbox, and the open cards its job.py wrote itself.
+        try fixture.card(FolderJobCards.source(for: own), "job", #"{"title": "Sale items · 9:41 AM"}"#)
+        let cardID = CardInboxFormat.cardID(FolderJobCards.key(for: own))
         #expect(try Jobs.cards(for: job(), fixture.input()).map(\.id) == [cardID])
         #expect(try Jobs.cardLabel(Jobs.cards(for: job(), fixture.input())) == "Card")
+        try fixture.card(FolderJobCards.scriptSource(for: own), "follow-up", #"{"title": "Ask the seller about item 3"}"#)
+        #expect(try Jobs.cards(for: job(), fixture.input()).map(\.id) == [cardID, CardInboxFormat.cardID(FolderJobCards.scriptSource(for: own) + "/follow-up")])
+        try FileManager.default.removeItem(at: fixture.root.appendingPathComponent("cards/inbox").appendingPathComponent(FolderJobCards.scriptSource(for: own)))
+        fixture.inbox.scan()   // the one it wrote went away: it resolved, so it isn't listed
 
         // The Card link opens it, and Back from it returns to the job.
-        fixture.navigation.route = .watch(watch.id)
-        let page = try #require(find(WatchJobPage.self, in: fixture.files().body))
+        fixture.navigation.route = .folderJob(own.id)
+        let page = try #require(find(FolderJobPage.self, in: fixture.files().body))
         page.openCard(cardID)
         #expect(fixture.navigation.route == .card(cardID))
         fixture.files().back()
-        #expect(fixture.navigation.route == .watch(watch.id))
+        #expect(fixture.navigation.route == .folderJob(own.id))
 
         // Resolved, it is still its card.
         try fixture.morning.setCardResolution(cardID: cardID, resolved: true)
@@ -623,7 +611,7 @@ struct JobsPageTests {
 
     // MARK: Run now and the switches
 
-    @Test func runNowReadsAReadingJobAndChecksAWatch() async throws {
+    @Test func runNowReadsAReadingJobAndRunsAJobKeptAsAFolder() async throws {
         let fixture = try JobsFixture()
         defer { fixture.remove() }
         let mail = mail()
@@ -647,73 +635,78 @@ struct JobsPageTests {
         try fixture.sources.saveReadingSource(review)
         #expect(try !fixture.actions.canRun(job(review.id)))
 
-        // A watch's Run now is its Check now; Pause and Resume as before.
-        let watch = try fixture.add(WatchListWatch(name: "Sale items", check: "c", items: [WatchListItem(key: "1")]))
-        #expect(try fixture.actions.canRun(job(watch.id)))
-        #expect(try fixture.actions.runNow(job(watch.id)) == nil)
-        await fixture.watchRunner.current(watch.id)?.value
-        #expect(fixture.watches.watch(id: watch.id)?.items.first?.status == .couldNotCheck("Not in tests."))
-        #expect(try fixture.actions.setPaused(job(watch.id), true) == nil)
-        #expect(fixture.watches.watch(id: watch.id)?.paused == true)
-        #expect(try Jobs.controls(job(watch.id), canOpenSettings: false) == [.runNow, .resume])
+        // A job kept as a folder runs its job.py; while it runs or waits its turn, Run now waits.
+        let own = try fixture.job("stuck-orders", #"{"name": "Stuck orders"}"#)
+        #expect(try fixture.actions.canRun(job(own.id)))
+        #expect(try fixture.actions.runNow(job(own.id)) == nil)   // started, and nothing to say
+        await fixture.jobRunner.finish()
+        #expect(try job(own.id).lastRun == "Last run \(JobWords.time(fixture.jobs.job(id: own.id)?.state.lastRunAt ?? now)) · Ran in the test.")
     }
 }
 
-/// Reading jobs, watches and a Morning store in a temp folder, with Morning Files over them. Reads go through a stand-in
-/// script; checks find nothing; no model is reached.
+/// Reading jobs, jobs kept as folders and a Morning store in a temp folder, with Morning Files over them. Reads go
+/// through a stand-in script; a job's run only says it ran; no model is reached.
 @MainActor
 private final class JobsFixture {
-    let place = Place()
-    var root: URL { place.root }
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("jobs-page-\(UUID())")
     let morning: MorningStore
     let sources: CalendarStore
     let runner: CalendarCollectionRunner
-    let watches: WatchListStore
-    let watchRunner: WatchListRunner
+    let jobs: FolderJobStore
+    let jobRunner: FolderJobRunner
     let navigation = MorningNavigation()
     let inbox: CardInbox
+    var own: URL { root.appendingPathComponent("jobs") }
+    var team: URL { root.appendingPathComponent("linked/jobs") }
 
     init() throws {
-        morning = MorningStore(directory: place.root.appendingPathComponent("morning"))
-        sources = CalendarStore(directory: place.root.appendingPathComponent("sources"))
+        morning = MorningStore(directory: root.appendingPathComponent("morning"))
+        sources = CalendarStore(directory: root.appendingPathComponent("sources"))
         var config = Config()
         config.allowControl = false
         let activities = NativeActivityGate()
-        let tools = place.root.appendingPathComponent("tools")
+        let tools = root.appendingPathComponent("tools")
         runner = CalendarCollectionRunner(store: sources, desktop: DesktopExecutionService(control: ComputerController(), activities: activities),
             registry: ToolRegistry(root: tools, runner: ScriptRunner(config: config)), activities: activities, config: { config },
             makeClient: { _ in StandInClient() })
-        watches = place.store()
-        watchRunner = WatchListRunner(store: watches, prepare: { _ in .unavailable("Not in tests.") })
-        inbox = CardInbox(store: morning, directory: place.root.appendingPathComponent("cards/inbox"))
+        let team = root.appendingPathComponent("linked/jobs")
+        jobs = FolderJobStore(directory: root.appendingPathComponent("jobs"), results: root.appendingPathComponent("job-results"),
+                              teamDirectory: { team })
+        jobRunner = FolderJobRunner(store: jobs, execute: { _ in "Ran in the test." })
+        inbox = CardInbox(store: morning, directory: root.appendingPathComponent("cards/inbox"))
     }
 
-    var panel: WatchListPanel { WatchListPanel(store: watches, runner: watchRunner, notifier: WatchListNotifier()) }
-    var actions: JobActions { JobActions(sources: sources, runner: runner, watches: panel) }
+    var panel: FolderJobsPanel { FolderJobsPanel(store: jobs, runner: jobRunner) }
+    var actions: JobActions { JobActions(sources: sources, runner: runner, folderJobs: panel) }
 
-    func input(now: Date = Date()) -> Jobs.Input { Jobs.Input(sources: sources, watches: panel, morning: morning, now: now) }
+    func input(now: Date = Date()) -> Jobs.Input { Jobs.Input(sources: sources, morning: morning, now: now, folderJobs: panel) }
 
     func files(route: MorningNavigation.Route? = nil, teach: (() -> Void)? = nil) -> MorningFilesView {
         if let route { navigation.route = route }
         return MorningFilesView(store: morning, navigation: navigation, close: {}, filed: {}, handoff: { _ in },
-                                calendarSources: sources, calendarRunner: runner, teachCalendar: teach, watches: panel)
+                                calendarSources: sources, calendarRunner: runner, teachCalendar: teach, folderJobs: panel)
     }
 
+    /// A job's folder, yours or your team's, as found at once.
     @discardableResult
-    func add(_ watch: WatchListWatch) throws -> WatchListWatch {
-        try watches.add(watch)
-        return try #require(watches.watch(id: watch.id))
+    func job(_ path: String, _ json: String, team: Bool = false) throws -> FolderJob {
+        let folder = (team ? self.team : own).appendingPathComponent(path)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try json.write(to: folder.appendingPathComponent("job.json"), atomically: true, encoding: .utf8)
+        try "def run():\n    return None\n".write(to: folder.appendingPathComponent("job.py"), atomically: true, encoding: .utf8)
+        jobs.refresh()
+        return try #require(jobs.jobs.first { $0.path == path && $0.isTeam == team })
     }
 
     /// A card file in the inbox, taken in at once.
     func card(_ source: String, _ id: String, _ text: String) throws {
-        let folder = place.root.appendingPathComponent("cards/inbox").appendingPathComponent(source)
+        let folder = root.appendingPathComponent("cards/inbox").appendingPathComponent(source)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try Data(text.utf8).write(to: folder.appendingPathComponent(id + ".json"))
         inbox.scan()
     }
 
-    func remove() { place.remove() }
+    func remove() { try? FileManager.default.removeItem(at: root) }
 }
 
 /// An assistant with no screen, no network and no desktop: enough for its tabs.

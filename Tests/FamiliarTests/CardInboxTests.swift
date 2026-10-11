@@ -36,8 +36,7 @@ struct CardInboxTests {
         #expect(try parse(#"{"title": "\#(String(repeating: "x", count: 300))"}"#).title.count == CardInboxFormat.titleLimit)
     }
 
-    @Test func aButtonOnlyEverOpensAWebPageAsksAQuestionOrOpensAWatch() throws {
-        let watch = UUID()
+    @Test func aButtonOnlyEverOpensAWebPageOrAsksAQuestion() throws {
         let entry = try parse("""
         {"title": "T", "url": "file:///etc/hosts",
          "actions": [{"label": "Run it", "run": "open -a Terminal"}, {"label": "Local file", "url": "file:///Users/me/report.pdf"},
@@ -45,12 +44,12 @@ struct CardInboxTests {
                      {"label": "", "url": "https://shop.example.com/a"}, {"label": "Shell", "command": "rm -rf ~", "ask": "  "},
                      {"label": "Path", "watch": "../watches/sale"}, {"label": "Page", "url": "https://shop.example.com/item/1"},
                      {"label": "Ask", "ask": "What changed?"}, {"label": "Both", "url": "ftp://shop.example.com/x", "ask": "Is this safe?"},
-                     {"label": "Open job", "watch": "\(watch.uuidString.lowercased())"}]}
+                     {"label": "Open job", "watch": "B1E2C3D4-0000-4000-8000-000000000001"}]}
         """)
         #expect(entry.url == "")   // not a web page: no page at all
         #expect(entry.actions == [CardInboxAction(label: "Page", url: "https://shop.example.com/item/1"),
-                                  CardInboxAction(label: "Ask", ask: "What changed?"), CardInboxAction(label: "Both", ask: "Is this safe?"),
-                                  CardInboxAction(label: "Open job", watch: watch.uuidString)])
+                                  CardInboxAction(label: "Ask", ask: "What changed?"), CardInboxAction(label: "Both", ask: "Is this safe?")])
+        // A watch's page was a button once; watches no longer run, so it isn't one any more.
         let go = Array(repeating: #"{"label": "Go", "url": "https://shop.example.com"}"#, count: 9).joined(separator: ",")
         #expect(try parse(#"{"title": "T", "actions": ["# + go + "]}").actions.count == CardInboxFormat.actionLimit)
         #expect(CardInboxFormat.webAddress("https://shop.example.com/item/1") == "https://shop.example.com/item/1")
@@ -209,24 +208,24 @@ struct CardInboxTests {
 
     // MARK: folders and limits
 
-    @Test func eachSourceIsAFolderNamedByItsWatchOrElseByItsFolder() throws {
+    @Test func eachSourceIsAFolderNamedByItsJobOrElseByItsFolder() throws {
         let fixture = InboxFixture()
         defer { fixture.remove() }
-        try fixture.write("watch-sale-items", "item-1", #"{"title": "Not as expected · Kettle"}"#)
+        try fixture.write("job-own-sale-items", "job", #"{"title": "Not as expected · Kettle"}"#)
         try fixture.write("pack-shop", "a", #"{"title": "A"}"#)
         try fixture.write("deals", "b", #"{"title": "B"}"#)
         try FileManager.default.createDirectory(at: fixture.directory.appendingPathComponent("empty"), withIntermediateDirectories: true)
         try "not a card".write(to: fixture.directory.appendingPathComponent("deals/notes.txt"), atomically: true, encoding: .utf8)
-        fixture.inbox.folderName = { $0 == "watch-sale-items" ? "Sale items" : nil }
+        fixture.inbox.folderName = { $0 == "job-own-sale-items" ? "Sale items" : nil }
 
         fixture.inbox.scan(at: at)
 
         func folder(_ source: String) -> String? { fixture.store.folders.first { $0.id == CardInboxFormat.folderID(source) }?.name }
-        #expect(folder("watch-sale-items") == "Sale items" && folder("pack-shop") == "pack-shop" && folder("deals") == "deals")
+        #expect(folder("job-own-sale-items") == "Sale items" && folder("pack-shop") == "pack-shop" && folder("deals") == "deals")
         #expect(folder("empty") == nil)   // no cards, no folder
         #expect(fixture.store.cards.count == 3)
         #expect(fixture.store.cards.first { $0.title == "B" }?.folderID == CardInboxFormat.folderID("deals"))
-        #expect(fixture.store.cards.first { $0.title.hasPrefix("Not as expected") }?.sources.first?.kind == "Watch")
+        #expect(fixture.store.cards.first { $0.title.hasPrefix("Not as expected") }?.sources.first?.kind == "Job")
         #expect(fixture.store.cards.first { $0.title == "A" }?.sources.first?.kind == "Card")
         #expect(fixture.store.folders.map(\.name).prefix(3) == ["Replies", "Unfinished", "Housekeeping"])   // the person's folders stay
     }
@@ -348,11 +347,10 @@ struct CardInboxTests {
         }
         #expect(runner.cardsFolder("pack-../watch-sale-items")?.lastPathComponent != "watch-sale-items")
         #expect(CardInboxFormat.safe("pack-" + "my pack") == "pack-my-pack")
-        var watch = WatchListWatch(name: "Fashion", check: "", items: [])
-        watch.path = "holiday/oct/fashion"
-        #expect(WatchListCards.source(for: watch) == "watch-holiday-oct-fashion")
-        watch.source = .team
-        #expect(WatchListCards.source(for: watch) == "watch-team-holiday-oct-fashion")
+        let job = FolderJob(id: UUID(), source: .own, path: "holiday/oct/fashion", name: "Fashion")
+        #expect(FolderJobCards.source(for: job) == "job-own-holiday-oct-fashion")
+        #expect(FolderJobCards.scriptSource(for: FolderJob(id: UUID(), source: .team, path: "holiday/oct/fashion", name: "Fashion"))
+                == "jobcards-team-holiday-oct-fashion")
 
         runner.cardsRoot = nil
         #expect(runner.cardsFolder("pack-shop") == nil)

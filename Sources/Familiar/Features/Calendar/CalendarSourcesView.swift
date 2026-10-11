@@ -134,7 +134,7 @@ struct CalendarBatchControls: View {
                 }
             }
             Text(sourceCount == 0 ? "No reading jobs yet. Teach one with Watch Me, or review a saved demonstration."
-                 : "Runs your \(sourceCount) reading \(sourceCount == 1 ? "job" : "jobs") one after another. Calendars read today, 9 AM–5 PM in their time zone; mail and web jobs read their saved scope. Jobs that check items run on their own schedule.")
+                 : "Runs your \(sourceCount) reading \(sourceCount == 1 ? "job" : "jobs") one after another. Calendars read today, 9 AM–5 PM in their time zone; mail and web jobs read their saved scope. Your team's jobs run on their own schedule.")
                 .font(.system(size: 11)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
             if isBatchRunning, !status.isEmpty {
                 Text(status).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)

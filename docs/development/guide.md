@@ -153,7 +153,7 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    Preparation uses your configured Claude connection with no tools. **Work in an app** uses existing desktop control
    and approvals. Queue entries survive restarts; interrupted work returns for review rather than replaying actions.
    **Jobs** (see below) lists everything Noteling runs: the saved sources, which read a calendar, inbox or web view
-   (reading jobs), and the watches, which check items (see Watch lists). **Jobs → Teach a job with Watch Me** teaches a
+   (reading jobs), and the team's jobs kept as folders (see Team jobs). **Jobs → Teach a job with Watch Me** teaches a
    calendar, inbox, or web view from a demonstration.
    Show the location, account, and information to read; explain what they mean and review the learned description in chat.
    **Keep it** registers a reading source in Jobs. If no reading source was established, Noteling keeps the review
@@ -191,31 +191,30 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    **Jobs** (`MorningNavigation.Route.jobs`, `Features/Jobs/`) is one page for both kinds, opened from the Jobs box on
    the panel's home ("5 jobs · 2 need attention · last run 6:31 PM"), the panel's **⋯** menu, the menu bar's **Jobs…**,
    and the chat's **Open Jobs** tab. Storage and runners stay each kind's own: `CalendarStore` and
-   `CalendarCollectionRunner` for reading jobs, `WatchListStore` and `WatchListRunner` for watches.
-   - The list (`JobsPage`) has every reading job, calendars included, and every watch, the person's own and the team's.
-     Jobs that need attention come first (a failed, partial or skipped read; one that needs review, can't run yet or
-     needs something in Settings, such as a pack's secret or mouse and keyboard control for a job that reads from the
-     screen; a watch whose items aren't as expected or couldn't be checked, or whose files can't be read), then the
-     person's own, then the team's, each by name. A row says what the job does ("Reads mail", "Checks 3 items · from
-     your team's tools"), how often it runs ("Every 15 minutes", "When you run it", with a watch's start or end), how its
-     last run went ("Last run 6:31 PM · 12 new · 3 cards", "2 of 8 not as expected · 1 couldn't check", "nothing
-     saved") and how it stands (Running, Waiting to run, Paused, Off, Needs Settings, Needs review, Can't run yet,
-     Failed), with what's wrong in red. Its buttons: **Run now** (a reading job's read, a calendar's today; a watch's
-     check), **Stop** while a reading job reads, **Open Settings** when it needs something there, and **Pause**/**Resume**
-     for a watch of the person's own or the on/off switch for a team job. A watch's file notes stay on its row. The
-     page also has **Run all reading jobs** with **Stop all**, **Latest run** (saying when a job didn't finish) and **Run
-     history**; folders in the watches folders that aren't jobs, and why; **Saved demonstrations** to review and add;
-     **Removed jobs** to restore; **Teach a job with Watch Me**; and how to start watching items in chat.
+   `CalendarCollectionRunner` for reading jobs, `FolderJobStore` and `FolderJobRunner` for jobs kept as folders.
+   - The list (`JobsPage`) has every reading job, calendars included, and every job kept as a folder, the person's own
+     and the team's. Jobs that need attention come first (a failed, partial or skipped read; one that needs review,
+     can't run yet or needs something in Settings, such as a pack's secret or mouse and keyboard control for a job that
+     reads from the screen; a job whose last run failed), then the person's own, then the team's, each by name. A row
+     says what the job does ("Reads mail", "Prices on the GM items · from your team's tools"), how often it runs ("Every
+     15 minutes", "When you run it", with a job's start or end), how its last run went ("Last run 6:31 PM · 12 new · 3
+     cards", "2 of 8 items need a look", "nothing saved") and how it stands (Running, Waiting to run, Off, Needs
+     Settings, Needs review, Can't run yet, Failed), with what's wrong in red. Its buttons: **Run now** (a reading job's
+     read, a calendar's today; a job's `job.py`), **Stop** while a reading job reads, **Open Settings** when it needs
+     something there, and the on/off switch for a team job. Jobs before their start or past their end wait under one
+     line, **Upcoming (1) · Ended (2) · Show**. The page also has **Run all reading jobs** with **Stop all**, **Latest
+     run** (saying when a job didn't finish) and **Run history**; folders in the jobs folders that can't be a job, and
+     why, and a `watches/` folder left behind (watches no longer run); **Saved demonstrations** to review and add;
+     **Removed jobs** to restore; and **Teach a job with Watch Me**.
    - Every job's page starts with the same header (`JobHeader`): its name, what it does and how often, its last run,
-     how it stands, its buttons, and **Card**, which opens the card it made: a watch's card from
-     `cards/inbox/watch-…/job.json`, resolved or not, or a reading job's open cards (a menu when there are several, those
+     how it stands, its buttons, and **Card**, which opens the card it made: a job's preview card from
+     `cards/inbox/job-…/job.json`, resolved or not, and the open cards its `job.py` wrote, or a reading job's open cards (a menu when there are several, those
      its latest run made or saw first). A reading job's page (`SourceJobPage`, `.sourceJob(id)`) then has its meaning,
      account and reading rules, **Edit**/**Review**, **Remove…**, **Read another day…** for a calendar, **Run history**,
-     and its latest run's findings, with **Open the run**, "Became a card" and **Matters to me**. A watch's page is
-     `.watch(id)` (see Watch lists).
+     and its latest run's findings, with **Open the run**, "Became a card" and **Matters to me**. A job kept as a folder's
+     page is `.folderJob(id)` (see Team jobs).
    - Back from a job's page goes to Jobs, and from Jobs to the home; a card or a run opened from a job's page comes back
-     to it. The older Manage sources (`.sources`) and Watches (`.watches`, which shows Jobs) routes still work, but
-     nothing the person sees leads there.
+     to it. The older Manage sources (`.sources`) route still works, but nothing the person sees leads there.
    Saved observations generate continuing cards. Repeated scans match cards using the source and an extracted item key;
    newer evidence can update or resolve a card, while missing items remain open. Human edits and handled decisions persist.
    The card step judges each item once: only items that are new or changed since its last judgment go to the model.
@@ -320,7 +319,6 @@ Two optional keys name scripts by file name (without `.py`):
   `{"glance": {"headline": "…", "why": ["…", {"text": "…", "source": "…"}], "do": ["…"]}}`, up to three lines each,
   shown as written. A question asked about a pick on a briefed page is one lean turn: the crop only, no pack tools
   (the brief already ran them), on the pen's model and effort (`penModel`, `penEffort`).
-- `watch: <script>`: the check a watch list runs for each item (see Watch list).
 
 And one that is a list of words, not a script:
 - `pen: [Why this price?, What should I do?]`: the questions the pen offers as taps after a pick on the pack's pages,
@@ -452,298 +450,29 @@ pack) is read at launch and after each new copy (`Sources/Familiar/Configuration
   headers sent by name, never their values. The fields the team sets show its values, greyed out ("Your team's tools
   set this. Unlink them to use your own."), and the API key field is hidden while a team gateway is set.
 
-### Watch lists (`watch:` scripts)
-Say "watch these items for me: 1, 2, 3" in chat and Noteling checks each item on a schedule, sending a Mac notification
-when one is not as it should be **right now**. A watch is about now, not history: there is no change timeline, and an
-earlier check is never evidence of a cause. What the person was last told is kept only so the same alert isn't
-repeated. The site-specific part is a check script: the pack's, named in SKILL.md with `watch: <script>`, or the
-watch's own `check.py`. Everything else is generic. Watches are a person's own, or their team's (see Team watches).
+### Team jobs (`jobs/`)
+A job kept as a folder is `job.json` (only what it is and when it runs), `job.py` (its one entry point, `run()`) and
+`input/` (any files), in `jobs/` in the linked tools or in `~/.noteling/jobs/`. The contract for whoever writes them is
+in [Writing a team tools repository](../team-tools.md); here is how the app keeps it.
 
-**One folder per watch.** Each of a person's watches is a folder in `~/.noteling/watches/`, named after the watch
-(lowercase letters, digits and dashes, made unique), or any folder below it that holds a `watch.json` (folders may hold
-other folders, like `holiday/oct/shoes`), so people can read a watch, edit it and hand it to a teammate the way they
-do a tool pack:
-- `watch.json` says what to watch. Noteling writes it, and people may edit it:
-  ```json
-  {
-    "id": "6F1C2A3B-4D5E-4F60-8A7B-9C0D1E2F3A4B",
-    "name": "Sale items",
-    "check": "shop__watch_item",
-    "items": [
-      "123",
-      {"key": "https://shop.example.com/item/456", "expect": {"price": 19.99}}
-    ],
-    "fields": ["price", "badges"],
-    "expect": {"badges": "Deal"},
-    "args": {"zip": "10001"},
-    "every_minutes": 15,
-    "paused": false,
-    "starts": "2026-10-05T00:00:00-04:00",
-    "ends": "2026-10-31T23:59:00-04:00",
-    "created_at": "2026-10-03T14:00:00Z",
-    "requires": ["SHOP_TOKEN"],
-    "cards": "all",
-    "files": ["problems", "all"]
-  }
-  ```
-  Only `items` is required, and not even that when the folder has an items file. Each item is an id or page address,
-  or an object with a `key` and its own `expect`. A missing `name` is the folder's path, a missing `check` the only pack
-  check there is, and a missing `id` is made (and written down) the first time Noteling reads the file. `fields`,
-  `args`, `starts` and `ends` are optional, `every_minutes` is held to 5–240, and keys Noteling doesn't use are kept when
-  it writes the file. `cards` says when the watch has its card in Morning Files: left out (or `true`), while any item is
-  red or grey; `"all"`, always; `false`, never (see Cards from watches). `files` says which files its card carries for
-  Excel: left out, `["problems"]`; `["problems", "all"]`; or `[]`, none (see Files for Excel).
-- `starts` and `ends` are ISO 8601 times, with an offset or without one (then they are the Mac's own time); a date alone
-  means its midnight. Nothing is checked, and nobody is told, before `starts` or after `ends`; the window says "Starts
-  Mon Oct 5, 12:00 AM" or "Ended …", and the chat tools' results say so too.
-- `items.psv`, `items.csv` or `items.tsv`, when there is one, lists items and what counts as right for each (see Items
-  files).
-- `latest.json` says what the last run found, and only Noteling writes it: for each item, by its key, its title and
-  address, what counts as right, what its first check that worked found (`captured`), its latest `state`, `facts` and
-  `why`, what the check said counts as right (`check_expect`), when it was checked, its status and differences (or why
-  it couldn't be checked), failures in a row, and what the person was last told. Keeping it apart from `watch.json`
-  means a person editing one never collides with Noteling writing the other.
-- `check.py`, when there is one, is the watch's own check (see below).
-
-Noteling looks at the folders again at every tick and before each run (and before the chat answers about watches): a
-`watch.json` or items file with a new modification date or size is read again, so items added or removed, `expect`,
-`fields`, `paused`, `every_minutes`, `starts` and `ends` take effect at once. Items no check has looked at yet are
-checked right away, and what counts as right is worked out again, so a value taken out of `expect` goes back to what
-it was. A `watch.json` or items file that can't be read is never written over or deleted: the watch keeps its last good
-definition, its row in Jobs and the chat show "Can't read watch.json: <reason>", and the log says so once,
-until the file is fixed. A folder someone puts there is watched (a copy of another watch's folder becomes a watch of its own), a renamed
-folder is the same watch, and a folder that is deleted stops its watch. Noteling watches up to 20 of a person's own
-folders, oldest first. **Stop watching**, on the watch's page or with `stop_watch`, moves the folder to the macOS Trash, so
-it can be put back; the page's **Show in Finder** opens it. On first launch with folders, an earlier single
-`watch-list.json` is moved into them, with what each item's checks found and what the person was last told, and
-renamed `watch-list.json.moved-<time>`.
-
-**Team watches.** The team's tools (linked in Settings, see above) may hold watch jobs in a top-level `watches/` folder,
-which is never loaded as a tool pack, in either tools folder: every folder below it that holds a `watch.json`, at any
-depth, is a job. Its id is its path under `watches/` (`holiday/oct/fashion`), and its name is `name` from its
-`watch.json`, else that path. Jobs are written by hand in the team's repository, each with a `watch.json`, often an
-items file, and sometimes their own `check.py`.
-- They are read-only: Noteling never writes into the team's copy, since every update replaces it. What a job finds is
-  kept in `~/.noteling/team-watches/<id>/latest.json`, so it outlasts updates. `change_watch` refuses ("This job comes
-  from your team's tools. Change it in the team repository."), and `stop_watch` turns it off.
-- They are off until the person turns them on, with the switch on their row in Jobs (name, path, how many items
-  "from your team's tools", how often, when it starts or ends) or with `turn_on_watch`; which ones are
-  on is kept in `~/.noteling/team-watches/on.json`, owner-only. Only jobs that are on are checked and notify, up to 20
-  at once. Turning one on checks it right away, and that first result says nothing: it shows where the person turned it
-  on. Once on, its items and results show like a watch of their own, without Stop or Show in Finder.
-- An update that changes a job's files is taken in at the next look, the same as a hand edit: every file in the new
-  copy is new, so each is read again, and only a real change changes anything. A job that disappears in an update stops;
-  what it found stays until the next launch, which deletes it and forgets that it was on.
-- A job's own `check.py` runs from the team's copy, with the secrets its `watch.json` lists under `requires`.
-
-**Items files.** A watch's folder may hold `items.psv`, `items.csv` or `items.tsv`, for a person's watch or a team's.
-The delimiter comes from the name: `|` for .psv (or tabs, when its header row has no `|`), `,` for .csv, tab for .tsv;
-a cell may be quoted with `"`. Only one is used: when there are several, the first of .psv, .tsv and .csv, and the
-window and the chat say which. When there is one, the watch's items come from it, and any `items` in `watch.json` are
-added to them, each once.
-```
-item|price|badge|in stock
-123|$19.99|Deal|yes
-456||Deal; Overall winner|
-789|none|-|no
-```
-- The header row is required. Its first column is the item (an id or a page address). Each other header names a field
-  of the check's `state`, matched without regard to case, with spaces, `-` and `_` the same (`In stock` is `in_stock`),
-  and when it names no field but its plural does, that field (`badge` is `badges`). A column that matches nothing is
-  said, plainly ("column colour isn't something the check reports"), in the window and the chat's results.
-- Cells: empty says nothing about that field for that row; `none`, `null` or `-` expect none (null, or an empty list);
-  a number, with or without a currency sign or thousands separators, is that number; `yes`, `no`, `true` and `false` are
-  yes or no; values separated by `;` are a list; anything else is text.
-- A row's cells are that item's own expectations, over the watch's `expect` (and over the item's own `expect` in
-  `watch.json`). Rows with no item, or repeating one, are left out and listed ("row 7 has no item"). The file is read
-  again whenever it changes.
-
-**The check script.** Its `run(item: str, ...)` checks one item:
-- `item` is the item exactly as the person gave it: an id or a page address. Extra arguments they gave when creating
-  the watch (a zip code, say) are passed only if `run` declares them, as the declared type. `watch_items` refuses an
-  argument the script doesn't take and asks for one it requires.
-- It returns an object with `title` (string), an optional `url` (the page to open), `state`, and optionally `facts`,
-  `why` and `expect`. `state` holds flat fields, each a string, number, bool, null or list of strings: the things worth
-  watching, e.g. `{"seller": "Acme", "price": 12.33, "strikethrough": 13.95, "badges": ["Deal"], "in_stock": true}`.
-  Report every field every time, with null when it has no value: a field missing from the first check that works isn't
-  part of its snapshot. Up to 40 fields count, and a value that isn't flat is compared as its JSON text. `facts` is
-  anything else that helps explain the item; up to 8,000 characters are kept.
-- `expect` (field → value) is what counts as right for the item by default, e.g. `{"problems": 0, "in_stock": true}`:
-  the weakest of what can say so (see What counts as right).
-- `why` is the check's own reason, in its own words: a short string, or a list of them (up to five, each up to 300
-  characters), e.g. "The page shows $24.99, but the price of record is $19.99 (set 10:32 AM). The page hasn't caught
-  up." It shows in the notification after the difference lines (the first reason, in at most two lines, cut at a word),
-  under the differences in the item's row on its watch's page, in the chat tools' results and in the explanation, as
-  "What the check said". The model never writes it, and a check that couldn't check shows none, not an earlier one's.
-- An `error` key, an exception, no `state` object, or running past 60 seconds means "couldn't check". The reason shown
-  is the first line of the error, without the script's file name or the Python error type.
-- It runs through the bundled uv like any pack script, with the Mac's proxy and certificates, the pack's `requires:`
-  secrets and `NOTELING_CONTEXT` set to the item's page (app "Watch list", the item's address when known), and it stops
-  when its watch is stopped.
-
-```python
-def run(item: str, zip: str = "") -> dict:
-    """Check one item on the shop.
-
-    Args:
-        item: the item's id or its page address
-        zip: delivery zip code
-    """
-    page = read_item(item, zip)   # the pack's own code
-    return {"title": page["name"], "url": page["url"],
-            "state": {"price": page["price"], "badges": page["badges"], "in_stock": page["in_stock"]},
-            "facts": {"offers": page["offers"]},
-            "expect": {"in_stock": True},   # optional: right by default
-            "why": page.get("reason")}      # optional, in the check's own words
-```
-
-**A watch's own check.** A `check.py` in the watch's folder is used instead of the pack's script, with the same
-contract. By default a watch uses the pack's check; its own is for what the pack's doesn't do, such as one call for a
-whole list. It gets only the secrets its `watch.json` lists under `requires`, by the names packs use (so they are
-entered in Settings for the pack that declares them), never Noteling's own token for the team's tools. It runs through
-the same script runner as pack scripts, in its folder, with `NOTELING_TOOL_DIR` set to that folder, and writes no
-bytecode cache there.
-
-**List checks.** A check whose `run()` declares a parameter named `items` is called once per run with all the watch's
-item keys, in order, plus the extra arguments it declares, instead of once per item. A watch with a list check holds up
-to 200 items; one checked one item at a time holds 50 (items past the 50th are "couldn't check" and say so). It returns
-either a list of per-item results in the same order, or an object of per-item results keyed by item; each follows the
-contract above, `error` included:
-
-```python
-def run(items: list, zip: str = "") -> dict:
-    found = read_items(items, zip)   # one call for all of them
-    return {key: {"title": found[key]["name"], "state": {"price": found[key]["price"]}}
-            for key in items if key in found}
-```
-
-An item the object has no result for is "couldn't check" ("The check returned nothing for this item.", naming keys it
-returned that are no item); a list of another length can't be matched to the items, so every item is "couldn't check".
-A run that fails (an `error` for the whole run, an exception) or takes longer than its time limit, a minute plus a
-second per item and at most 10 minutes, is "couldn't check" for every item with the run's reason, which makes one
-notification. A list run counts as one of the two checks that run at a time.
-
-**What counts as right.** It depends on whether anything says so explicitly: an items file, the watch's `expect`, an
-item's own `expect`, or a check's `expect`.
-- When something does, only that counts, the strongest over the rest: the item's own (its row in the items file, over
-  its `expect` in `watch.json`), then the watch's `expect`, then the check's. To that is added a snapshot of exactly the
-  `fields` the watch names, if any, from the item's first check that worked. At the start of a sales event prices and
-  badges change on purpose, so a snapshot of everything would turn every item red.
-- When nothing does (a plain "watch these" from chat, with a check that says nothing), the first check that works is
-  the snapshot: everything it reported, or only the `fields` named.
-- An item whose first check fails gets its snapshot from its first later success; what is said explicitly counts at
-  once. The chat's `expect` (in `watch_items` or `change_watch`) and hand edits to `watch.json` or the items file work
-  it out again for every item and compare with what each item's latest check showed.
-
-Names are matched to the check's fields as items file headers are (case, spaces, `-`, `_`, and plurals). Numbers are
-equal within 0.005; text is trimmed, then exact; yes or no as such; null is a value of its own ("none"); and a number
-or yes/no given as text ("12.33", "$12.33", "yes") counts as that number or answer. One text expected where the check
-shows a list means the list includes it: a `badge` column of "Deal" means the item should show the Deal badge, and
-other labels on the page don't count as wrong ("Badges: New — expected to include Deal"). A list expected of a list
-means the same set (order doesn't matter, and an empty list is none), so a list captured from a first check keeps its
-exact meaning. A field the check doesn't report is shown as not reported and never alerted on. A field the person
-named that no item reports is called out in the `watch_items` result, with the fields the check does report, so a wrong
-name never just stays green.
-
-**When it notifies.** Never on an item's first check, since the chat shows it, never for a result the chat waited for
-or for what counts as right changed in the chat, never for a team job that is off, and never before a watch's `starts`
-or after its `ends`. Otherwise it notifies when an item goes from as expected to not as expected, when it is not as
-expected in another way than last told, when it is back to as expected ("Back to what you expected"), and when it
-couldn't be checked twice in a row ("Couldn't check: <reason>", once until a check works again). After a hand edit to
-what counts as right, the next check tells them. Three or more items of one watch that couldn't be checked for the same
-reason in one run make one notification ("Couldn't check 12 items: <reason>"). The title is the item's title, the
-subtitle the watch's name, and the body plain words: one line per difference, e.g. "Price: 24.99 — expected 19.99",
-then the check's `why`. Clicking it opens the chat on why the item is red or grey, or else the watch's page in Morning
-Files (Jobs, when the watch is gone).
-Notifications use UserNotifications and work only from the `.app` bundle; elsewhere (`swift run`, tests) alerts go to
-the log. macOS asks for permission when the first watch is created or a team job turned on; without it everything else
-works and the chat says they are off.
-
-**Schedule.** Every 15 minutes by default (5 to 240; team jobs often every one or two hours). The runner ticks every 30
-seconds, and 10 seconds after the Mac wakes. It starts the watches that are due (on, not paused, and between their
-`starts` and `ends`), runs at most two checks at a time across all watches, and never runs one watch twice at once. It
-starts once the packs have loaded.
-
-**Chat tools** (`WatchListConversation`, in every general chat turn; a watch is named by its name, its id or path, or
-the end of a path that only one has, like "fashion"):
-- `watch_items` {items, name?, every_minutes?, fields?, expect?, args?, check?} creates a watch of the person's own and
-  checks every item at once. It waits up to 90 seconds, then returns per item its title, status, what it shows now,
-  what counts as right and the check's `why`, and the watch's folder. `check` picks a pack when several have a `watch:`
-  script; with none, the chat says to link the team's tools in Settings.
-- `list_watches` (the person's own, then `team_watches` with whether each is on, and folders it can't watch),
-  `check_watch_now` {watch?}, `change_watch` {watch, add_items?, remove_items?, every_minutes?, expect?, paused?},
-  `turn_on_watch` {watch} and `turn_off_watch` {watch} (a team job on or off; one of the person's own resumed or
-  paused), and `stop_watch` {watch}. A change leaves a receipt on the pad and an Open Jobs tab; a watch whose files
-  can't be read says so, and isn't changed until they're fixed. Results include when a watch starts or ends, its items
-  file, rows it left out and columns the check doesn't report.
-
-**Why?** `Assistant.explainWatched` sends what counts as right, what the latest check shows and when, what the check
-said, and its facts. The request is about the item's page (a synthetic context: app "Watch list", the item's address),
-so that page's pack and its scripts are available, and it never takes control. The answer comes as **Why**, **What you
-can do** and, only when something couldn't be confirmed, **Couldn't check**.
-
-**Files.** A person's watches: `~/.noteling/watches/<path>/watch.json`, an optional items file and `check.py`, and
-`latest.json` (folders 0700, files Noteling writes 0600, each written whole and moved into place). Team watches: read
-from the team's copy, with `~/.noteling/team-watches/<id>/latest.json` and `~/.noteling/team-watches/on.json`. The code is
-in `Sources/Familiar/Features/WatchList/` (`WatchListFiles` for the files, `WatchListPages` for the pages).
-
-**Files for Excel.** A run over a long list can't be read on a card, so a watch's card carries the run's full results
-as CSV files, which open where people already work, such as Excel (⌘F, filters, tabs). `files` in `watch.json` says
-which (`WatchListExport`):
-- `problems.csv` (`["problems"]`, the default): every item not as expected or that couldn't be checked, those not as
-  expected first, each in the watch's order;
-- `all.csv` (`["problems", "all"]`, or `["all"]`): every item, as expected too, in the watch's order;
-- `[]`: none. A kind with no items has no file.
-
-One row per item, with these columns:
-
-| Column | What it holds |
-|---|---|
-| `item` | the item as given: an id or a page address |
-| `title`, `url` | the check's title, and the page to open |
-| `status` | `as expected`, `not as expected`, `couldn't check` or `not checked yet` |
-| `symptoms` | the fields that differ, joined with "; " |
-| one per field the check reports, named as it names it | what the item shows now; empty while it couldn't check, since an earlier check's values are never shown |
-| `expected <field>`, one per field that counts | what counts as right |
-| `why` | the check's own `why` lines joined with " / ", or why it couldn't check |
-| `checked_at` | when, in this Mac's time: `2026-10-05 18:31:05` |
-| `check` | which check ran |
-
-The fields the watch names in `fields` come first, then the rest alphabetically. Numbers are written as the check wrote
-them (19.99, never 19.989999999999998), yes or no as `yes` and `no`, a list joined with "; ", and none as `none`. The
-files follow RFC 4180 (a cell holding a comma, a quote or a line break is quoted, its quotes doubled), in UTF-8 with a
-byte order mark so Excel reads every language, lines ending in CRLF; a text that starts the way a formula does (`=`,
-`+`, `-`, `@`) gets a `'` in front, so it shows as written and never runs. Excel opens at most 1,048,576 rows, so a
-file of more than 1,048,575 items is split into `all-1.csv`, `all-2.csv`… (`problems-1.csv`…), and the card says so
-under its summary line: "All results are in 2 files: Excel opens at most 1,048,576 rows per file." Noteling writes them
-at the end of each run into the watch's folder of the cards inbox, before `job.json`, which lists them, so they reach
-the card like any inbox card's files (see The cards inbox), and the card keeps only the latest run's. When only they
-change, `job.json` is written again as it was, so the card takes them. With `"cards": false` there is no card and there
-are no files; a run with nothing wrong deletes them with `job.json`, and the resolved card keeps the copies it has.
-
-**Watches among the jobs.** The watches live in the Morning panel, in Jobs with the reading jobs, not in a window of
-their own: to a person a watch is the same kind of thing as a source (it runs, has results, and makes a card in Morning
-Files). See Jobs, under Morning Files above, for the list and the header every job's page shares.
-- **In Jobs** (`MorningNavigation.Route.jobs`; the older `.watches` route shows it too) a watch's row shows its name
-  (and a team job's path), what it checks ("Checks 3 items", "· from your team's tools"), how often it runs and when it
-  starts or ends, its last run and how its items stand ("Last run 6:31 PM · 2 of 8 not as expected · 1 couldn't check",
-  "Not run yet"), how it stands ("Running", "Paused", "Paused in the team's tools", "Off", "Needs Settings" when its
-  check lacks a secret, "Failed" when nothing could be checked), with **Run now**, which checks it now, and **Pause**/
-  **Resume**, or a team job's on/off switch. A watch.json or items file that can't be read, the items file's notes (rows
-  left out, columns the check doesn't report, several items files) and folders past the limits show on their rows. The
-  team's jobs come after the person's own, under "From your team's tools. Turn on the ones that are yours: only those
-  run and tell you." With nothing at all, Jobs says how to start a job, including watching items in chat, and that the
-  team's jobs show there once its tools are linked.
-- **A watch's page** (`.watch(id)`), opened from its row, from its card's **Open job**, from its cards folder, and from
-  a notification about an item that is back to as expected: the jobs' header (its name, what it checks and how often,
-  its last run, Run now, Pause or the on/off switch, and **Card**, its job.json card); for a watch of the person's own
-  **Show in Finder** and **Stop watching…** (which asks first); what's wrong with its files; **Cards folder (n)**, to
-  its card's folder, with any cards its check wrote itself; and every item with its dot, what it shows, what the check
-  said, when it was checked, and **Why?** and **Open page**. Back goes to Jobs, or to the folder it was opened from.
-- **A watch's cards folder** starts with "Checked 6:31 PM · every 15 minutes · Run now · Open job"; other folders don't.
-- Opening the panel on Jobs or a watch's page from the menu bar or a notification isn't recorded by the attention test,
-  which is about looks at the cards; the chat's Open Jobs tab is recorded as a chat open. The panel is 650 points wide on
-  every screen, the jobs' too, and hides from screen sharing as it always has.
+- **Finding them** (`FolderJobFiles`, `FolderJobStore`): any folder under `jobs/` holding both files is a job, and
+  nothing inside it is looked at for another. A job's id is made from whose it is and its path, so it is the same on
+  every Mac. The person's own are on while their folder is there; the team's run only once turned on (`job-results/on.json`).
+- **Running them** (`FolderJobRunner`): every 30 seconds, and just after the Mac wakes, the due ones run, one at a time,
+  through the same `ScriptRunner` as tool-pack scripts, with `NOTELING_INPUT`, a fresh `NOTELING_OUTPUT`, the job's own
+  `NOTELING_CARDS_DIR` and the tools folders on `PYTHONPATH`. A run that works swaps its output into
+  `job-results/<own|team>/<path>/output/` in one step; one that fails keeps the last output and says why on the row.
+- **Showing them** (`FolderJobPages`): a job's page and its card show the output's `preview/` files as they are
+  (csv/tsv as a table, txt as text, capped) and every output file with Open, Save as… and Show in Finder (`FileRow`).
+- **Cards and notifications** (`FolderJobCards`, `JobNotifier`): while the latest output has a preview, the job has one
+  card, `cards/inbox/job-<own|team>-<path>/job.json`, whose one part is the preview's digest; a change of digest
+  reopens a card the person resolved and posts one notification. Cards the job's script writes go to
+  `cards/inbox/jobcards-…/` and share the job's folder in Morning Files. Outside its start and end, a job has neither.
+- **In chat** (`FolderJobConversation`): `list_jobs`, `run_job_now`, `turn_on_job`, `turn_off_job` and
+  `read_job_result`. The chat never makes or changes a job.
+- **Watches are gone.** They no longer run, and nothing reads `watches/` or `team-watches/`. At launch
+  `RetiredWatchCards` deletes the card files watches wrote into the inbox, so their cards resolve, and Jobs says when a
+  `watches/` folder still holds one (`Jobs.retiredWatches`).
 
 ### The cards inbox (`cards/inbox/`)
 A script makes a card in Morning Files by writing a file, with no model involved: one JSON file per card,
@@ -766,8 +495,7 @@ A script makes a card in Morning Files by writing a file, with no model involved
   address, `severity` is `high`, `normal` (the default) or `low`, and `details`, text or any JSON (up to 8,000
   characters), shows under **Show original** and goes with the card when it is discussed. Keys it doesn't know are
   ignored.
-- `actions` (up to six) only open a web page (`url`), ask Noteling about the card in chat (`ask`), or open a watch's
-  page in Jobs (`watch`, the watch's id; the button shows only while there is such a watch); anything else is
+- `actions` (up to six) only open a web page (`url`) or ask Noteling about the card in chat (`ask`); anything else is
   dropped. A card from the inbox never runs anything: `MorningStore.enqueue` refuses it, a card discussion can't change
   its options, and it has no Edit. A card with a `url` and no button that opens a page gets **Open page**.
 - `parts` (up to 1,000 strings) says what the matter is made of, such as which items are wrong. A card the person
@@ -798,17 +526,18 @@ A script makes a card in Morning Files by writing a file, with no model involved
 - A file that can't be read (not JSON, no title, bigger than 64 KB) is never deleted and never resolves its card: the log
   says why once, and its source's folder in Morning Files lists it until it is fixed. A source shows up to 500 cards and
   up to 100 sources are read; files past that are listed, and their cards stay as they are.
-- Each source is a folder in Morning Files, named after its watch for a watch's cards and otherwise after the folder
+- Each source is a folder in Morning Files, named after its job for a job's cards and otherwise after the folder
   (`pack-shop`). A folder the person renames keeps its name.
-- Noteling looks at the inbox at launch, at the watch list's 30-second tick and right after a watch writes cards. It
+- Noteling looks at the inbox at launch, at the jobs' 30-second tick, after each job's run, and right after a job's card
+  changes. It
   reads only files that changed, saves only when a card changed, and never writes or deletes a script's files, including
   those a card carries and those it doesn't list.
 - The card step, its reconciliation and the attention test never touch or count these cards: they only consider the
   cards they track, and the count of cards to review that the attention test records leaves them out.
 
 **`NOTELING_CARDS_DIR`.** Every script gets a folder of its own in the inbox, made when needed and readable only by the
-person: a pack's scripts `cards/inbox/pack-<pack folder>/`, a watch's check `cards/inbox/watch-<its path, / as ->/`
-(`watch-team-<path>/` for a team's job). The name keeps only letters, digits, `.`, `_` and `-`, so it is always one
+person: a pack's scripts `cards/inbox/pack-<pack folder>/`, a job's `job.py` `cards/inbox/jobcards-<own|team>-<its
+path, / as ->/`. The name keeps only letters, digits, `.`, `_` and `-`, so it is always one
 folder directly in the inbox and never another source's. Write the whole file at once, so Noteling never reads half of
 it, and delete it when the matter is over:
 ```python
@@ -829,35 +558,13 @@ with open(os.path.join(folder, "refunds.json.tmp"), "w") as f: json.dump({"title
 os.replace(os.path.join(folder, "refunds.json.tmp"), os.path.join(folder, "refunds.json"))   # then the card that lists it
 ```
 
-**Cards from watches.** On by default, each watch has one card, however long its list: `cards/inbox/watch-<path>/job.json`,
-written by Noteling (`WatchListCards`) at the end of each run, when what the run found changed, with what it found as it
-found it, and no model. A run with nothing wrong deletes it, so the card resolves; problems in a later run write it
-again, and the same card opens again, even one the person resolved. If they resolved it while items were still wrong,
-it stays resolved through runs that find the same items wrong, until one finds an item wrong that wasn't when they
-resolved it (the file's `parts` are its wrong items), or everything is fine and something goes wrong again. A watch being
-checked keeps its card as it was until its run ends. `"cards": "all"` keeps the card always, `"cards": false` gives
-none, and a team job that's off has none: turning it off deletes its file, as do a watch that's gone and one whose
-cards are turned off, at launch, at each tick and after each run.
-- Title: "Sale items: 2 of 8 not as expected · 6:31 PM"; with only items it couldn't check, "Sale items: couldn't check
-  1 of 8 · 6:31 PM"; with `"all"` and nothing wrong, "Sale items: all 8 as expected · 6:31 PM". Severity `high` with
-  anything not as expected, `normal` with only couldn't-check, `low` otherwise.
-- Body: a summary line, "2 not as expected · 1 couldn't check · 5 as expected · checked 6:31 PM by <check>", then each
-  wrong item, those not as expected first, then those it couldn't check: its title (and key), its difference lines
-  exactly as the notification writes them and the check's `why` as it said it, or "Couldn't check: <reason>". With
-  `"all"`, every other item follows in one line ("Blue kettle (123): As expected"). Up to 50 items, within the 8,000
-  characters the inbox shows of a body; the rest are counted: "…and 150 more. Open the job to see them all."
-- `details` are the facts of the items it lists (up to 8,000 characters). The buttons are **Open job** (the watch's page)
-  and **Why?**, which asks the chat "Why are items in Sale items not as expected right now?" in general chat, where
-  `list_watches` has the details; nothing of the screen goes with it.
-- `files`: the CSV files its watch's `files` name, written beside `job.json` before it (see Files for Excel), so the
-  whole list is a click away however long it is.
-- Earlier versions wrote one file per item (`item-…json`); they are deleted at launch, so their cards resolve. Noteling's
-  files in a watch's folder are `job.json`, `problems.csv` and `all.csv` (and their numbered parts): a check may write
-  cards and files of its own beside them under other names, and those are left alone.
+**Cards from jobs.** A job kept as a folder has one card of Noteling's while its latest output has a preview, and its
+`job.py` may write more of its own; see Team jobs. Watches wrote cards here too; they no longer run, and at launch
+Noteling deletes what they wrote (`job.json`, `problems.csv`, `all.csv` and their numbered parts, `item-….json`) from
+`watch-…` folders, so those cards resolve, leaving anything else there.
 
 The code is in `Sources/Familiar/Features/Morning/CardInbox.swift` (with `CardFiles.swift` for the files a card carries
-and `CardFilesView.swift` for its Files section) and `Features/WatchList/WatchListCards.swift` (with
-`WatchListExport.swift` for the CSV files).
+and `CardFilesView.swift` for its Files section) and `Features/FolderJobs/FolderJobCards.swift` for jobs' cards.
 
 ## Config (`~/.noteling/config.json`)
 | key | default | meaning |
@@ -917,7 +624,7 @@ pre-approved, so the user clicks one prompt on first launch, once per install.
   - `Sources/Familiar/App`: composition, desktop activity ownership, shell state, app entry point, and headless/render commands.
   - `Sources/Familiar/Features`: Chat, WatchLearn, ContextNotes, Companion, and Settings. Each workflow keeps its own state; chat presents Watch events without owning recordings.
     - `Features/Calendar`: sources and jobs (calendar, mail and web profiles in `CalendarStore`), screen reads (`SourceCollectionTask`) and script reads (`ScriptReading`, `ScriptReadWindow`), the run archive (`SourceRunStore`), chat's job tools (`SourceConversation`), the Latest run and Run history screens, the editors, and the older Manage sources screen. `App/CalendarCollectionRunner` runs the reads.
-    - `Features/Jobs`: the jobs as one list: their words, statuses and order and the cards each made (`Jobs`), the Jobs page and the home's Jobs box (`JobsPage`, `JobsEntry`), the header and buttons every job's page shares (`JobHeader`, `JobControls`, `JobCardLink`), and a reading job's page (`SourceJobPage`). A watch's page is `WatchJobPage`, in `Features/WatchList`.
+    - `Features/Jobs`: the jobs as one list: their words, statuses and order and the cards each made (`Jobs`), the Jobs page and the home's Jobs box (`JobsPage`, `JobsEntry`), the header and buttons every job's page shares (`JobHeader`, `JobControls`, `JobCardLink`), and a reading job's page (`SourceJobPage`). A job kept as a folder's page is `FolderJobPage`, in `Features/FolderJobs`.
     - `Features/Morning`: cards, Who's Who and queued work in `morning.sqlite` (`MorningStore`), the card step and its judgments (`CardGenerationService`, `CardGenerationSubmission`), reconciliation with continuing cards, card discussions, and the Morning Files screens.
     - `Features/Attention`: the one-week attention test: its append-only ledger in `attention/`, labels from thumbs, explanations and card actions, the numbers, and the thumbs, daily line, rest and week screens.
     - `Features/BackgroundTasks`: `BackgroundTaskStore`, the task screen's state: the running task and up to 20 recent results with their last frame.

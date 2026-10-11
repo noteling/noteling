@@ -342,7 +342,7 @@ struct FolderJobsTests {
         let scripts = ScriptRunner(config: Config())
         scripts.cardsRoot = place.inbox
         let registry = ToolRegistry(root: tools, runner: scripts)
-        let feature = FolderJobsFeature(registry: registry, notifier: WatchListNotifier(), store: place.store(), inbox: place.inbox)
+        let feature = FolderJobsFeature(registry: registry, notifier: JobNotifier(), store: place.store(), inbox: place.inbox)
         let morning = MorningStore(directory: place.root.appendingPathComponent("morning"))
         let inbox = CardInbox(store: morning, directory: place.inbox)
         inbox.folderName = { feature.cardFolderName($0) }

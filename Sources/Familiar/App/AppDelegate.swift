@@ -35,7 +35,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let origami = OrigamiFlightController()
     private let settings = SettingsWindowController()
     private let watchDraftWindow = WatchDraftWindowController()
-    private var watchList: WatchListFeature?
     private var folderJobs: FolderJobsFeature?
     private var cardInbox: CardInbox?
     private var savedBubbleFrame: NSRect?
@@ -225,11 +224,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         assistant.sourceConversation = sourceConversation
         assistant.onOpenJobs = { [weak self] in self?.morningPanel.showJobs(trigger: .chat) }
         assistant.onRunSource = { [weak self] id in self?.runSavedSource(id) }
-        setupWatchList()   // before the panel, which shows the watches among the jobs
-        setupFolderJobs()
+        setupFolderJobs()   // before the panel, which shows them among the jobs
         morningPanel = MorningPanelController(store: morning, hideFromScreenShare: config.hideFromScreenShare,
                                              calendarSources: calendarSources, calendarRunner: calendarReader, cardGeneration: cardGeneration,
-                                             attention: attention, watches: watchList?.panel, jobs: jobsSetup,
+                                             attention: attention, jobs: jobsSetup,
                                              showLauncher: config.showMorningFolder, folderJobs: folderJobs?.panel)
         morningPanel.onLauncherShownChanged = { [weak self] shown in
             guard let self else { return }
@@ -265,8 +263,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if !assistant.hasConnection { assistant.reconfigure(effectiveConfig) }   // pick up a migrated key
             morningTasks.start()
             cardGeneration.start()
-            watchList?.start()   // only once the packs are loaded, so no check runs before its script is known
-            folderJobs?.start()
+            folderJobs?.start()   // only once the packs are loaded, so a job.py can import what they hold
         }
 
         if !assistant.hasConnection {
@@ -567,7 +564,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         morningTasks?.shutdown()
         morningPanel?.close()
         watchDraftWindow.close()
-        watchList?.stop()
         folderJobs?.stop()
         execution.cancel()
         control.end()          // never leave a ghost cursor behind
@@ -889,8 +885,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         JobsSetup(missingSecrets: { [weak self] source in
             guard let registry = self?.registry, let script = source.script, let pack = registry.pack(holdingScript: script) else { return [] }
             return registry.missingRequirements(for: [pack]).first?.keys ?? []
-        }, missingWatchSecrets: { [weak self] watch in
-            self?.watchList?.checker.missingSecrets(watch) ?? []
         }, controlAllowed: { [weak self] in
             self?.effectiveConfig.allowControl ?? true
         }, openSettings: { [weak self] in self?.openSettings() })
@@ -898,26 +892,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func fixScreenPermission() { if !Permissions.requestScreenRecording() { Permissions.openScreenRecordingSettings() } }
     @objc private func fixAXPermission() { Permissions.requestAccessibility(); Permissions.openAccessibilitySettings() }
 
-    // MARK: watch list
-
-    /// Items checked on a schedule by a pack's `watch:` script: the chat's tools, the alerts, and their pages in Morning
-    /// Files. Set up before the Morning panel, which shows them; the schedule starts once the packs have loaded (in
-    /// `applicationDidFinishLaunching`).
-    private func setupWatchList() {
-        let feature = WatchListFeature(registry: registry)
-        feature.notifier.activate()
-        feature.notifier.onOpen = { [weak feature] watchID, key in feature?.openNotification(watchID: watchID, key: key) }
-        feature.showJobs = { [weak self] in self?.morningPanel?.showJobs() }
-        feature.showWatch = { [weak self] id in self?.morningPanel?.showWatch(id: id) }
-        feature.explain = { [weak self] watchID, key in self?.explainWatchedItem(watchID: watchID, key: key) }
-        assistant.watchList = feature.conversation
-        watchList = feature
-    }
+    // MARK: jobs kept as folders
 
     /// Jobs kept as folders: yours in `jobs/`, your team's in the linked tools' `jobs/`, run on schedule, with a card
-    /// while their output has a preview. Their notifications go through the watch list's notifier, the app's one.
+    /// while their output has a preview, a notification when it has something new, and their tools in chat. Set up
+    /// before the Morning panel, which shows them; the schedule starts once the packs have loaded (in
+    /// `applicationDidFinishLaunching`).
     private func setupFolderJobs() {
-        let notifier = watchList?.notifier ?? WatchListNotifier()
+        let notifier = JobNotifier()
+        notifier.activate()
         let feature = FolderJobsFeature(registry: registry, notifier: notifier)
         notifier.onOpenJob = { [weak self, weak feature] id in
             guard let self, let job = feature?.store.job(id: id) else { self?.morningPanel?.showJobs(); return }
@@ -925,44 +908,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if self.morning.cards.contains(where: { $0.id == card }) { self.morningPanel?.showCard(id: card, trigger: nil) }
             else { self.morningPanel?.showFolderJob(id: id) }
         }
+        assistant.folderJobs = feature.conversation
         folderJobs = feature
     }
 
-    /// The menu bar's Jobs…: every job, the reading jobs and the watches, in one list.
+    /// The menu bar's Jobs…: every job, the reading jobs and those kept as folders, in one list.
     @objc private func menuShowJobs() { morningPanel.showJobs() }
-
-    private func explainWatchedItem(watchID: UUID, key: String) {
-        guard let feature = watchList, let watch = feature.store.watch(id: watchID), let item = watch.item(key) else {
-            watchList?.open(watchID)
-            return
-        }
-        openChat()
-        assistant.explainWatched(watch, item: item, checkedBy: feature.checkLabel(watch))
-    }
 
     // MARK: cards inbox
 
-    /// Cards that scripts and watch lists write into `cards/inbox/`, picked up into Morning Files at the watch list's
-    /// tick and right after a watch writes cards. A card's buttons only open its page or ask about it in chat.
+    /// Cards that scripts and jobs write into `cards/inbox/`, picked up into Morning Files at the jobs' tick, after each
+    /// run, and right after a job's card changes. A card's buttons only open its page or ask about it in chat. What
+    /// watches wrote there goes first: they no longer run.
     private func setupCardInbox() {
+        RetiredWatchCards.cleanUp(inbox: Config.dir.appendingPathComponent("cards/inbox"))
         let inbox = CardInbox(store: morning)
-        inbox.folderName = { [weak self] source in self?.watchList?.cardFolderName(source) ?? self?.folderJobs?.cardFolderName(source) }
-        watchList?.runner.onTick = { [weak inbox] in inbox?.scan() }
-        watchList?.runner.onCardsChanged = { [weak inbox] in inbox?.scan() }
+        inbox.folderName = { [weak self] source in self?.folderJobs?.cardFolderName(source) }
+        folderJobs?.runner.onTick = { [weak inbox] in inbox?.scan() }
         folderJobs?.runner.onCardsChanged = { [weak inbox] in inbox?.scan() }
         morningPanel.onAskAboutCard = { [weak self] card, question in self?.askAboutCard(card, question: question) }
         cardInbox = inbox
         inbox.scan()
     }
 
-    /// A watch's card asks about its job in general chat, where the watch tools can look it up; any other question asks
-    /// about the card in chat.
+    /// A card's question button asks about the card in chat.
     private func askAboutCard(_ card: MorningCard, question: String) {
-        if let key = card.inbox?.key, let watch = watchList?.watch(forCard: key) {
-            openChat()
-            assistant.askAboutWatch(watch, question: question)
-            return
-        }
         guard assistant.discussCard(card) else { return }
         openChat()
         assistant.question = question
