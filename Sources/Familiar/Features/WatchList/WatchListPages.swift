@@ -128,9 +128,42 @@ enum WatchListWords {
         checked(watch, checking: checking, now: now) + " · " + (watch.isTeam && !watch.on ? itemCount(watch.items.count) : counts(watch))
     }
 
-    /// The line on a watch's cards folder, before Run now and Open job: "Checked 6:31 PM · every 15 minutes".
+    /// The line on a watch's cards folder, before Run now and Open job: "Checked 6:31 PM · every 15 minutes", or, before
+    /// its start or past its end, only that: "Starts Mon Oct 5, 12:00 AM", "Ended Thu Oct 8, 11:59 PM".
     static func cardsFolderLine(_ watch: WatchListWatch, checking: Bool, now: Date) -> String {
-        checked(watch, checking: checking, now: now) + " · " + watch.everyWords
+        if !checking, watch.phase(at: now) != .live, let window = window(watch, now: now, running: true) { return window }
+        return checked(watch, checking: checking, now: now) + " · " + watch.everyWords
+    }
+
+    /// Why a watch's card was put away, said on the card in place of "Its script no longer reports this": the job
+    /// ended, or hasn't started. Nil while it is live, or when the card went away before the job ended (`gone`, when
+    /// the inbox found its file gone), for another reason.
+    static func putAway(_ watch: WatchListWatch, gone: Date, now: Date) -> String? {
+        switch watch.phase(at: now) {
+        case .live: return nil
+        case .ended:
+            guard let ends = watch.ends, gone >= ends.date else { return nil }
+            return "This job ended \(ends.words), so its card was put away."
+        case .upcoming:
+            guard let starts = watch.starts else { return nil }
+            return "This job starts \(starts.words); its card is put away until then."
+        }
+    }
+
+    /// What a watch's page says in place of its items: a team job that's off, to turn on (from its start, when it
+    /// hasn't started); or a job that ended before any item was checked. Nil when its items show.
+    static func instead(_ watch: WatchListWatch, now: Date) -> String? {
+        let items = itemCount(watch.items.count)
+        switch watch.phase(at: now) {
+        case .ended:
+            guard !watch.items.contains(where: { $0.checkedAt != nil }), let ends = watch.ends else { return nil }
+            return "It ended \(ends.words), before any of its \(items) were checked."
+        case .upcoming where watch.isTeam && !watch.on:
+            return "Turn it on to have it check its \(items) from its start" + (watch.starts.map { ", \($0.words)." } ?? ".")
+        case .live where watch.isTeam && !watch.on:
+            return "Turn it on to check its \(items) and hear about them."
+        default: return nil
+        }
     }
 
     /// Check now works for a watch of your own between its start and end, even paused, and for a team job that's on
@@ -278,9 +311,8 @@ struct WatchJobPage: View {
                         .buttonStyle(.plain).font(.system(size: 12, weight: .medium)).foregroundStyle(Pad.penInk)
                         .help("Open the folder with this job’s cards in Morning Files")
                 }
-                if watch.isTeam && !watch.on {
-                    Text("Turn it on to check its \(WatchListWords.itemCount(watch.items.count)) and hear about them.")
-                        .font(.system(size: 13)).foregroundStyle(Pad.inkSoft)
+                if let instead = WatchListWords.instead(watch, now: now()) {
+                    Text(instead).font(.system(size: 13)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
                 } else if watch.items.isEmpty {
                     Text("No items yet.").font(.system(size: 13)).foregroundStyle(Pad.inkSoft)
                 } else {

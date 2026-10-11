@@ -148,11 +148,16 @@ final class WatchListConversation {
         return Self.json(result)
     }
 
-    /// Before its start or after its end, a watch isn't checked at all.
+    /// Before its start or after its end, a watch isn't checked at all, and Jobs keeps it out of the way, under Upcoming
+    /// or Ended: said so, so the chat can tell the person where it is.
     private func notChecking(_ watch: WatchListWatch) -> String? {
         let name = "“\(Self.clip(watch.name, 80))”"
-        if watch.notStarted(at: now()), let starts = watch.starts { return "\(name) starts \(starts.words); nothing is checked before then." }
-        if watch.ended(at: now()), let ends = watch.ends { return "\(name) ended \(ends.words), so it is no longer checked." }
+        if watch.notStarted(at: now()), let starts = watch.starts {
+            return "\(name) starts \(starts.words); nothing is checked before then. Until then it waits under Upcoming in Jobs."
+        }
+        if watch.ended(at: now()), let ends = watch.ends {
+            return "\(name) ended \(ends.words), so it is no longer checked, and any card it had was put away. It is under Ended in Jobs."
+        }
         return nil
     }
 

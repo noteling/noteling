@@ -29,8 +29,9 @@ final class WatchListRunner: ObservableObject {
     @Published private(set) var checking: Set<UUID> = []
     /// Something to tell the person; the app shows it as a notification.
     var onAlert: ((WatchListAlert) -> Void)?
-    /// Writes each watch's card file (`WatchListCards`) at the end of its runs; nil writes none.
-    var cards: WatchListCards?
+    /// Writes each watch's card file (`WatchListCards`) at the end of its runs; nil writes none. It keeps the
+    /// runner's time, so a card follows its job's start and end on the same clock as the schedule.
+    var cards: WatchListCards? { didSet { cards?.now = now } }
     /// Card files changed: the app takes them into Morning Files.
     var onCardsChanged: (() -> Void)?
     /// Every tick, after the watches: the app looks at the cards inbox, for cards scripts wrote too.
@@ -154,7 +155,7 @@ final class WatchListRunner: ObservableObject {
     /// says nothing: it shows where the person turned it on. Turned off, a run in progress stops.
     @discardableResult
     func turn(_ id: UUID, on: Bool) throws -> Task<Void, Never>? {
-        try store.setOn(id, on)
+        try store.setOn(id, on, at: now())
         guard on else {
             cancel(id)
             if cards?.reconcile(store.watches, running: checking.subtracting([id])) == true { onCardsChanged?() }   // a job that's off has no card

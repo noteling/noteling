@@ -243,6 +243,69 @@ struct WatchListCardsTests {
         #expect(!FileManager.default.fileExists(atPath: file.path))
     }
 
+    // MARK: a job's start and end
+
+    @Test func aJobHasNoCardBeforeItsStartOrPastItsEndAndSaysWhy() throws {
+        var watch = WatchListWatch(name: "Sale items", check: "c", items: [item("123", red(12, 10))])
+        let starts = WatchListMoment(text: "start", date: checked + 3_600), ends = WatchListMoment(text: "end", date: checked + 7_200)
+        watch.starts = starts
+        watch.ends = ends
+        let ended = checked + 7_201
+        #expect(WatchListCards.card(for: watch, checkedBy: "c", now: checked) == nil)
+        #expect(WatchListCards.card(for: watch, checkedBy: "c", now: checked + 3_600) != nil)
+        watch.cards = .all
+        #expect(WatchListCards.card(for: watch, checkedBy: "c", now: ended) == nil)   // not even with "all"
+
+        // Its cards folder's line says when, in place of when it checked; and its card, why it was put away: only
+        // once it ended, and not for a card that went away before then.
+        #expect(WatchListWords.cardsFolderLine(watch, checking: false, now: ended) == "Ended " + ends.words)
+        #expect(WatchListWords.cardsFolderLine(watch, checking: false, now: checked) == "Starts " + starts.words)
+        #expect(WatchListWords.putAway(watch, gone: ended, now: ended) == "This job ended \(ends.words), so its card was put away.")
+        #expect(WatchListWords.putAway(watch, gone: checked + 5_000, now: ended) == nil)
+        #expect(WatchListWords.putAway(watch, gone: checked + 5_000, now: checked + 5_000) == nil)
+        #expect(WatchListWords.putAway(watch, gone: checked, now: checked) == "This job starts \(starts.words); its card is put away until then.")
+    }
+
+    @Test func aJobThatEndsPutsItsCardAwayAndAnEndMovedLaterBringsItBack() async throws {
+        let fixture = try CardsFixture()
+        defer { fixture.remove() }
+        // The fixture's clock starts at 14:13:20 UTC on Sept 21; the job ends at 16:00.
+        let job = #"{"name": "Fashion", "items": ["1"], "expect": {"price": 11}, "ends": "2026-09-21T16:00:00Z"}"#
+        try fixture.place.job("holiday/oct/fashion", job)
+        fixture.store.refresh()
+        let id = WatchListStore.teamID("holiday/oct/fashion")
+        let file = fixture.inbox.appendingPathComponent("watch-team-holiday-oct-fashion/job.json")
+        let morning = MorningStore(directory: fixture.place.root.appendingPathComponent("morning"))
+        let inbox = CardInbox(store: morning, directory: fixture.inbox)
+        await (try fixture.runner.turn(id, on: true))?.value
+        inbox.scan(at: fixture.clock.now)
+        let card = try #require(morning.cards.first)
+        #expect(card.disposition == .unreviewed)
+
+        // Past its end, the next tick puts its card away, with no check: it resolves, and says why.
+        fixture.clock.now = Date(timeIntervalSince1970: 1_790_006_401)
+        fixture.runner.tick()
+        #expect(!FileManager.default.fileExists(atPath: file.path) && fixture.checks.calls == ["1"])
+        inbox.scan(at: fixture.clock.now)
+        let away = try #require(morning.cards.first)
+        #expect(away.disposition == .resolved && away.inbox?.resolvedByInbox == true)
+        let ends = try #require(fixture.store.watch(id: id)?.ends?.words)
+        #expect(MorningFilesView.goneLine(away, gone: try #require(away.inbox?.goneAt), watches: fixture.store.watches, now: fixture.clock.now)
+                == "This job ended \(ends), so its card was put away.")
+
+        // The team moves its end a day later: it runs again, and the same card opens again.
+        try fixture.place.update { watches in
+            try fixture.place.write(job.replacingOccurrences(of: "2026-09-21T16", with: "2026-09-22T16"),
+                                    to: watches.appendingPathComponent("holiday/oct/fashion/watch.json"))
+        }
+        fixture.runner.tick()
+        await fixture.runner.current(id)?.value
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        inbox.scan(at: fixture.clock.now)
+        #expect(morning.cards.count == 1 && morning.cards.first?.id == card.id)
+        #expect(morning.cards.first?.disposition == .unreviewed && morning.cards.first?.inbox?.goneAt == nil)
+    }
+
     @Test func earlierPerItemFilesGoAndTheJobsCardTakesTheirPlace() throws {
         let fixture = try CardsFixture()
         defer { fixture.remove() }

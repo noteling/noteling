@@ -370,6 +370,23 @@ struct WatchListRunnerTests {
         #expect(runner.current(id) == nil)                         // after it ends, no more checks
     }
 
+    @Test func aRunBeforeItStartsTellsNobody() async throws {
+        let fixture = try Fixture(items: 1)
+        defer { fixture.remove() }
+        try fixture.store.change(fixture.watchID) { $0.starts = WatchListMoment(text: "in an hour", date: fixture.clock.now + 3_600) }
+
+        // However a run starts before then (the chat, a run already under way), what it finds is kept and nobody is told.
+        await fixture.runner.run(fixture.watchID)?.value
+        fixture.checks.next["1"] = [fixture.checks.reading(price: 13)]
+        await fixture.runner.run(fixture.watchID)?.value
+        #expect(fixture.alerts.isEmpty)
+        #expect(fixture.store.watch(id: fixture.watchID)?.items.first?.status
+                == .notAsExpected([WatchListDifference(field: "price", now: .number(13), expected: .number(10))]))
+        fixture.clock.now += 3_000
+        fixture.runner.tick()
+        #expect(fixture.runner.current(fixture.watchID) == nil)   // the schedule waits for its start
+    }
+
     @Test func onlyTeamWatchesThatAreOnAreCheckedAndTurningOneOnSaysNothingAtFirst() async throws {
         let place = Place()
         defer { place.remove() }

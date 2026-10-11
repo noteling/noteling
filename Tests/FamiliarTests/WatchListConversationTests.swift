@@ -339,11 +339,12 @@ struct WatchListConversationTests {
         defer { fixture.remove() }
         let starts = try #require(fixture.store.watches.first?.starts?.words)
         let check = try await fixture.call("check_watch_now", ["watch": "Sale"])
-        #expect(check.content as? String == "“Sale” starts \(starts); nothing is checked before then.")
+        let waits = "“Sale” starts \(starts); nothing is checked before then. Until then it waits under Upcoming in Jobs."
+        #expect(check.content as? String == waits)
         let listed = try fixture.object(try await fixture.call("list_watches", [:]))
         let watch = try #require((listed["watches"] as? [[String: Any]])?.first)
         #expect(watch["starts"] as? String == starts && watch["ends"] is String)
-        #expect(watch["not_checking"] as? String == "“Sale” starts \(starts); nothing is checked before then.")
+        #expect(watch["not_checking"] as? String == waits)
         #expect(fixture.checks.calls.isEmpty)
     }
 

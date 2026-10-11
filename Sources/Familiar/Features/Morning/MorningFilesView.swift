@@ -554,6 +554,14 @@ struct MorningFilesView: View {
             .contextMenu { if !card.isFromInbox { Button("Edit note") { navigation.route = .editCard(card.id) } } }
     }
 
+    /// Why a card from the inbox went away: its watch ended (or hasn't started), so its card was put away; otherwise its
+    /// script no longer reports it.
+    static func goneLine(_ card: MorningCard, gone: Date, watches: [WatchListWatch], now: Date) -> String {
+        if let watch = WatchListWords.watch(forFolder: card.folderID, in: watches),
+           let line = WatchListWords.putAway(watch, gone: gone, now: now) { return line }
+        return "Its script no longer reports this (\(gone.formatted(date: .abbreviated, time: .shortened)))."
+    }
+
     /// "2 files attached", for a card that carries files; nil for one that carries none.
     static func attachedLabel(_ card: MorningCard) -> String? {
         let count = card.files.count
@@ -601,8 +609,8 @@ struct MorningFilesView: View {
                             .fixedSize(horizontal: false, vertical: card.isFromInbox)
                     }
                     if let gone = card.inbox?.goneAt {
-                        Label("Its script no longer reports this (\(gone.formatted(date: .abbreviated, time: .shortened))).", systemImage: "tray")
-                            .font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
+                        Label(Self.goneLine(card, gone: gone, watches: watches?.store.watches ?? [], now: Date()), systemImage: "tray")
+                            .font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
                     }
                     if let context = card.personalContext, !context.isEmpty {
                         Label(context, systemImage: "person.bubble").font(.system(size: 12)).lineLimit(2)

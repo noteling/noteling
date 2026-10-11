@@ -5,12 +5,13 @@ import Foundation
 /// watch's folder of the inbox, written by Noteling at the end of each run with what that run found, as it found it.
 /// No model writes any of it, so a job holding a long list is one card to manage, not one per item. A run with nothing
 /// wrong deletes the file, so the card resolves; problems coming back write it again. With `"cards": "all"` the card
-/// is always there; with `"cards": false`, and for a team job that's off, there is none. The card carries the run's
-/// full results as the CSV files its watch's `files` name (`WatchListExport`), written beside `job.json` before it and
-/// listed in it, so the inbox takes them with the card. Noteling's files in a watch's folder are `job.json`,
-/// `problems.csv` and `all.csv` (and their numbered parts): anything else a check writes there is the check's own and
-/// left alone, except the per-item files earlier versions wrote (`item-…json`), which are deleted so their cards
-/// resolve.
+/// is always there; with `"cards": false`, for a team job that's off, and before a job's start or after its end, there
+/// is none, so a job that ended puts its card away by itself (and one whose end moves later gets it back). The card
+/// carries the run's full results as the CSV files its watch's `files` name (`WatchListExport`), written beside
+/// `job.json` before it and listed in it, so the inbox takes them with the card. Noteling's files in a watch's folder
+/// are `job.json`, `problems.csv` and `all.csv` (and their numbered parts): anything else a check writes there is the
+/// check's own and left alone, except the per-item files earlier versions wrote (`item-…json`), which are deleted so
+/// their cards resolve.
 @MainActor
 final class WatchListCards {
     /// The cards inbox; nil writes no cards.
@@ -21,6 +22,8 @@ final class WatchListCards {
     var rowLimit = WatchListExport.rowLimit
     /// The time zone of the CSV files' checked_at: this Mac's, as the card's title.
     var timeZone = TimeZone.autoupdatingCurrent
+    /// The time a job's start and end are measured against.
+    var now: () -> Date = Date.init
     /// What Noteling last wrote, by `<source>/<file name>`, so an unchanged card isn't written again.
     private var written: [String: String] = [:]
     /// A digest of each CSV file Noteling last wrote, by `<source>/<file name>`.
@@ -48,8 +51,9 @@ final class WatchListCards {
     /// The card's key in the inbox: `<source>/job`.
     static func key(for watch: WatchListWatch) -> String { source(for: watch) + "/job" }
 
-    /// What a watch's card says, or nil when it has none: its cards are off, it is a team job that's off, or nothing
-    /// is wrong and only problems get a card. Its words come from the run as it found them:
+    /// What a watch's card says, or nil when it has none: its cards are off, it is a team job that's off, it hasn't
+    /// started or has ended at `now`, or nothing is wrong and only problems get a card. Its words come from the run as
+    /// it found them:
     /// - title: "Sale items: 2 of 8 not as expected · 6:31 PM", "Sale items: couldn't check 1 of 8 · 6:31 PM", or,
     ///   with `"all"`, "Sale items: all 8 as expected · 6:31 PM";
     /// - body: a summary line ("2 not as expected · 1 couldn't check · 5 as expected · checked 6:31 PM by <check>"),
@@ -61,12 +65,14 @@ final class WatchListCards {
     /// - buttons: Open job, and Why?, which asks the chat about the job;
     /// - files: the CSV files its watch's `files` name, those with items, split at `rowLimit` items, and a line after
     ///   the summary for each kind that is split ("All results are in 2 files: …").
-    static func card(for watch: WatchListWatch, checkedBy: String, rowLimit: Int = WatchListExport.rowLimit) -> [String: Any]? {
-        card(for: watch, checkedBy: checkedBy, files: WatchListExport.parts(for: watch, rowLimit: rowLimit))
+    static func card(for watch: WatchListWatch, checkedBy: String, rowLimit: Int = WatchListExport.rowLimit,
+                     now: Date = Date()) -> [String: Any]? {
+        card(for: watch, checkedBy: checkedBy, files: WatchListExport.parts(for: watch, rowLimit: rowLimit), now: now)
     }
 
     /// The card, listing `files`, the CSV files written beside it.
-    static func card(for watch: WatchListWatch, checkedBy: String, files: [WatchListExport.Part]) -> [String: Any]? {
+    static func card(for watch: WatchListWatch, checkedBy: String, files: [WatchListExport.Part], now: Date = Date()) -> [String: Any]? {
+        guard watch.phase(at: now) == .live else { return nil }
         let split = WatchListExport.splitLines(files)
         var budget = CardInboxFormat.bodyLimit, details = CardInboxFormat.detailsLimit
         while true {
@@ -176,10 +182,11 @@ final class WatchListCards {
         return formatter.string(from: date)
     }
 
-    /// Every watch's card as it should be, with its CSV files, and none for watches that are gone, turned off or have
-    /// cards off: at launch, at each tick, at the end of each run, and when a team job is turned on or off. A watch
-    /// being checked keeps its card and files as they are until its run ends. Earlier versions' per-item files are
-    /// deleted. Cheap when nothing changed: it remembers what it wrote.
+    /// Every watch's card as it should be, with its CSV files, and none for watches that are gone, turned off, have
+    /// cards off, or are before their start or past their end: at launch, at each tick (so a job that starts or ends
+    /// while the app is open follows within one), at the end of each run, and when a team job is turned on or off. A
+    /// watch being checked keeps its card and files as they are until its run ends. Earlier versions' per-item files
+    /// are deleted. Cheap when nothing changed: it remembers what it wrote.
     @discardableResult
     func reconcile(_ watches: [WatchListWatch], running: Set<UUID> = []) -> Bool {
         guard let root else { return false }
@@ -187,12 +194,13 @@ final class WatchListCards {
         var wanted: [String: [String: Any]] = [:]
         var tables: [String: Data] = [:]
         var kept: Set<String> = []   // the folders of watches being checked
+        let at = now()
         for watch in watches {
             let source = Self.source(for: watch)
             if running.contains(watch.id) { kept.insert(source); continue }
             let label = checkLabel(watch)
             let parts = WatchListExport.parts(for: watch, rowLimit: rowLimit)
-            guard let card = Self.card(for: watch, checkedBy: label, files: parts) else { continue }
+            guard let card = Self.card(for: watch, checkedBy: label, files: parts, now: at) else { continue }
             wanted[source + "/" + Self.fileName] = card
             let columns = WatchListExport.columns(for: watch)
             for part in parts {

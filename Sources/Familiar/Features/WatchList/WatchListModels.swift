@@ -306,6 +306,12 @@ enum WatchListCardFile: String, CaseIterable {
     case problems, all
 }
 
+/// Where a watch stands against its `starts` and `ends`: before its start, between them, or after its end. Before and
+/// after, it is out of the way: no checks, no notifications, no card, and in Jobs only under Upcoming or Ended.
+enum WatchListPhase: Equatable {
+    case upcoming, live, ended
+}
+
 /// Whose a watch is: yours, in `watches/` in Noteling's folder, or your team's, in the linked tools' `watches/`, which
 /// Noteling only reads and checks once you turn it on.
 enum WatchListSource: Hashable {
@@ -335,7 +341,7 @@ struct WatchListWatch: Equatable, Identifiable {
     var createdAt = Date()
     /// The secrets its own check.py gets, by the names packs use. A pack's check gets the pack's own instead.
     var requires: [String] = []
-    /// No checks or notifications before it starts or after it ends.
+    /// No checks, notifications or card before it starts or after it ends (`phase`).
     var starts: WatchListMoment?
     var ends: WatchListMoment?
     var cards = WatchListCardsMode.problems
@@ -387,6 +393,18 @@ struct WatchListWatch: Equatable, Identifiable {
 
     func notStarted(at now: Date) -> Bool { starts.map { now < $0.date } ?? false }
     func ended(at now: Date) -> Bool { ends.map { now > $0.date } ?? false }
+
+    /// Where it stands against its start and end at `now`, whether it's on or paused or not: before its start, after
+    /// its end, or between them (always, for a watch with neither). Only a live one takes up the person's attention.
+    func phase(at now: Date) -> WatchListPhase {
+        notStarted(at: now) ? .upcoming : ended(at: now) ? .ended : .live
+    }
+
+    /// The next moment after `now` that one of `watches` starts or ends, when what is live changes with nothing else
+    /// changing; nil when none starts or ends any more.
+    static func nextChange(_ watches: [WatchListWatch], after now: Date) -> Date? {
+        watches.flatMap { [$0.starts?.date, $0.ends?.date] }.compactMap { $0 }.filter { $0 > now }.min()
+    }
 
     /// What it needs to work out what counts as right for each item. A watch is explicit as soon as anything says what
     /// counts as right: an items file, its own `expect`, an item's, or a check's.

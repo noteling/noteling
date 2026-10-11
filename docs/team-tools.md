@@ -161,6 +161,12 @@ Each item's result (the list form returns a list in the same order, or an object
 - `every_minutes` 5–240; `starts`/`ends` in ISO 8601; `cards`: `"all"` keeps the job's card even when everything is fine,
   `false` gives none; `files`: `["problems"]` (default), `["problems", "all"]` or `[]` for the CSV files on the card.
 - Each person turns on the jobs that are theirs, in Jobs or in chat; only those run on their Mac.
+- `starts` and `ends` are when the job is worth anyone's attention. Before its start and after its end it stays out of
+  the way: it isn't checked, sends no notifications, has no card, and isn't counted on the Morning Files home. In Jobs
+  it waits under one quiet line, **Upcoming (1) · Ended (2) · Show**, where it can still be opened and looked at, and an
+  upcoming job's switch can be turned on ahead of its start. When a job ends, its card is put away (resolved, saying the
+  job ended); push a later `ends` and it comes back, open, once the update reaches each Mac. Give every job for an event
+  an `ends`, so it leaves people's desks when the event does.
 
 `items.psv` beside it (or `.csv`, `.tsv`): a header row, then one item per row.
 

@@ -4,7 +4,9 @@ import SwiftUI
 /// Jobs, from fictional reading jobs and watches: the home's Jobs box, the list with every kind and state (a mail job
 /// that made cards, a web job whose last run failed, a calendar not run yet, a job that needs review and one that needs
 /// a secret in Settings; a watch with items not as expected, a paused one, a team job that's on and one that's off),
-/// a watch's page, and reading jobs' pages. Nothing reads a real source, runs a script or reaches a provider.
+/// the team jobs before their start and past their end, under their line and shown, with an ended job's page and its
+/// card put away, a watch's page, and reading jobs' pages. Nothing reads a real source, runs a script or reaches a
+/// provider.
 extension MorningRender {
     @MainActor static func renderJobs(fixtures: URL, directory: URL) throws {
         let root = fixtures.appendingPathComponent("jobs")
@@ -72,8 +74,13 @@ extension MorningRender {
 
         // Watches: yours, and your team's.
         let team = root.appendingPathComponent("team-tools/watches")
+        // Two team jobs out of the way: a sale that ended three days ago, and one that starts in five.
+        let iso = ISO8601DateFormatter()
+        let endedAt = iso.string(from: ran.addingTimeInterval(-3 * 86_400)), startsAt = iso.string(from: ran.addingTimeInterval(5 * 86_400))
         for (path, json) in [("holiday/oct/fashion", #"{"name": "Fashion (fictional)", "items": ["F-1", "F-2", "F-3"], "every_minutes": 120, "ends": "2026-10-31T23:59:00"}"#),
-                             ("kitchen", #"{"name": "Kitchen (fictional)", "items": ["K-1", "K-2"], "every_minutes": 60}"#)] {
+                             ("kitchen", #"{"name": "Kitchen (fictional)", "items": ["K-1", "K-2"], "every_minutes": 60}"#),
+                             ("autumn/sale", #"{"name": "Autumn sale (fictional)", "items": ["A-1", "A-2", "A-3"], "every_minutes": 60, "ends": "\#(endedAt)"}"#),
+                             ("winter/launch", #"{"name": "Winter launch (fictional)", "items": ["W-1", "W-2"], "every_minutes": 30, "starts": "\#(startsAt)"}"#)] {
             try FileManager.default.createDirectory(at: team.appendingPathComponent(path), withIntermediateDirectories: true)
             try json.write(to: team.appendingPathComponent(path).appendingPathComponent("watch.json"), atomically: true, encoding: .utf8)
         }
@@ -114,10 +121,30 @@ extension MorningRender {
             }
             watch.lastRunAt = ran
         }
+        // The autumn sale was on, and its last run found a problem; its card was there until it ended.
+        guard let autumn = watches.watches.first(where: { $0.path == "autumn/sale" }),
+              let winter = watches.watches.first(where: { $0.path == "winter/launch" }) else { return }
+        let before = ran.addingTimeInterval(-4 * 86_400)
+        try watches.setOn(autumn.id, true, at: before)
+        try watches.change(autumn.id, persist: false) { watch in   // what its checks found; its definition is the team's
+            for (index, (title, price)) in zip(watch.items.indices, [("Wool scarf (fictional)", 24.0), ("Rain boots (fictional)", 40), ("Umbrella (fictional)", 15)]) {
+                watch.items[index].title = title
+                watch.items[index].state = ["price": .number(price)]
+                watch.items[index].status = index == 0
+                    ? .notAsExpected([WatchListDifference(field: "price", now: .number(price), expected: .number(19))]) : .asExpected
+                watch.items[index].checkedAt = before
+            }
+            watch.lastRunAt = before
+        }
         let inboxFolder = root.appendingPathComponent("cards-inbox")
-        WatchListCards(root: inboxFolder).reconcile(watches.watches)
+        let cards = WatchListCards(root: inboxFolder)
         let inbox = CardInbox(store: store, directory: inboxFolder)
         inbox.folderName = { source in watches.watches.first { WatchListCards.source(for: $0) == source }?.name }
+        cards.now = { before }
+        cards.reconcile(watches.watches)
+        inbox.scan(at: before)
+        cards.now = Date.init
+        cards.reconcile(watches.watches)
         inbox.scan()
 
         let panel = WatchListPanel(store: watches, runner: checks, notifier: WatchListNotifier())
@@ -136,6 +163,14 @@ extension MorningRender {
         try save("jobs.png", .jobs)
         try save("jobs-all.png", .jobs, height: 1_400)
         try save("job-watch.png", .watch(sale.id))
+        try save("job-ended.png", .watch(autumn.id))
+        try save("job-upcoming.png", .watch(winter.id))
+        let putAway = CardInboxFormat.cardID(WatchListCards.key(for: autumn))
+        if store.cards.contains(where: { $0.id == putAway }) { try save("card-put-away.png", .card(putAway)) }
+        try image(JobsPage(morning: store, sources: sources, runner: runner, watches: panel, setup: setup, navigation: navigation,
+                           teach: {}, showingOutside: true)
+            .foregroundStyle(Pad.ink).background(Pad.fieldPaper), size: NSSize(width: 650, height: 1_700),
+            to: directory.appendingPathComponent("jobs-outside-shown.png"))
         try save("job-team-watch.png", .watch(kitchen.id))
         try save("job-mail.png", .sourceJob(mail.id))
         try save("job-mail-all.png", .sourceJob(mail.id), height: 1_300)
