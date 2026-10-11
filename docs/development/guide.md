@@ -453,7 +453,7 @@ pack) is read at launch and after each new copy (`Sources/Familiar/Configuration
 ### Team jobs (`jobs/`)
 A job kept as a folder is `job.json` (only what it is and when it runs), `job.py` (its one entry point, `run()`) and
 `input/` (any files), in `jobs/` in the linked tools or in `~/.noteling/jobs/`. The contract for whoever writes them is
-in [Writing a team tools repository](../team-tools.md); here is how the app keeps it.
+in [Keeping a team's tools](../team/README.md); here is how the app keeps it.
 
 - **Finding them** (`FolderJobFiles`, `FolderJobStore`): any folder under `jobs/` holding both files is a job, and
   nothing inside it is looked at for another. A job's id is made from whose it is and its path, so it is the same on

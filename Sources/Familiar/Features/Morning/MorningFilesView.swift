@@ -239,13 +239,15 @@ struct MorningFilesView: View {
         }.padding(.horizontal, 18).padding(.vertical, 15)
     }
 
-    /// The ⋯ menu, above Try sample files: Jobs (when there are jobs to show), a new note, Who's Who and a new folder.
+    /// The ⋯ menu, above Try sample files: Jobs (when there are jobs to show), a new note, Who's Who, a new folder, and
+    /// Help, which opens the guides on GitHub.
     /// Run history and Manage sources are on the Jobs page and the jobs' own pages.
     func menuItems() -> [MorningMenuItem] {
         (hasJobs ? [MorningMenuItem(title: "Jobs") { navigation.route = .jobs }] : []) + [
             MorningMenuItem(title: "Create a note") { createNote() },
             MorningMenuItem(title: "Who’s Who") { navigation.route = .people },
             MorningMenuItem(title: "Add folder") { navigation.route = .editFolder(nil) },
+            MorningMenuItem(title: "Help") { NSWorkspace.shared.open(HelpLinks.home) },
         ]
     }
 

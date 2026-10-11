@@ -754,7 +754,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func openSettings() {
         origami.cancel()
         settings.model.importSetup = { [weak self] in self?.chooseSetupFile() }
-        settings.show(config: config, packs: registry.packs, linkedTools: linkedTools, onSave: { [weak self] in
+        settings.show(config: config, packs: registry.packs, jobs: folderJobs?.store.jobs ?? [], linkedTools: linkedTools, onSave: { [weak self] in
             guard let self else { return }
             self.config = self.settings.model.save(into: self.config)
             self.linkedTools.settingsSaved()   // a changed address, branch or token is checked right away

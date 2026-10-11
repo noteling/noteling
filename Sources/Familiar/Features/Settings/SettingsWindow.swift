@@ -152,7 +152,8 @@ final class SettingsModel: ObservableObject {
         apiKeyLoaded = true
     }
 
-    func load(config: Config, packs: [ToolPack], team: TeamSettings? = nil) {
+    /// `jobs` are the jobs kept as folders: the secrets their job.json `requires` get fields here too, as the packs' do.
+    func load(config: Config, packs: [ToolPack], team: TeamSettings? = nil, jobs: [FolderJob] = []) {
         loadedConfig = config
         apiKeyLoaded = false
         apiKey = config.apiKey
@@ -185,6 +186,7 @@ final class SettingsModel: ObservableObject {
         savedToolsRepoToken = toolsRepoToken
         var byKey: [String: [String]] = [:]
         for p in packs { for k in p.requires { byKey[k, default: []].append(p.name) } }
+        for job in jobs { for k in job.requires where !(byKey[k] ?? []).contains(job.name) { byKey[k, default: []].append(job.name) } }
         packRequirements = byKey
         packSecretValues = Dictionary(uniqueKeysWithValues: byKey.keys.map { key in
             var value = Secrets.get(key) ?? ""
@@ -348,10 +350,14 @@ struct SettingsView: View {
                 if let linkedTools { LinkedToolsRow(updater: linkedTools, model: model, onSave: onSave) }
                 Text("Noteling keeps a copy of this repository's \(model.toolsRepoBranch) branch and checks for changes every 10 minutes. A tool in your own folder with the same name wins.")
                     .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 14) {
+                    Link("How to link your team's tools", destination: HelpLinks.linkTeamTools)
+                    Link("Keeping a team's tools", destination: HelpLinks.teamTools)
+                }.font(.caption)
             }
             Section("Tool packs") {
                 if model.packSecrets.isEmpty {
-                    Text("No pack declares a required secret. Add `requires: [NAME]` to a pack's SKILL.md and it will appear here.")
+                    Text("No pack or job needs a secret. Add `requires: [NAME]` to a pack's SKILL.md or a job's job.json and it will appear here.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 ForEach($model.packSecrets) { $s in
@@ -478,9 +484,9 @@ final class SettingsWindowController {
     private var teamChanges: AnyCancellable?
     let model = SettingsModel()
 
-    func show(config: Config, packs: [ToolPack], linkedTools: LinkedToolsUpdater? = nil, onSave: @escaping () -> Void,
+    func show(config: Config, packs: [ToolPack], jobs: [FolderJob] = [], linkedTools: LinkedToolsUpdater? = nil, onSave: @escaping () -> Void,
               onOpenTools: @escaping () -> Void, onReloadTools: @escaping () -> Void) {
-        model.load(config: config, packs: packs, team: linkedTools?.team.settings)
+        model.load(config: config, packs: packs, team: linkedTools?.team.settings, jobs: jobs)
         if teamChanges == nil, let linkedTools {   // an update while Settings is open, such as right after linking
             teamChanges = linkedTools.$team.dropFirst().removeDuplicates().receive(on: RunLoop.main)
                 .sink { [weak self] state in self?.model.applyTeam(state.settings) }

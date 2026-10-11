@@ -1,0 +1,5 @@
+.DS_Store
+__pycache__/
+*.pyc
+# Setup files hold a token: share them inside your team, never commit them.
+*.notelingsetup
