@@ -90,16 +90,17 @@ final class ScriptRunner {
     /// with no size cap. It stops with its caller, and at `timeout`. `toolDir` is the folder a script outside a pack
     /// (a watch's own check.py) calls home, instead of its pack's. Such a script writes no bytecode cache beside
     /// itself: its folder is a person's, or the team's copy, which Noteling never writes into.
-    /// `cardsSource` names its folder in the cards inbox, instead of its pack's.
+    /// `cardsSource` names its folder in the cards inbox, instead of its pack's. `env` is what this run alone gets
+    /// besides, such as a job's input and output folders; a PYTHONPATH in it comes before one from Settings.
     func result(_ tool: ScriptTool, args: [String: Any] = [:], context: ScreenContext? = nil, secrets: [String] = [],
-                timeout: TimeInterval = 90, toolDir: URL? = nil, cardsSource: String? = nil) async throws -> Any {
+                timeout: TimeInterval = 90, toolDir: URL? = nil, cardsSource: String? = nil, env: [String: String] = [:]) async throws -> Any {
         try await execute(tool, args: args, context: context, secrets: secrets, timeout: timeout, stopsWithCaller: true,
-                          toolDir: toolDir, cardsSource: cardsSource)["result"] ?? NSNull()
+                          toolDir: toolDir, cardsSource: cardsSource, env: env)["result"] ?? NSNull()
     }
 
     private func execute(_ tool: ScriptTool, args: [String: Any], context: ScreenContext?, secrets: [String],
                          timeout: TimeInterval = 90, stopsWithCaller: Bool = false, toolDir home: URL? = nil,
-                         cardsSource: String? = nil) async throws -> [String: Any] {
+                         cardsSource: String? = nil, env own: [String: String] = [:]) async throws -> [String: Any] {
         guard let (exe, cmdArgs) = command(helper: "run_tool.py", script: tool.path, deps: tool.dependencies) else {
             throw ScriptRunnerError(message: "no Python runtime")
         }
@@ -116,6 +117,9 @@ final class ScriptRunner {
         if let context, let d = try? JSONSerialization.data(withJSONObject: context.json), let s = String(data: d, encoding: .utf8) {
             env["NOTELING_CONTEXT"] = s
             env["FAMILIAR_CONTEXT"] = s   // earlier name, kept for existing packs
+        }
+        for (key, value) in own {
+            env[key] = key == "PYTHONPATH" ? ([value] + [env[key]].compactMap { $0 }).joined(separator: ":") : value
         }
         let started = Date()
         let r = try await Subprocess.run(exe, cmdArgs, stdin: stdin, cwd: tool.path.deletingLastPathComponent(), env: env, timeout: timeout,

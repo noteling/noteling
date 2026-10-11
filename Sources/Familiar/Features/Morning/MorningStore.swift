@@ -395,7 +395,8 @@ final class MorningStore: ObservableObject {
     /// touches a card's decision, the person's context, or any card that didn't come from the inbox.
     @discardableResult
     func syncInbox(_ snapshot: CardInboxSnapshot, at: Date = Date()) throws -> CardInboxSummary {
-        let notes = Dictionary(snapshot.notes.map { (CardInboxFormat.folderID($0.key), $0.value) }, uniquingKeysWith: { first, _ in first })
+        // A job's two folders in the inbox share one in Morning Files: its notes are both's.
+        let notes = Dictionary(snapshot.notes.sorted { $0.key < $1.key }.map { (CardInboxFormat.folderID($0.key), $0.value) }, uniquingKeysWith: +)
         if notes != inboxNotes { inboxNotes = notes }
         var next = workspace
         let summary = CardInboxFormat.apply(snapshot, to: &next, at: at)

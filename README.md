@@ -97,6 +97,8 @@ Each watch also has one card in Morning Files, however long its list, updated by
 
 The card also carries the run’s full results as a file for Excel, however long the list: `problems.csv`, with every item that isn’t as expected or couldn’t be checked, and `all.csv` too if you put `"files": ["problems", "all"]` in its `watch.json`. Under **Files** on the card, **Open** opens it, **Save as…** keeps a copy, and **Show in Finder** shows where it is.
 
+Your team's tools can also hold jobs kept as folders, in their `jobs/` folder. They appear in **Jobs** with a switch, like the team's watches; turn on the ones that are yours. Each runs its own script on your Mac on its schedule (or when you press **Run now**), and its page shows what it reads and everything its latest run left: the short tables and notes it marks as a preview, shown as they are, and every file to open or save. While its preview has something, the job has one card in Morning Files showing the same, with **Open job**; when the preview changes, you get a notification, and a card you resolved opens again. A job can also write cards of its own for follow-ups. To try one before your team shares it, put its folder in `jobs/` in Noteling's folder.
+
 Your team’s scripts can put cards in Morning Files too, by writing a small file (see the [developer guide](docs/development/guide.md)). Such a card only opens its page or asks Noteling about it; Noteling never acts on it by itself.
 
 To decide several cards at once, open a folder and choose **Select** (or ⌘-click a card), tick the ones you want, and choose **Resolve**, **File away** or **I’ll do it**; **Select all** takes every card the folder shows. One **Undo** puts them all back. Cards with work under way stay as they are.

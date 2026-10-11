@@ -133,8 +133,11 @@ enum CardInboxFormat {
 
     /// A card's id, the same every time for the same `<source>/<id>`.
     static func cardID(_ key: String) -> UUID { uuid("noteling-card-inbox:" + key) }
-    /// The card view's folder for a source.
-    static func folderID(_ source: String) -> UUID { uuid("noteling-card-inbox-folder:" + source) }
+    /// The card view's folder for a source. The cards a job's script writes itself share its job's folder.
+    static func folderID(_ source: String) -> UUID {
+        let shared = source.hasPrefix(FolderJobCards.scriptPrefix) ? FolderJobCards.prefix + source.dropFirst(FolderJobCards.scriptPrefix.count) : source
+        return uuid("noteling-card-inbox-folder:" + shared)
+    }
     static func sourceID(_ key: String, _ index: Int) -> UUID { uuid("noteling-card-inbox-source:\(index):" + key) }
 
     private static func uuid(_ text: String) -> UUID {
@@ -235,7 +238,8 @@ enum CardInboxFormat {
         card.title = entry.title
         card.summary = entry.body
         card.rationale = ""
-        let kind = entry.source.hasPrefix("watch-") ? "Watch" : "Card"
+        let kind = entry.source.hasPrefix("watch-") ? "Watch"
+            : entry.source.hasPrefix(FolderJobCards.prefix) || entry.source.hasPrefix(FolderJobCards.scriptPrefix) ? "Job" : "Card"
         var sources = [MorningSource(id: sourceID(entry.key, 0), title: entry.title, kind: kind, excerpt: entry.body, url: entry.url,
                                      capturedAt: entry.modifiedAt)]
         if !entry.details.isEmpty {

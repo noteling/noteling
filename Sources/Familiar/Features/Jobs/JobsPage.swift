@@ -11,21 +11,24 @@ final class JobsChanges: ObservableObject {
     /// The longest it waits before looking again for the next start or end, in case a job's dates changed.
     static let windowLook: TimeInterval = 300
 
-    init(sources: CalendarStore?, runner: CalendarCollectionRunner?, watches: WatchListPanel?, morning: MorningStore) {
+    init(sources: CalendarStore?, runner: CalendarCollectionRunner?, watches: WatchListPanel?, morning: MorningStore,
+         folderJobs: FolderJobsPanel? = nil) {
         var publishers = [morning.objectWillChange]
         if let sources { publishers += [sources.objectWillChange, sources.runStore.objectWillChange] }
         if let runner { publishers.append(runner.objectWillChange) }
         if let watches { publishers += [watches.store.objectWillChange, watches.runner.objectWillChange, watches.notifier.objectWillChange] }
+        if let folderJobs { publishers += [folderJobs.store.objectWillChange, folderJobs.runner.objectWillChange] }
         subscriptions = publishers.map { $0.sink { [weak self] _ in self?.objectWillChange.send() } }
-        if let store = watches?.store { followWindows(store) }
+        if watches != nil || folderJobs != nil { followWindows(watches?.store, folderJobs?.store) }
     }
 
-    /// Wakes the views a second after the next watch starts or ends. It holds neither the views nor the store.
-    private func followWindows(_ store: WatchListStore) {
-        windows = Task { [weak self, weak store] in
+    /// Wakes the views a second after the next job starts or ends. It holds neither the views nor the stores.
+    private func followWindows(_ store: WatchListStore?, _ jobs: FolderJobStore?) {
+        windows = Task { [weak self, weak store, weak jobs] in
             while !Task.isCancelled {
                 let now = Date()
-                let next = store.flatMap { WatchListWatch.nextChange($0.watches, after: now) }
+                let next = [store.flatMap { WatchListWatch.nextChange($0.watches, after: now) },
+                            jobs.flatMap { FolderJob.nextChange($0.jobs, after: now) }].compactMap { $0 }.min()
                 let wait = min(next.map { $0.timeIntervalSince(now) + 1 } ?? Self.windowLook, Self.windowLook)
                 try? await Task.sleep(nanoseconds: UInt64(max(1, wait) * 1_000_000_000))
                 guard !Task.isCancelled, let self else { return }
@@ -45,6 +48,7 @@ struct JobActions {
     var runner: CalendarCollectionRunner?
     var watches: WatchListPanel?
     var now: () -> Date = Date.init
+    var folderJobs: FolderJobsPanel? = nil
 
     func watch(_ id: UUID) -> WatchListWatch? { watches?.store.watch(id: id) }
 
@@ -55,6 +59,10 @@ struct JobActions {
     /// Whether Run now can start it: a reading job while nothing else reads and it can run as saved; a watch when
     /// Check now could (a watch of your own between its start and end, your team's job while it's on and running).
     func canRun(_ job: Job) -> Bool {
+        if job.isFolderJob {
+            guard let folderJobs, let folderJob = folderJobs.store.job(id: job.id) else { return false }
+            return !folderJobs.runner.isBusy(job.id) && folderJob.running(at: now())
+        }
         if job.isWatch {
             guard let watches, let watch = watch(job.id) else { return false }
             return WatchListWords.canCheckNow(watch, checking: watches.runner.checking.contains(job.id), now: now())
@@ -66,6 +74,7 @@ struct JobActions {
     /// Run now. A reading job reads as Read source did, a calendar today from 9 AM to 5 PM as Run all does; a watch is
     /// checked now, as Check now did. Nil once it started; otherwise why not.
     func runNow(_ job: Job) -> String? {
+        if job.isFolderJob { return folderJobs?.runner.run(job.id) ?? "This job is no longer here." }
         if job.isWatch {
             guard let watch = watch(job.id), let watchActions else { return "This job is no longer here." }
             watchActions.checkNow(watch)
@@ -93,6 +102,10 @@ struct JobActions {
     }
 
     func turn(_ job: Job, on: Bool) -> String? {
+        if job.isFolderJob {
+            guard let folderJobs else { return "This job is no longer here." }
+            do { try folderJobs.runner.turn(job.id, on: on); return nil } catch { return error.localizedDescription }
+        }
         guard let watch = watch(job.id), let watchActions else { return "This job is no longer here." }
         return watchActions.turn(watch, on: on)
     }
@@ -241,6 +254,7 @@ private struct JobRow: View {
         case .web: return "globe"
         case .calendar: return "calendar"
         case .watch, .teamWatch: return "eye"
+        case .job, .teamJob: return "folder"
         }
     }
 }
@@ -259,6 +273,7 @@ struct JobsPage: View {
     @ObservedObject var navigation: MorningNavigation
     var teach: (() -> Void)? = nil
     var now: () -> Date = Date.init
+    var folderJobs: FolderJobsPanel? = nil
     @StateObject private var changes: JobsChanges
     @State private var problem: String?
     @State private var feedback: String?
@@ -270,7 +285,7 @@ struct JobsPage: View {
     /// `showingOutside` starts with the jobs before their start or past their end shown (a render).
     init(morning: MorningStore, sources: CalendarStore?, runner: CalendarCollectionRunner?, watches: WatchListPanel?,
          setup: JobsSetup = JobsSetup(), navigation: MorningNavigation, teach: (() -> Void)? = nil, now: @escaping () -> Date = Date.init,
-         showingOutside: Bool = false) {
+         showingOutside: Bool = false, folderJobs: FolderJobsPanel? = nil) {
         self.morning = morning
         self.sources = sources
         self.runner = runner
@@ -279,23 +294,28 @@ struct JobsPage: View {
         self.navigation = navigation
         self.teach = teach
         self.now = now
-        _changes = StateObject(wrappedValue: JobsChanges(sources: sources, runner: runner, watches: watches, morning: morning))
+        self.folderJobs = folderJobs
+        _changes = StateObject(wrappedValue: JobsChanges(sources: sources, runner: runner, watches: watches, morning: morning, folderJobs: folderJobs))
         _showingOutside = State(initialValue: showingOutside)
     }
 
-    private var input: Jobs.Input { Jobs.Input(sources: sources, watches: watches, morning: morning, setup: setup, now: now()) }
-    private var actions: JobActions { JobActions(sources: sources, runner: runner, watches: watches, now: now) }
+    private var input: Jobs.Input {
+        Jobs.Input(sources: sources, watches: watches, morning: morning, setup: setup, now: now(), folderJobs: folderJobs)
+    }
+    private var actions: JobActions { JobActions(sources: sources, runner: runner, watches: watches, now: now, folderJobs: folderJobs) }
     private var isReading: Bool { runner?.isRunning == true }
 
-    /// A job's page: a watch's, or a reading job's.
+    /// A job's page: a watch's, a job kept as a folder's, or a reading job's.
     func open(_ job: Job) {
-        navigation.route = job.isWatch ? .watch(job.id) : .sourceJob(job.id)
+        navigation.route = job.isFolderJob ? .folderJob(job.id) : job.isWatch ? .watch(job.id) : .sourceJob(job.id)
     }
 
     var body: some View {
         let all = Jobs.list(input)
         let jobs = all.filter(\.isLive)
-        let unreadable = watches.map { Jobs.unreadable(own: $0.store.unreadable, team: $0.store.teamUnreadable, directory: $0.store.directory) } ?? []
+        let unreadable = Jobs.unreadable(own: watches?.store.unreadable ?? [:], team: watches?.store.teamUnreadable ?? [:],
+                                         directory: watches?.store.directory ?? Config.dir, ownJobs: folderJobs?.store.unreadable ?? [:],
+                                         teamJobs: folderJobs?.store.teamUnreadable ?? [:], jobsDirectory: folderJobs?.store.directory)
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 notices
@@ -490,7 +510,8 @@ struct JobsPage: View {
             }
             if let watches {
                 Text(Jobs.watchHint).font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
-                if !watches.store.watches.contains(where: \.isTeam) && watches.store.teamUnreadable.isEmpty {
+                if !watches.store.watches.contains(where: \.isTeam) && watches.store.teamUnreadable.isEmpty
+                    && !(folderJobs?.store.jobs.contains(where: \.isTeam) ?? false) {
                     Text(Jobs.emptyTeam(linked: watches.store.teamDirectory() != nil))
                         .font(.system(size: 11)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
                 }
@@ -508,10 +529,11 @@ struct JobsEntry: View {
     var setup = JobsSetup()
     let open: () -> Void
     var now: () -> Date = Date.init
+    var folderJobs: FolderJobsPanel? = nil
     @StateObject private var changes: JobsChanges
 
     init(morning: MorningStore, sources: CalendarStore?, runner: CalendarCollectionRunner?, watches: WatchListPanel?,
-         setup: JobsSetup = JobsSetup(), open: @escaping () -> Void, now: @escaping () -> Date = Date.init) {
+         setup: JobsSetup = JobsSetup(), open: @escaping () -> Void, now: @escaping () -> Date = Date.init, folderJobs: FolderJobsPanel? = nil) {
         self.morning = morning
         self.sources = sources
         self.runner = runner
@@ -519,11 +541,12 @@ struct JobsEntry: View {
         self.setup = setup
         self.open = open
         self.now = now
-        _changes = StateObject(wrappedValue: JobsChanges(sources: sources, runner: runner, watches: watches, morning: morning))
+        self.folderJobs = folderJobs
+        _changes = StateObject(wrappedValue: JobsChanges(sources: sources, runner: runner, watches: watches, morning: morning, folderJobs: folderJobs))
     }
 
     var body: some View {
-        let jobs = Jobs.list(Jobs.Input(sources: sources, watches: watches, morning: morning, setup: setup, now: now()))
+        let jobs = Jobs.list(Jobs.Input(sources: sources, watches: watches, morning: morning, setup: setup, now: now(), folderJobs: folderJobs))
         let summary = Jobs.summary(jobs, demonstrations: sources.map { Jobs.demonstrations($0).count } ?? 0, now: now())
         let attention = jobs.contains { $0.needsAttention && $0.status != .off }
         // Saved runs or reading jobs that can't be opened or saved: said on the home, as the sources' box did.

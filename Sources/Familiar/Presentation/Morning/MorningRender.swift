@@ -211,6 +211,7 @@ enum MorningRender {
         try renderAttention(fixtures: fixtures, directory: directory)
         try renderInbox(fixtures: fixtures, directory: directory)
         try renderJobs(fixtures: fixtures, directory: directory)
+        try renderFolderJobs(fixtures: fixtures, directory: directory)
     }
 
     /// The watches and the cards inbox, with fictional files: the watches in Jobs, a watch's page, its card and its

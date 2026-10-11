@@ -122,11 +122,13 @@ struct NotelingSetup: Equatable {
         }
     }
 
-    /// Team jobs in a linked copy of the team's tools: folders under `watches/` holding a `watch.json`.
+    /// Team jobs in a linked copy of the team's tools: folders under `watches/` holding a `watch.json`, and those under
+    /// `jobs/` holding a job.json and a job.py.
     static func teamJobCount(in linkedRoot: URL?) -> Int {
-        guard let watches = linkedRoot?.appendingPathComponent(ToolRegistry.watchesFolder),
-              let walk = FileManager.default.enumerator(at: watches, includingPropertiesForKeys: nil) else { return 0 }
-        return walk.compactMap { $0 as? URL }.filter { $0.lastPathComponent == "watch.json" }.count
+        guard let linkedRoot else { return 0 }
+        let walk = FileManager.default.enumerator(at: linkedRoot.appendingPathComponent(ToolRegistry.watchesFolder), includingPropertiesForKeys: nil)
+        let watches = walk.map { $0.compactMap { $0 as? URL }.filter { $0.lastPathComponent == "watch.json" }.count } ?? 0
+        return watches + FolderJobFiles.jobFolders(in: linkedRoot.appendingPathComponent(ToolRegistry.jobsFolder)).jobs.count
     }
 }
 

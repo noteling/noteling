@@ -3,11 +3,12 @@ import Foundation
 /// Something Noteling runs that produces results and a card. A reading job is a saved source: it reads mail, a web
 /// page or a calendar, through the screen or a script, and the card step decides what becomes a card (`CalendarStore`,
 /// run by `CalendarCollectionRunner`). A watch checks items on a schedule and keeps one card for what it finds
-/// (`WatchListStore`, run by `WatchListRunner`). To a person both are jobs: the Jobs page lists them as one, and each
-/// kind keeps its own storage and runner.
+/// (`WatchListStore`, run by `WatchListRunner`). A job kept as a folder runs its job.py on a schedule and keeps one card
+/// while its output has a preview (`FolderJobStore`, run by `FolderJobRunner`). To a person they are all jobs: the Jobs
+/// page lists them as one, and each kind keeps its own storage and runner.
 struct Job: Identifiable, Equatable {
     enum Kind: Equatable {
-        case mail, web, calendar, watch, teamWatch
+        case mail, web, calendar, watch, teamWatch, job, teamJob
     }
 
     /// How a job stands, on its row and its page. A job that is ready says nothing.
@@ -68,8 +69,12 @@ struct Job: Identifiable, Equatable {
     /// When an upcoming job starts, or when an ended one ended: the order they're listed in.
     var phaseAt: Date? = nil
 
-    var isTeam: Bool { kind == .teamWatch }
+    var isTeam: Bool { kind == .teamWatch || kind == .teamJob }
     var isWatch: Bool { kind == .watch || kind == .teamWatch }
+    /// A job kept as a folder, yours or your team's.
+    var isFolderJob: Bool { kind == .job || kind == .teamJob }
+    /// A reading job: one that reads mail, a web page or a calendar.
+    var isReading: Bool { [.mail, .web, .calendar].contains(kind) }
     var isLive: Bool { phase == .live }
     /// Everything its row says is wrong: what needs the person, then its last run's problem.
     var allProblems: [String] { problems + (runProblem.map { [$0] } ?? []) }
@@ -82,6 +87,7 @@ struct Job: Identifiable, Equatable {
 struct JobsSetup {
     var missingSecrets: (LearnedReadingSource) -> [String] = { _ in [] }
     var missingWatchSecrets: (WatchListWatch) -> [String] = { _ in [] }
+    var missingJobSecrets: (FolderJob) -> [String] = { _ in [] }
     var controlAllowed: () -> Bool = { true }
     var openSettings: (() -> Void)? = nil
 }
@@ -127,6 +133,10 @@ enum Jobs {
         var checking: Set<UUID> = []
         /// Watches whose watch.json or items file can't be read right now, and why.
         var problems: [UUID: String] = [:]
+        /// The jobs kept as folders, the one running and those waiting their turn.
+        var folderJobs: [FolderJob] = []
+        var runningJob: UUID?
+        var queuedJobs: Set<UUID> = []
         var cards: [MorningCard] = []
         /// The runs the card step has sorted.
         var sorted: Set<UUID> = []
@@ -139,13 +149,14 @@ enum Jobs {
     /// Every job, live or not, in the order the Jobs page lists the live ones (`outside` orders the rest).
     static func list(_ input: Input) -> [Job] {
         sorted(input.calendars.map { calendarJob($0, input) } + input.readings.map { readingJob($0, input) }
-               + input.watches.map { watchJob($0, input) })
+               + input.watches.map { watchJob($0, input) } + input.folderJobs.map { folderJob($0, input) })
     }
 
     /// One job, as its page shows it; nil once it is gone.
     static func job(_ id: UUID, _ input: Input) -> Job? {
         if let source = input.readings.first(where: { $0.id == id }) { return readingJob(source, input) }
         if let source = input.calendars.first(where: { $0.id == id }) { return calendarJob(source, input) }
+        if let job = input.folderJobs.first(where: { $0.id == id }) { return folderJob(job, input) }
         return input.watches.first { $0.id == id }.map { watchJob($0, input) }
     }
 
@@ -348,11 +359,46 @@ enum Jobs {
         return words.joined(separator: " · ")
     }
 
+    // MARK: jobs kept as folders
+
+    /// A job kept as a folder as a job: what it's about, how often it runs, how its last run went (what its `run()`
+    /// said, or that it failed, and why), and whether it's on. Before its start or after its end, as a watch: nothing
+    /// asks for the person.
+    static func folderJob(_ job: FolderJob, _ input: Input) -> Job {
+        let now = input.now
+        let phase = job.phase(at: now)
+        let live = phase == .live
+        let missing = input.setup.missingJobSecrets(job)
+        let failed = job.state.error != nil
+        let status: Job.Status = input.runningJob == job.id ? .running : input.queuedJobs.contains(job.id) ? .waiting
+            : job.isTeam && !job.on ? .off
+            : !live ? .ready
+            : !missing.isEmpty ? .needsSettings
+            : failed ? .failed : .ready
+        var problems = missing.isEmpty ? [] : [needs(missing)]
+        if phase == .ended { problems = [] }
+        let about = job.about.isEmpty ? "Runs its job.py" : WatchListValue.clip(job.about.components(separatedBy: .newlines).first ?? "", 90)
+        return Job(id: job.id, kind: job.isTeam ? .teamJob : .job, name: job.name, path: job.isTeam ? job.path : "",
+                   does: about + (job.isTeam ? " · " + fromTeam : ""), every: FolderJobWords.schedule(job, now: now),
+                   lastRun: FolderJobWords.lastRun(job, now: now), lastRunAt: job.state.lastRunAt, status: status,
+                   resultIsProblem: live && job.on && failed, problems: problems,
+                   runProblem: live && failed ? job.state.error : nil,
+                   needsAttention: live && job.on && (failed || !missing.isEmpty), meaning: job.about, on: job.on, phase: phase,
+                   phaseAt: phase == .upcoming ? job.starts?.date : phase == .ended ? job.ends?.date : nil)
+    }
+
     // MARK: cards
 
     /// The cards a job made, to open from its page: a watch's one card (its job.json in the cards inbox), whether open
-    /// or resolved; or a reading job's open cards, those its latest run made or saw first, then the newest.
+    /// or resolved; a job kept as a folder's preview card, and the open cards its script wrote itself; or a reading
+    /// job's open cards, those its latest run made or saw first, then the newest.
     static func cards(for job: Job, _ input: Input) -> [MorningCard] {
+        if job.isFolderJob {
+            guard let folderJob = input.folderJobs.first(where: { $0.id == job.id }) else { return [] }
+            let id = CardInboxFormat.cardID(FolderJobCards.key(for: folderJob))
+            let own = FolderJobCards.scriptSource(for: folderJob) + "/"
+            return input.cards.filter { $0.id == id } + input.cards.filter { !$0.isResolved && $0.inbox?.key.hasPrefix(own) == true }
+        }
         if job.isWatch {
             guard let watch = input.watches.first(where: { $0.id == job.id }) else { return [] }
             let id = CardInboxFormat.cardID(WatchListCards.key(for: watch))
@@ -385,10 +431,14 @@ enum Jobs {
         var folder: URL?
     }
 
-    static func unreadable(own: [String: String], team: [String: String], directory: URL) -> [Unreadable] {
+    static func unreadable(own: [String: String], team: [String: String], directory: URL, ownJobs: [String: String] = [:],
+                           teamJobs: [String: String] = [:], jobsDirectory: URL? = nil) -> [Unreadable] {
         own.keys.sorted().map { Unreadable(id: "own:" + $0, text: "The job in the “\($0)” folder can't run. \(own[$0] ?? "")",
                                            folder: directory.appendingPathComponent($0)) }
             + team.keys.sorted().map { Unreadable(id: "team:" + $0, text: "Not listing your team's job \($0). \(team[$0] ?? "")") }
+            + ownJobs.keys.sorted().map { Unreadable(id: "own-job:" + $0, text: "The job in the “\($0)” folder can't run. \(ownJobs[$0] ?? "")",
+                                                     folder: jobsDirectory?.appendingPathComponent($0)) }
+            + teamJobs.keys.sorted().map { Unreadable(id: "team-job:" + $0, text: "Not listing your team's job \($0). \(teamJobs[$0] ?? "")") }
     }
 
     /// Saved demonstrations that aren't jobs yet: each needs a review before it can be added.
@@ -429,7 +479,7 @@ enum Jobs {
     static func controls(_ job: Job, canOpenSettings: Bool) -> [Control] {
         guard job.isLive else { return job.phase == .upcoming && job.isTeam ? [.onOff] : [] }
         var controls: [Control] = []
-        if !job.isWatch && job.status == .running { controls.append(.stop) }
+        if job.isReading && job.status == .running { controls.append(.stop) }
         else if job.status == .needsSettings && canOpenSettings { controls.append(.openSettings) }
         else if job.on { controls.append(.runNow) }
         if job.isTeam { controls.append(.onOff) }
@@ -448,7 +498,8 @@ enum Jobs {
 extension Jobs.Input {
     /// The jobs as the stores have them now; either kind may be missing (a test, a render).
     @MainActor
-    init(sources: CalendarStore?, watches: WatchListPanel?, morning: MorningStore, setup: JobsSetup = JobsSetup(), now: Date = Date()) {
+    init(sources: CalendarStore?, watches: WatchListPanel?, morning: MorningStore, setup: JobsSetup = JobsSetup(), now: Date = Date(),
+         folderJobs: FolderJobsPanel? = nil) {
         self.init()
         calendars = sources?.sources ?? []
         readings = sources?.readingSources ?? []
@@ -456,9 +507,16 @@ extension Jobs.Input {
         self.watches = watches?.store.watches ?? []
         checking = watches?.runner.checking ?? []
         problems = watches?.store.problems ?? [:]
+        self.setup = setup
+        if let folderJobs {
+            self.folderJobs = folderJobs.store.jobs
+            runningJob = folderJobs.runner.running
+            queuedJobs = Set(folderJobs.runner.queued)
+            let runner = folderJobs.runner
+            self.setup.missingJobSecrets = { runner.missingSecrets($0) }   // the runner knows the Keychain
+        }
         cards = morning.cards
         sorted = Set((morning.workspace.cardGenerations ?? []).flatMap(\.runIDs))
-        self.setup = setup
         self.now = now
     }
 }

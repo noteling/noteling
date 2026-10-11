@@ -12,6 +12,8 @@ final class WatchListNotifier: NSObject, ObservableObject {
     @Published private(set) var offReason: String?
     /// A notification was clicked: the watch and the item it was about.
     var onOpen: ((UUID, String) -> Void)?
+    /// A job's notification was clicked (`post(job:title:body:)`): the job.
+    var onOpenJob: ((UUID) -> Void)?
     private var asked = false
 
     static var available: Bool {
@@ -84,6 +86,23 @@ final class WatchListNotifier: NSObject, ObservableObject {
         }
     }
 
+    /// That a job's preview has something new: one per job, a newer one replacing it in Notification Center.
+    func post(job: UUID, title: String, body: String) {
+        guard let center else {
+            Log.info("jobs: not shown as a notification: Noteling isn't running as an app")
+            return
+        }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.threadIdentifier = job.uuidString
+        content.userInfo = ["job": job.uuidString]
+        center.add(UNNotificationRequest(identifier: "job-\(job.uuidString)", content: content, trigger: nil)) { error in
+            if let error { Log.info("jobs: couldn't show a notification: \(error.localizedDescription)") }
+        }
+    }
+
     nonisolated static func identifier(_ alert: WatchListAlert) -> String {
         let hash = SHA256.hash(data: Data(alert.itemKey.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
         return "watch-\(alert.watchID.uuidString)-\(hash)"
@@ -102,9 +121,11 @@ extension WatchListNotifier: UNUserNotificationCenterDelegate {
         let info = response.notification.request.content.userInfo
         let watch = (info["watch"] as? String).flatMap(UUID.init(uuidString:))
         let item = info["item"] as? String
+        let job = (info["job"] as? String).flatMap(UUID.init(uuidString:))
         let clicked = response.actionIdentifier == UNNotificationDefaultActionIdentifier
         Task { @MainActor in
             if clicked, let watch, let item { self.onOpen?(watch, item) }
+            if clicked, let job { self.onOpenJob?(job) }
             completionHandler()
         }
     }

@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let settings = SettingsWindowController()
     private let watchDraftWindow = WatchDraftWindowController()
     private var watchList: WatchListFeature?
+    private var folderJobs: FolderJobsFeature?
     private var cardInbox: CardInbox?
     private var savedBubbleFrame: NSRect?
     private var dragOffset: NSPoint?     // cursor position relative to the panel origin while dragging
@@ -225,10 +226,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         assistant.onOpenJobs = { [weak self] in self?.morningPanel.showJobs(trigger: .chat) }
         assistant.onRunSource = { [weak self] id in self?.runSavedSource(id) }
         setupWatchList()   // before the panel, which shows the watches among the jobs
+        setupFolderJobs()
         morningPanel = MorningPanelController(store: morning, hideFromScreenShare: config.hideFromScreenShare,
                                              calendarSources: calendarSources, calendarRunner: calendarReader, cardGeneration: cardGeneration,
                                              attention: attention, watches: watchList?.panel, jobs: jobsSetup,
-                                             showLauncher: config.showMorningFolder)
+                                             showLauncher: config.showMorningFolder, folderJobs: folderJobs?.panel)
         morningPanel.onLauncherShownChanged = { [weak self] shown in
             guard let self else { return }
             self.config.showMorningFolder = shown
@@ -264,6 +266,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             morningTasks.start()
             cardGeneration.start()
             watchList?.start()   // only once the packs are loaded, so no check runs before its script is known
+            folderJobs?.start()
         }
 
         if !assistant.hasConnection {
@@ -565,6 +568,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         morningPanel?.close()
         watchDraftWindow.close()
         watchList?.stop()
+        folderJobs?.stop()
         execution.cancel()
         control.end()          // never leave a ghost cursor behind
         taskPanel.close()
@@ -910,6 +914,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         watchList = feature
     }
 
+    /// Jobs kept as folders: yours in `jobs/`, your team's in the linked tools' `jobs/`, run on schedule, with a card
+    /// while their output has a preview. Their notifications go through the watch list's notifier, the app's one.
+    private func setupFolderJobs() {
+        let notifier = watchList?.notifier ?? WatchListNotifier()
+        let feature = FolderJobsFeature(registry: registry, notifier: notifier)
+        notifier.onOpenJob = { [weak self, weak feature] id in
+            guard let self, let job = feature?.store.job(id: id) else { self?.morningPanel?.showJobs(); return }
+            let card = CardInboxFormat.cardID(FolderJobCards.key(for: job))
+            if self.morning.cards.contains(where: { $0.id == card }) { self.morningPanel?.showCard(id: card, trigger: nil) }
+            else { self.morningPanel?.showFolderJob(id: id) }
+        }
+        folderJobs = feature
+    }
+
     /// The menu bar's Jobs…: every job, the reading jobs and the watches, in one list.
     @objc private func menuShowJobs() { morningPanel.showJobs() }
 
@@ -928,9 +946,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// tick and right after a watch writes cards. A card's buttons only open its page or ask about it in chat.
     private func setupCardInbox() {
         let inbox = CardInbox(store: morning)
-        inbox.folderName = { [weak self] source in self?.watchList?.cardFolderName(source) }
+        inbox.folderName = { [weak self] source in self?.watchList?.cardFolderName(source) ?? self?.folderJobs?.cardFolderName(source) }
         watchList?.runner.onTick = { [weak inbox] in inbox?.scan() }
         watchList?.runner.onCardsChanged = { [weak inbox] in inbox?.scan() }
+        folderJobs?.runner.onCardsChanged = { [weak inbox] in inbox?.scan() }
         morningPanel.onAskAboutCard = { [weak self] card, question in self?.askAboutCard(card, question: question) }
         cardInbox = inbox
         inbox.scan()

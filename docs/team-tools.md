@@ -9,11 +9,16 @@ network and access. Noteling never needs a server of yours. Everything here is a
 ```
 <repo>/
   noteling.json                 how Noteling reaches Claude (optional)
-  shop/                         a tool pack: any top-level folder except `watches`
+  shop/                         a tool pack: any top-level folder except `watches` and `jobs`
     SKILL.md                    what the pack is for, when it's active, how to answer
     docs/*.md                   knowledge the model reads (pasted into requests up to a size limit)
     scripts/*.py                tools: each file with a top-level run() is one tool
-  watches/                      scheduled jobs (reserved name), nested as you like
+  jobs/                         jobs kept as folders (reserved name), nested as you like
+    holiday/oct/gm/
+      job.json                  what it is and when it runs: nothing else
+      job.py                    run(): the one entry point
+      input/                    any files it reads
+  watches/                      watch jobs (reserved name), nested as you like
     holiday/oct/fashion/
       watch.json
       items.psv
@@ -181,6 +186,80 @@ don't matter, and `badge` finds `badges`). An empty cell means don't care, `none
 carry `$` and thousands separators, `yes`/`no` are yes and no, and `a; b` is a list. One text against a list means "the
 list includes it". A row's values are that item's own expectations, and only what the table states counts.
 
+## Jobs
+
+A job is a folder in `jobs/` holding a `job.json` and a `job.py`, at any depth. A job's folder is the job's: nothing
+inside it is looked at for another job. Noteling doesn't know what a job is for. It runs the entry point on schedule,
+shows the files in the output's `preview/` as they are, and offers every output file to open or save. Watches still
+work; jobs are expected to replace them.
+
+`job.json` is only what the job is and when it runs. Everything is optional:
+
+```json
+{"name": "Holiday Oct · GM", "about": "Checks the GM event items against what the team expects.",
+ "every_minutes": 60, "starts": "2026-10-05T00:00:00-04:00", "ends": "2026-10-08T23:59:00-04:00", "requires": ["SHOP_API_KEY"]}
+```
+
+- `name` defaults to the folder's path; `about` is shown on its row and its page.
+- `every_minutes` 5–1440; without it the job runs only when someone presses **Run now**.
+- `starts` and `ends` work as for watches (below): before and after, the job doesn't run, has no card, and waits under
+  **Upcoming** or **Ended** in Jobs.
+- `requires`: secrets `job.py` gets as environment variables; Settings asks each person for them.
+- Its data never goes here: put it in `input/` as files, and let `job.py` read them.
+
+`job.py` has one function, `run()`, with no arguments:
+
+```python
+"""Writes the items that need a look into the preview, and every item into all.csv."""
+import csv, os
+
+def run():
+    with open(os.path.join(os.environ["NOTELING_INPUT"], "items.csv"), newline="") as f:
+        items = list(csv.DictReader(f))
+    out = os.environ["NOTELING_OUTPUT"]
+    wrong = [row for row in items if row["price"] != row["expected"]]
+    if wrong:
+        os.makedirs(os.path.join(out, "preview"))
+        with open(os.path.join(out, "preview", "problems.csv"), "w", newline="") as f:
+            writer = csv.DictWriter(f, ["item", "price", "expected"])
+            writer.writeheader()
+            writer.writerows({k: row[k] for k in ("item", "price", "expected")} for row in wrong)
+    with open(os.path.join(out, "all.csv"), "w", newline="") as f:
+        csv.writer(f).writerows([["item", "price", "expected"]] + [[r["item"], r["price"], r["expected"]] for r in items])
+    return f"{len(wrong)} of {len(items)} items need a look"
+```
+
+- **Environment:** `NOTELING_INPUT` is the job's `input/` folder (read only: every update replaces it);
+  `NOTELING_OUTPUT` is a fresh, empty folder for this run; `NOTELING_CARDS_DIR` is the job's own folder in the cards
+  inbox; the secrets in `requires`; and the proxy variables every script gets. Your tools folder and the team's
+  (`PYTHONPATH`, yours first) are on Python's path, so `job.py` can import helpers from the repository, such as
+  `from shared import prices` for `shared/prices.py`, or a pack's scripts folder found on `sys.path`.
+- **One at a time:** jobs run one after another, each for up to 10 minutes.
+- **What it returns:** words (a string) are shown on the job's row and on its card, such as "2 of 8 items need a look".
+  Anything else is ignored.
+- **Output:** a run that works replaces the job's output on that Mac; one that fails (an exception, or past 10 minutes)
+  leaves the last output as it was and shows the first line of why on the job's row. Outputs live only on each
+  person's Mac, never in the repository.
+- **Preview:** files in `preview/` that are `.csv`, `.tsv` or `.txt` are shown on screen as they are: tables as tables
+  (the first row is the heading; the first 200 rows), text as text (the first 20,000 characters). Every file in the
+  output, preview included, can be opened, saved or shown in Finder. Put what a person should see at a glance in
+  `preview/`, and everything else beside it.
+
+**Cards.** The preview card is the default: while a job's latest output has anything in `preview/`, the job has one
+card in Morning Files, in a folder named after the job, showing the preview and the files, with **Open job** for its
+input, every file of its output and its last run. An empty preview means nothing to look at, and the card goes. A card
+the person resolved opens again only when the preview's contents change, and a Mac notification says so at the same
+moment. A job can also write cards of its own, through `$NOTELING_CARDS_DIR` as any script does (below), for
+follow-ups that deserve their own card; they share the job's folder in Morning Files.
+
+**Keep the preview stable.** The notification fires whenever the preview's contents change, so a preview must say the
+same thing when nothing changed. Keep times such as "checked at", run ids and anything else that moves by itself out of
+`preview/` (put them in the files beside it instead), or every run will notify.
+
+Each person turns on the team's jobs that are theirs, in Jobs, as many as they like; only those run on their Mac. Their
+own jobs are folders in `~/.noteling/jobs/` in the same shape, on while they're there, which is the way to try a job
+before pushing it.
+
 ## Cards from your scripts
 
 Any script can make a card: write `<id>.json` into `$NOTELING_CARDS_DIR`, files first, the card file last.
@@ -211,6 +290,8 @@ use a fine-grained, read-only token for this one repository, with an expiry. Nev
 
 - Link the repository in your own Noteling, or copy a pack into your own tools folder (`~/.noteling/tools/`): your copy
   wins over the linked one, so you can test a change and then push it.
+- Copy a job's folder into `~/.noteling/jobs/`: it shows in Jobs at once, on, and **Run now** runs it with your tools
+  and the team's on its path.
 - Run a script the way Noteling does:
   `echo '{"item": "123"}' | NOTELING_CONTEXT='{"url": "https://shop.example.com/item/123"}' python3 /Applications/Noteling.app/Contents/Resources/py/run_tool.py shop/scripts/watch_check.py`
 - Ask a pen question without the UI: `/Applications/Noteling.app/Contents/MacOS/Noteling --ask "" "<page address>" --pen "Deal"`
