@@ -131,7 +131,8 @@ watches, which no longer run (see Moving a watch to a job, below).
 
 ```json
 {"name": "Holiday Oct · GM", "about": "Checks the GM event items against what the team expects.",
- "every_minutes": 60, "starts": "2026-10-05T00:00:00-04:00", "ends": "2026-10-08T23:59:00-04:00", "requires": ["SHOP_API_KEY"]}
+ "every_minutes": 60, "starts": "2026-10-05T00:00:00-04:00", "ends": "2026-10-08T23:59:00-04:00", "requires": ["SHOP_API_KEY"],
+ "contributor": "Yang"}
 ```
 
 - `name` defaults to the folder's path; `about` is shown on its row and its page.
@@ -143,6 +144,9 @@ watches, which no longer run (see Moving a watch to a job, below).
   job ends, its cards are put away (resolved, saying the job ended); push a later `ends` and they come back, open, once
   the update reaches each Mac. Give every job for an event an `ends`, so it leaves people's desks when the event does.
 - `requires`: secrets `job.py` gets as environment variables; Settings asks each person for them.
+- `contributor`: who wrote the job and shares it, one name or a list (`["Yang", "Ana"]`). It shows as "Shared by Yang"
+  on the job's row and page, and the job's card and each **Run now** thank them in a line that changes from run to run,
+  such as "Thanks to Yang for sharing this job." Notifications stay about the result.
 - Its data never goes here: put it in `input/` as files, and let `job.py` read them.
 
 `job.py` has one function, `run()`, with no arguments:
@@ -195,7 +199,8 @@ same thing when nothing changed. Keep times such as "checked at", run ids and an
 `preview/` (put them in the files beside it instead), or every run will notify.
 
 Each person turns on the team's jobs that are theirs, in Jobs or in chat, as many as they like; only those run on their
-Mac. The chat can list jobs, run one now, turn one on or off and read what one found, but never makes or changes one:
+Mac. Once there are more than a handful, Jobs has a box to find them by name or folder (`gm`, `holiday oct`), kept
+until it's cleared; the jobs a person turned on always show. Name folders so people can find theirs. The chat can list jobs, run one now, turn one on or off and read what one found, but never makes or changes one:
 jobs are yours to write. Their own jobs are folders in `~/.noteling/jobs/` in the same shape, on while they're there,
 which is the way to try a job before pushing it.
 

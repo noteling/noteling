@@ -169,7 +169,7 @@ struct JobHeader: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(job.name).font(HandFont.font(size: 26)).fixedSize(horizontal: false, vertical: true)
-                if job.isTeam { Text(job.path).font(.system(size: 12)).foregroundStyle(Pad.inkSoft).lineLimit(1) }
+                if let place = JobRow.place(job) { Text(place).font(.system(size: 12)).foregroundStyle(Pad.inkSoft).lineLimit(1) }
             }
             Text(job.line).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
             Text(job.lastRun).font(.system(size: 12)).foregroundStyle(job.resultIsProblem ? Pad.redInk : Pad.inkSoft)
@@ -185,7 +185,7 @@ struct JobHeader: View {
 
 /// One job in the list: what it is, what it does and how often, its last run and how it stands, which opens its page;
 /// its buttons; and what's wrong with it.
-private struct JobRow: View {
+struct JobRow: View {
     let job: Job
     let actions: JobActions
     var openSettings: (() -> Void)?
@@ -215,12 +215,18 @@ private struct JobRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(job.name).font(.system(size: 13, weight: .semibold)).lineLimit(2)
-                    if job.isTeam { Text(job.path).font(.system(size: 11)).foregroundStyle(Pad.inkSoft).lineLimit(1) }
+                    if let place = Self.place(job) { Text(place).font(.system(size: 11)).foregroundStyle(Pad.inkSoft).lineLimit(1) }
                 }
                 Text(job.line).font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
                 Text(job.lastRun).font(.system(size: 11)).foregroundStyle(job.resultIsProblem ? Pad.redInk : Pad.inkSoft)
             }
         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+    }
+
+    /// Beside its name: a team job's path, and who shared it. "holiday/oct/gm · Shared by Yang"; nil with neither.
+    static func place(_ job: Job) -> String? {
+        let parts = [job.isTeam ? job.path : nil, job.sharedBy].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     static func symbol(_ kind: Job.Kind) -> String {
@@ -284,7 +290,10 @@ struct JobsPage: View {
 
     var body: some View {
         let all = Jobs.list(input)
-        let jobs = all.filter(\.isLive)
+        // A search over your team's jobs leaves out the ones that don't match, but never one you turned on.
+        let shown = Jobs.searched(all, search)
+        let jobs = shown.filter(\.isLive)
+        let team = (shown: shown.filter(\.isTeam).count, total: all.filter(\.isTeam).count)
         let unreadable = Jobs.unreadable(own: folderJobs?.store.unreadable ?? [:], team: folderJobs?.store.teamUnreadable ?? [:],
                                          directory: folderJobs?.store.directory)
             + Jobs.retiredWatches(own: folderJobs?.store.retiredWatches, team: folderJobs?.store.teamRetiredWatches())
@@ -294,12 +303,12 @@ struct JobsPage: View {
                 if let reviewing { review(reviewing) } else {
                     runBar
                     ForEach(unreadable) { unreadableRow($0) }
-                    list(jobs)
+                    list(jobs, team: team)
                     if jobs.isEmpty && unreadable.isEmpty {
                         Text(all.isEmpty ? Jobs.empty : Jobs.noneLive + ".").font(.system(size: 14))
                             .foregroundStyle(all.isEmpty ? Pad.ink : Pad.inkSoft).fixedSize(horizontal: false, vertical: true).padding(.top, 4)
                     }
-                    outside(Jobs.outside(all))
+                    outside(Jobs.outside(shown))
                     demonstrations
                     removed
                     footer(empty: all.isEmpty)
@@ -309,16 +318,27 @@ struct JobsPage: View {
         .task { await folderJobs?.notifier?.refresh() }
     }
 
-    @ViewBuilder private func list(_ jobs: [Job]) -> some View {
-        let team = jobs.first { $0.isTeam && !$0.needsAttention }?.id ?? jobs.first(where: \.isTeam)?.id
+    @ViewBuilder private func list(_ jobs: [Job], team: (shown: Int, total: Int)) -> some View {
+        let first = jobs.first { $0.isTeam && !$0.needsAttention }?.id ?? jobs.first(where: \.isTeam)?.id
         ForEach(jobs) { job in
-            if job.id == team {
-                Text(Jobs.teamIntro).font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true).padding(.top, 6)
-            }
+            if job.id == first { teamHeader(team) }
             JobRow(job: job, actions: actions, openSettings: setup.openSettings, open: { open(job) }, problem: { problem = $0 })
         }
+        // A search that leaves none of your team's jobs keeps its box, so it can be changed or cleared.
+        if first == nil && team.total > 0 { teamHeader(team) }
     }
+
+    /// Where your team's jobs start: where they come from, and the search over them once there are many.
+    @ViewBuilder private func teamHeader(_ team: (shown: Int, total: Int)) -> some View {
+        Text(Jobs.teamIntro).font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
+            .fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+        if let store = folderJobs?.store, Jobs.showsSearch(teamJobs: team.total, search: store.search) {
+            JobsSearchBox(store: store, shown: team.shown, total: team.total)
+        }
+    }
+
+    /// The search over your team's jobs, as last kept.
+    private var search: String { folderJobs?.store.search ?? "" }
 
     /// Jobs before their start or past their end: one quiet line, and once it's clicked, their rows, which open their
     /// pages and have no buttons but an upcoming team job's switch.
@@ -371,6 +391,7 @@ struct JobsPage: View {
             }.padding(12).background(Pad.paperTop.opacity(0.5), in: RoundedRectangle(cornerRadius: 7))
         }
         if let feedback { Text(feedback).font(.system(size: 12)).foregroundStyle(Pad.penInk) }
+        if let runner = folderJobs?.runner, let receipt = runner.receipt { FolderJobReceiptLine(receipt: receipt, dismiss: runner.dismissReceipt) }
     }
 
     /// Run all reading jobs, Stop all and how a batch goes; the latest run, with what didn't finish; and Run history.
@@ -483,6 +504,29 @@ struct JobsPage: View {
                     .font(.system(size: 11)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
             }
         }.padding(.top, 8)
+    }
+}
+
+/// The search over your team's jobs: one box, matching a job's name or folder path, kept until it's cleared; and while
+/// it holds something, how many of the team's jobs it shows, and Clear. The jobs you turned on always show.
+struct JobsSearchBox: View {
+    @ObservedObject var store: FolderJobStore
+    let shown: Int
+    let total: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            TextField("Find your team's jobs by name or folder", text: Binding(get: { store.search }, set: { store.setSearch($0) }))
+                .textFieldStyle(.roundedBorder).font(.system(size: 12)).accessibilityLabel("Find your team's jobs")
+            if let line = Jobs.searchLine(shown: shown, of: total, search: store.search) {
+                HStack(spacing: 6) {
+                    Text(line).foregroundStyle(Pad.inkSoft)
+                    Text("·").foregroundStyle(Pad.inkSoft)
+                    Button("Clear") { store.setSearch("") }.buttonStyle(.plain).foregroundStyle(Pad.penInk)
+                }.font(.system(size: 11))
+                .help("Jobs you turned on always show, whatever the search.")
+            }
+        }
     }
 }
 

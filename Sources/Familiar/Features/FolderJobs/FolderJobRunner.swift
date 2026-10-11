@@ -37,6 +37,9 @@ final class FolderJobRunner: ObservableObject {
     /// The job running now, and those waiting their turn.
     @Published private(set) var running: UUID?
     @Published private(set) var queued: [UUID] = []
+    /// What the last run someone started with Run now came to, said where they pressed it until they dismiss it or
+    /// start another.
+    @Published private(set) var receipt: FolderJobReceipt?
     /// Writes each job's card file; nil writes none.
     var cards: FolderJobCards?
     /// Card files changed: the app takes them into Morning Files.
@@ -62,6 +65,8 @@ final class FolderJobRunner: ObservableObject {
     private var current: Task<Any, Error>?
     /// Runs that say nothing when they're done: the first after a team job is turned on, which the person is looking at.
     private var quiet: Set<UUID> = []
+    /// Runs someone started with Run now: each leaves a receipt when it ends.
+    private var asked: Set<UUID> = []
 
     init(store: FolderJobStore, execute: @escaping Execute, now: @escaping () -> Date = Date.init) {
         self.store = store
@@ -113,9 +118,12 @@ final class FolderJobRunner: ObservableObject {
         guard let job = store.job(id: id) else { return "This job is no longer here." }
         guard job.on else { return "Turn it on first." }
         guard job.running(at: now()) else { return "It runs only between its start and its end." }
+        asked.insert(id)
         enqueue(id)
         return nil
     }
+
+    func dismissReceipt() { receipt = nil }
 
     /// Turns a team job on or off. Turned on, it runs right away if it has started, and that first run says nothing:
     /// the person is looking at it. Turned off, its run stops and its card goes.
@@ -129,6 +137,7 @@ final class FolderJobRunner: ObservableObject {
     func cancel(_ id: UUID) {
         queued.removeAll { $0 == id }
         quiet.remove(id)
+        asked.remove(id)
         if running == id { current?.cancel() }
     }
 
@@ -173,6 +182,9 @@ final class FolderJobRunner: ObservableObject {
         Log.info("jobs: \(job.isTeam ? "the team's " : "")\(job.path) " + (state.error.map { "failed: \($0)" } ?? "ran"))
         reconcileCards()
         onTick?()
+        if asked.remove(job.id) != nil, let latest = store.job(id: job.id) {
+            receipt = FolderJobReceipt(jobID: job.id, text: FolderJobWords.receipt(latest))
+        }
         guard !quiet, state.error == nil, let preview = state.preview, preview != before,
               let latest = store.job(id: job.id), latest.running(at: now()) else { return }
         onNews?(latest)
@@ -247,6 +259,12 @@ final class FolderJobRunner: ObservableObject {
     }
 }
 
+/// What a run someone started with Run now came to: which job, and one line for them.
+struct FolderJobReceipt: Equatable {
+    var jobID: UUID
+    var text: String
+}
+
 /// What Morning Files needs to show the jobs kept as folders: where they're kept, what runs them, and whether
 /// notifications are on.
 struct FolderJobsPanel {
@@ -310,6 +328,12 @@ final class FolderJobsFeature {
     /// The card view's folder name for a job's folders in the inbox: the job's name.
     func cardFolderName(_ source: String) -> String? {
         store.jobs.first { FolderJobCards.source(for: $0) == source || FolderJobCards.scriptSource(for: $0) == source }?.name
+    }
+
+    /// Whether the cards in a folder of the inbox are put away for now: the cards a job's script wrote, while the job is
+    /// off, or before its start or after its end. A folder that isn't a job's is never held.
+    func holds(_ source: String, at now: Date = Date()) -> Bool {
+        store.jobs.first { FolderJobCards.scriptSource(for: $0) == source }.map { !$0.running(at: now) } ?? false
     }
 
     /// The job a card is about, when it is a job's preview card.

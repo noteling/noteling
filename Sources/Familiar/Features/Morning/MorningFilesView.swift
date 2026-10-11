@@ -613,6 +613,10 @@ struct MorningFilesView: View {
                         Text(card.meaning).font(.system(size: 15)).lineSpacing(4).lineLimit(card.isFromInbox ? nil : 4).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: card.isFromInbox)
                     }
+                    // A job's card thanks whoever shared the job, once per run.
+                    if let job = folderJob(of: card), let thanks = FolderJobWords.thanks(job, run: job.state.lastSuccessAt) {
+                        Text(thanks).font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
+                    }
                     if let gone = card.inbox?.goneAt {
                         Label(Self.goneLine(card, gone: gone, jobs: folderJobs?.store.jobs ?? [], now: Date()), systemImage: "tray")
                             .font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)

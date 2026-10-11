@@ -11,7 +11,9 @@ enum FolderJobFiles {
     static let preview = "preview"
     static let state = "run.json"
     /// The keys job.json may have. Any other is left alone: a job's data belongs in its folders, not here.
-    static let known: Set<String> = ["name", "about", "every_minutes", "starts", "ends", "requires"]
+    static let known: Set<String> = ["name", "about", "every_minutes", "starts", "ends", "requires", "contributor"]
+    /// Names a job's `contributor` keeps, each up to 60 characters.
+    static let contributorLimit = 10
     /// Folders looked at under `jobs/`, and how deep.
     static let folderLimit = 2_000
     static let depthLimit = 8
@@ -110,8 +112,21 @@ enum FolderJobFiles {
             requires = list.compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty && $0 != LinkedTools.tokenKey && seen.insert($0).inserted }   // that token is Noteling's own
         }
+        var contributors: [String] = []
+        if let raw = object["contributor"], !(raw is NSNull) {
+            let names: [Any]
+            switch raw {
+            case let name as String: names = [name]
+            case let list as [Any] where list.allSatisfy({ $0 is String }): names = list
+            default: throw FolderJobError("In its job.json, contributor must be a name in quotes, or a list of them.")
+            }
+            var seen = Set<String>()
+            contributors = names.compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }.prefix(contributorLimit).map { JobWords.clip($0, 60) }
+        }
         return FolderJob(id: id(source, path), source: source, path: path, name: try text("name") ?? path, about: try text("about") ?? "",
-                         everyMinutes: every, starts: try moment("starts"), ends: try moment("ends"), requires: requires)
+                         everyMinutes: every, starts: try moment("starts"), ends: try moment("ends"), requires: requires,
+                         contributors: contributors)
     }
 
     /// A job's id, the same on every Mac and through every update: made from whose it is and its path.

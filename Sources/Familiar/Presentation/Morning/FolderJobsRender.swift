@@ -17,7 +17,7 @@ extension MorningRender {
         let iso = ISO8601DateFormatter()
         for (folder, json, items) in [
             (team.appendingPathComponent("holiday/oct/gm"),
-             #"{"name": "Holiday Oct · GM (fictional)", "about": "Price, strikethrough, badge and seller on the GM event items, against what the team expects.", "every_minutes": 60}"#,
+             #"{"name": "Holiday Oct · GM (fictional)", "about": "Price, strikethrough, badge and seller on the GM event items, against what the team expects.", "every_minutes": 60, "contributor": "Yang"}"#,
              "item,price,strikethrough,badge,seller\nK-1,16.99,26.99,Reduced price,Acme\nK-2,16.99,26.99,,Acme\nK-3,14.99,26.99,,Acme\nK-4,119.97,179,,Example Store\n"),
             (team.appendingPathComponent("holiday/oct/fashion"), #"{"name": "Holiday Oct · Fashion (fictional)", "every_minutes": 120}"#, "item,price\nF-1,12.33\n"),
             (team.appendingPathComponent("autumn/sale"),
@@ -76,6 +76,19 @@ extension MorningRender {
         let card = CardInboxFormat.cardID(FolderJobCards.key(for: gm))
         if let folder = morning.cards.first(where: { $0.id == card })?.folderID { try save("folder-job-folder.png", .folder(folder)) }
         try save("folder-job-card.png", .card(card), height: 1_000)
+
+        // Your team's jobs past a handful, with a search kept from last time: only those that match, and the ones on.
+        for (path, name) in [("spring/shoes", "Spring · Shoes"), ("spring/garden", "Spring · Garden"), ("home/kitchen", "Kitchen"),
+                             ("home/bath", "Bath"), ("back-to-school/backpacks", "Backpacks"), ("holiday/oct/toys", "Holiday Oct · Toys")] {
+            try write(team.appendingPathComponent(path).appendingPathComponent("job.json"), #"{"name": "\#(name) (fictional)", "every_minutes": 120}"#)
+            try write(team.appendingPathComponent(path).appendingPathComponent("job.py"), "def run():\n    return None\n")
+        }
+        store.refresh()
+        store.setSearch("holiday")
+        try image(JobsPage(morning: morning, sources: nil, runner: nil, navigation: navigation, folderJobs: panel)
+            .foregroundStyle(Pad.ink).background(Pad.fieldPaper), size: NSSize(width: 650, height: 900),
+            to: directory.appendingPathComponent("folder-jobs-search.png"))
+        store.setSearch("")
         try image(JobsPage(morning: morning, sources: nil, runner: nil, navigation: navigation, showingOutside: true,
                            folderJobs: panel)
             .foregroundStyle(Pad.ink).background(Pad.fieldPaper), size: NSSize(width: 650, height: 760),
