@@ -80,21 +80,8 @@ struct CardFilesSection: View {
     }
 
     private func row(_ file: CardFile) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: CardFiles.icon(file.name)).font(.system(size: 16)).foregroundStyle(Pad.inkSoft).frame(width: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(file.name).font(.system(size: 13, weight: .medium)).lineLimit(1).truncationMode(.middle).help(file.name)
-                Text(CardFiles.size(file.size)).font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
-            }
-            Spacer(minLength: 8)
-            HStack(spacing: 14) {
-                Button("Open") { open(file) }.accessibilityLabel("Open \(file.name)")
-                Button("Save as…") { saveCopy(file) }.accessibilityLabel("Save a copy of \(file.name)")
-                Button("Show in Finder") { showInFinder(file) }.accessibilityLabel("Show \(file.name) in Finder")
-            }.buttonStyle(.plain).font(.system(size: 12, weight: .medium)).foregroundStyle(Pad.penInk).fixedSize()
-        }
-        .padding(.horizontal, 12).padding(.vertical, 9).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.65), in: RoundedRectangle(cornerRadius: 7))
+        FileRow(icon: CardFiles.icon(file.name), name: file.name, size: CardFiles.size(file.size), open: { open(file) },
+                save: { saveCopy(file) }, reveal: { showInFinder(file) })
     }
 
     func open(_ file: CardFile) { perform { try actions.open(file, on: card) } }
