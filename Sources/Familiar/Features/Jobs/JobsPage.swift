@@ -425,10 +425,17 @@ struct JobsPage: View {
         }
     }
 
+    /// A folder that can't be a job, or watches left behind: what's wrong, What this means (the guide's page of
+    /// messages), and the folder in Finder when it's on this Mac.
     private func unreadableRow(_ row: Jobs.Unreadable) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Label(row.text, systemImage: "exclamationmark.triangle").font(.system(size: 12)).foregroundStyle(Pad.redInk)
-                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            VStack(alignment: .leading, spacing: 5) {
+                Label(row.text, systemImage: "exclamationmark.triangle").font(.system(size: 12)).foregroundStyle(Pad.redInk)
+                    .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                Button(Jobs.messagesLink) { NSWorkspace.shared.open(HelpLinks.messages) }
+                    .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Pad.penInk).padding(.leading, 22)
+                    .help(HelpLinks.messages.absoluteString)
+            }
             Spacer(minLength: 8)
             if let folder = row.folder {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }.buttonStyle(MorningActionButton())
@@ -492,7 +499,8 @@ struct JobsPage: View {
         } catch { problem = error.localizedDescription }
     }
 
-    /// How to start a job: teach one that reads with Watch Me; and where your team's jobs come from, when none are here.
+    /// How to start a job: teach one that reads with Watch Me; where your team's jobs come from, when none are here; and
+    /// the guides: how jobs work, and how to write them for a team.
     private func footer(empty: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if let teach, sources != nil {
@@ -503,6 +511,10 @@ struct JobsPage: View {
                 Text(Jobs.emptyTeam(linked: folderJobs.store.teamDirectory() != nil))
                     .font(.system(size: 11)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
             }
+            HStack(spacing: 16) {
+                Button(Jobs.howJobsWork) { NSWorkspace.shared.open(HelpLinks.jobs) }.help(HelpLinks.jobs.absoluteString)
+                Button(Jobs.writingJobs) { NSWorkspace.shared.open(HelpLinks.teamTools) }.help(HelpLinks.teamTools.absoluteString)
+            }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
         }.padding(.top, 8)
     }
 }

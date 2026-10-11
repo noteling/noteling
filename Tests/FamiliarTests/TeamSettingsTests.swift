@@ -260,6 +260,14 @@ struct TeamSettingsTests {
 
     // MARK: - Settings
 
+    @Test func aSecretOnlyAJobNeedsGetsAFieldToo() {
+        let model = SettingsModel()
+        let job = FolderJob(id: UUID(), source: .team, path: "sales/stuck-orders", name: "Stuck orders", requires: ["ORDERS_API_KEY_FOR_TESTS"])
+        model.load(config: Self.own, packs: [], jobs: [job, job])
+        #expect(model.packSecrets.map(\.id) == ["ORDERS_API_KEY_FOR_TESTS"])
+        #expect(model.packSecrets.first?.usedBy == "used by Stuck orders")
+    }
+
     @Test func settingsShowWhatTheTeamSetsAndSaveOnlyYourOwn() throws {
         let model = SettingsModel()
         let own = Self.own

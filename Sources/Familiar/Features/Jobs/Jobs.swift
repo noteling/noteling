@@ -107,6 +107,10 @@ enum Jobs {
     static let readsFromScreen = "It reads from the screen, so it needs mouse and keyboard control: turn that on in Settings."
     /// The Jobs page and the home's box when every job is before its start or past its end.
     static let noneLive = "No jobs running now"
+    /// The guides under the list, and beside a folder that can't be a job (`HelpLinks`).
+    static let howJobsWork = "How jobs work"
+    static let writingJobs = "Writing jobs for your team"
+    static let messagesLink = "What this means"
     static let outsideIntro = "Before their start and after their end, jobs stay out of the way: they don't run, tell you or keep a card."
     static let armIntro = "Turn on an upcoming team job to have it run from its start."
 

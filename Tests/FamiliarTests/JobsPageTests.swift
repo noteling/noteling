@@ -513,11 +513,11 @@ struct JobsPageTests {
 
         // The panel's ⋯ menu has Jobs instead of Manage sources and Run history.
         let files = fixture.files()
-        #expect(files.menuItems().map(\.title) == ["Jobs", "Create a note", "Who’s Who", "Add folder"])
+        #expect(files.menuItems().map(\.title) == ["Jobs", "Create a note", "Who’s Who", "Add folder", "Help"])
         files.menuItems()[0].action()
         #expect(fixture.navigation.route == .jobs)
         let plain = MorningFilesView(store: fixture.morning, navigation: fixture.navigation, close: {}, filed: {}, handoff: { _ in })
-        #expect(plain.menuItems().map(\.title) == ["Create a note", "Who’s Who", "Add folder"])
+        #expect(plain.menuItems().map(\.title) == ["Create a note", "Who’s Who", "Add folder", "Help"])
 
         // The menu bar's Jobs…, the chat's Open Jobs tab and its Run now tab open the panel on Jobs, or on the job.
         #expect(AppDelegate.jobsMenuTitle == "Jobs…")

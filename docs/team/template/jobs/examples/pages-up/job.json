@@ -1,0 +1,6 @@
+{
+  "name": "Pages up",
+  "about": "Checks that each page in input/pages.csv answers and shows the text it should.",
+  "every_minutes": 60,
+  "contributor": "Your name"
+}

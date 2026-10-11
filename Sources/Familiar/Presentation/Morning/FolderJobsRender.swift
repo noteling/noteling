@@ -93,5 +93,15 @@ extension MorningRender {
                            folderJobs: panel)
             .foregroundStyle(Pad.ink).background(Pad.fieldPaper), size: NSSize(width: 650, height: 760),
             to: directory.appendingPathComponent("folder-jobs-outside-shown.png"))
+
+        // Folders that can't be jobs: one of yours without its job.py, and a team job.json that isn't JSON, each with
+        // what it means.
+        try write(own.appendingPathComponent("new-check/job.json"), #"{"name": "New check (fictional)"}"#)
+        try write(team.appendingPathComponent("spring/hats/job.json"), #"{"name": "Spring · Hats" "every_minutes": 60}"#)
+        try write(team.appendingPathComponent("spring/hats/job.py"), "def run():\n    return None\n")
+        store.refresh()
+        try image(JobsPage(morning: morning, sources: nil, runner: nil, navigation: navigation, folderJobs: panel)
+            .foregroundStyle(Pad.ink).background(Pad.fieldPaper), size: NSSize(width: 650, height: 760),
+            to: directory.appendingPathComponent("folder-jobs-problems.png"))
     }
 }
