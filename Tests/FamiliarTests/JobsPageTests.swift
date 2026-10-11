@@ -356,6 +356,7 @@ struct JobsPageTests {
         #expect(Jobs.summary(five, now: now) == "5 jobs · 2 need attention · last run \(time)")
         #expect(Jobs.summary([job("Mail", .running), job("Sale", attention: true)], now: now) == "2 jobs · 1 running · 1 needs attention")
         #expect(Jobs.summary([job("Mail")], demonstrations: 2, now: now) == "1 job · 2 demonstrations to review")
+        #expect(Jobs.summary([{ var ended = job("Ended"); ended.phase = .ended; return ended }()], now: now) == "No jobs running now")
 
         // The home has the one box, and it opens Jobs; the boxes it replaces are gone.
         let fixture = try JobsFixture()
@@ -368,6 +369,77 @@ struct JobsPageTests {
     }
 
     // MARK: routes
+
+    // MARK: before the start and after the end
+
+    private func moment(_ date: Date) -> WatchListMoment { WatchListMoment(text: "", date: date) }
+
+    @Test func jobsBeforeTheirStartOrPastTheirEndWaitUnderOneLineOnlyToBeLookedAt() throws {
+        var live = WatchListWatch(name: "Live sale", check: "c", items: [item("1", red)])
+        live.lastRunAt = now
+        live.ends = moment(now + 3_600)
+        var soon = team("Soon", path: "soon", on: false, items: [WatchListItem(key: "S")])
+        soon.starts = moment(now + 7_200)
+        var later = WatchListWatch(name: "Later", check: "c", items: [WatchListItem(key: "L")])
+        later.starts = moment(now + 86_400)
+        var ended = team("Ended red", path: "ended", on: true, items: [item("E", red)])
+        ended.ends = moment(now - 3_600)
+        ended.lastRunAt = now - 7_200
+        var gone = WatchListWatch(name: "Long gone", check: "c", items: [item("G", .couldNotCheck("Signed out"))])
+        gone.ends = moment(now - 86_400)
+        var input = Jobs.Input(readings: [mail()], watches: [live, soon, later, ended, gone], now: now)
+        input.setup.missingWatchSecrets = { ["Soon", "Ended red"].contains($0.name) ? ["SHOP_API_KEY"] : [] }
+
+        // The list holds the live jobs; the rest wait, the soonest to start first and the latest to end first.
+        let jobs = Jobs.list(input)
+        #expect(jobs.filter(\.isLive).map(\.name) == ["Live sale", "Morning mail"])
+        let outside = Jobs.outside(jobs)
+        #expect(outside.upcoming.map(\.name) == ["Soon", "Later"])
+        #expect(outside.ended.map(\.name) == ["Ended red", "Long gone"])
+
+        // Nothing out of the way asks for the person: no red, no problem, never first.
+        for job in outside.upcoming + outside.ended {
+            #expect(!job.needsAttention && !job.resultIsProblem && !job.status.isProblem && job.runProblem == nil)
+        }
+        let endedRed = outside.ended[0]
+        #expect(endedRed.status == .ready && endedRed.problems.isEmpty)
+        #expect(endedRed.every == "Every 2 hours · Ended " + (ended.ends?.words ?? ""))
+        #expect(endedRed.lastRun == "Last run \(time) · 1 of 1 not as expected")   // still there to look at
+        #expect(outside.ended[1].status == .ready)                                  // all couldn't check: not Failed
+        // An upcoming one still says, quietly, what it lacks, so it can be put right before it starts.
+        #expect(outside.upcoming[0].status == .off && outside.upcoming[0].problems == ["Needs SHOP_API_KEY in Settings."])
+
+        // No buttons, but an upcoming team job's switch, to turn it on ahead of its start.
+        #expect(Jobs.controls(outside.upcoming[0], canOpenSettings: true) == [.onOff])
+        #expect(Jobs.controls(outside.upcoming[1], canOpenSettings: true) == [])
+        #expect(Jobs.controls(endedRed, canOpenSettings: true) == [] && Jobs.controls(outside.ended[1], canOpenSettings: true) == [])
+
+        // One quiet line for them; the home's box counts only the live ones.
+        #expect(Jobs.outsideLine(upcoming: 2, ended: 2, showing: false) == "Upcoming (2) · Ended (2) · Show")
+        #expect(Jobs.outsideLine(upcoming: 0, ended: 1, showing: false) == "Ended (1) · Show")
+        #expect(Jobs.outsideLine(upcoming: 2, ended: 2, showing: true) == "Hide upcoming and ended jobs")
+        #expect(Jobs.outsideLine(upcoming: 1, ended: 0, showing: true) == "Hide upcoming jobs")
+        #expect(Jobs.outsideLine(upcoming: 0, ended: 0, showing: false) == nil)
+        #expect(Jobs.summary(jobs, now: now) == "2 jobs · 1 needs attention · last run \(time)")
+        #expect(Jobs.summary(outside.upcoming + outside.ended, now: now) == "No jobs running now")
+    }
+
+    @Test func aWatchsPageSaysWhatItShowsInPlaceOfItsItems() {
+        var fashion = team("Fashion", path: "fashion", on: false, items: [WatchListItem(key: "1"), WatchListItem(key: "2")])
+        #expect(WatchListWords.instead(fashion, now: now) == "Turn it on to check its 2 items and hear about them.")
+        let starts = moment(now + 3_600)
+        fashion.starts = starts
+        #expect(WatchListWords.instead(fashion, now: now) == "Turn it on to have it check its 2 items from its start, \(starts.words).")
+        fashion.on = true
+        #expect(WatchListWords.instead(fashion, now: now) == nil)   // its items, not checked yet
+        let ends = moment(now - 60)
+        fashion.starts = nil
+        fashion.ends = ends
+        #expect(WatchListWords.instead(fashion, now: now) == "It ended \(ends.words), before any of its 2 items were checked.")
+        fashion.on = false
+        fashion.items = [item("1", red), WatchListItem(key: "2")]
+        #expect(WatchListWords.instead(fashion, now: now) == nil)   // what its checks found, to look at
+    }
 
     @Test func jobsRoutesHaveTitlesHeightsAndBackLeadsToJobs() throws {
         let id = UUID()

@@ -62,9 +62,15 @@ struct Job: Identifiable, Equatable {
     /// A watch that is paused (yours by you, your team's in its tools), and whether your team's job is on for you.
     var paused = false
     var on = true
+    /// A watch before its start or after its end: out of the way, under Upcoming or Ended, only to be looked at. Every
+    /// other job is live.
+    var phase = WatchListPhase.live
+    /// When an upcoming job starts, or when an ended one ended: the order they're listed in.
+    var phaseAt: Date? = nil
 
     var isTeam: Bool { kind == .teamWatch }
     var isWatch: Bool { kind == .watch || kind == .teamWatch }
+    var isLive: Bool { phase == .live }
     /// Everything its row says is wrong: what needs the person, then its last run's problem.
     var allProblems: [String] { problems + (runProblem.map { [$0] } ?? []) }
     /// "Reads mail · When you run it": what it does and how often, on one line.
@@ -100,6 +106,10 @@ enum Jobs {
     static let watchHint = "To check items on a schedule, ask in chat: “watch these items: …”"
     static let needsReview = "Confirm its address and what to read before it runs."
     static let readsFromScreen = "It reads from the screen, so it needs mouse and keyboard control: turn that on in Settings."
+    /// The Jobs page and the home's box when every job is before its start or past its end.
+    static let noneLive = "No jobs running now"
+    static let outsideIntro = "Before their start and after their end, jobs stay out of the way: they don't run, tell you or keep a card."
+    static let armIntro = "Turn on an upcoming team job to have it run from its start."
 
     /// Your team's jobs, under the list: where they come from.
     static func emptyTeam(linked: Bool) -> String {
@@ -126,7 +136,7 @@ enum Jobs {
 
     // MARK: the list
 
-    /// Every job, in the order the Jobs page lists them.
+    /// Every job, live or not, in the order the Jobs page lists the live ones (`outside` orders the rest).
     static func list(_ input: Input) -> [Job] {
         sorted(input.calendars.map { calendarJob($0, input) } + input.readings.map { readingJob($0, input) }
                + input.watches.map { watchJob($0, input) })
@@ -137,6 +147,29 @@ enum Jobs {
         if let source = input.readings.first(where: { $0.id == id }) { return readingJob(source, input) }
         if let source = input.calendars.first(where: { $0.id == id }) { return calendarJob(source, input) }
         return input.watches.first { $0.id == id }.map { watchJob($0, input) }
+    }
+
+    /// The jobs out of the way, as the Jobs page lists them under its Upcoming and Ended line: those that start
+    /// soonest first, and those that ended most recently first; each then by name.
+    static func outside(_ jobs: [Job]) -> (upcoming: [Job], ended: [Job]) {
+        func by(_ jobs: [Job], soonest: Bool) -> [Job] {
+            jobs.sorted { a, b in
+                if a.phaseAt != b.phaseAt, let x = a.phaseAt, let y = b.phaseAt { return soonest ? x < y : x > y }
+                return a.name.localizedStandardCompare(b.name) == .orderedAscending
+            }
+        }
+        return (by(jobs.filter { $0.phase == .upcoming }, soonest: true), by(jobs.filter { $0.phase == .ended }, soonest: false))
+    }
+
+    /// The line under the live jobs: "Upcoming (1) · Ended (2) · Show", or "Hide upcoming and ended jobs" while they're
+    /// shown; nothing when every job is live.
+    static func outsideLine(upcoming: Int, ended: Int, showing: Bool) -> String? {
+        guard upcoming + ended > 0 else { return nil }
+        if showing {
+            return "Hide " + (upcoming > 0 && ended > 0 ? "upcoming and ended" : upcoming > 0 ? "upcoming" : "ended") + " jobs"
+        }
+        let counts = [(upcoming, "Upcoming"), (ended, "Ended")].filter { $0.0 > 0 }.map { "\($0.1) (\($0.0))" }
+        return (counts + ["Show"]).joined(separator: " · ")
     }
 
     /// Those that need attention first; then yours, then your team's; each by name.
@@ -254,8 +287,13 @@ enum Jobs {
 
     // MARK: watches
 
+    /// A watch as a job. Before its start or after its end, nothing about it asks for the person: no problem status,
+    /// no red, never first in the list; an upcoming one still says what it lacks (quietly, under Upcoming), so it can
+    /// be put right before it starts.
     static func watchJob(_ watch: WatchListWatch, _ input: Input) -> Job {
         let now = input.now
+        let phase = watch.phase(at: now)
+        let live = phase == .live
         let missing = input.setup.missingWatchSecrets(watch)
         let checked = watch.items.filter { $0.status != nil }
         let grey = watch.items.filter { if case .couldNotCheck? = $0.status { return true }; return false }
@@ -264,11 +302,13 @@ enum Jobs {
         let status: Job.Status = input.checking.contains(watch.id) ? .running
             : watch.isTeam && !watch.on ? .off
             : watch.paused ? (watch.isTeam ? .pausedByTeam : .paused)
+            : !live ? .ready
             : !missing.isEmpty ? .needsSettings
             : failed ? .failed : .ready
         var problems: [String] = []
         if let problem = WatchListWords.problem(input.problems[watch.id]) { problems.append(problem) }
         if !missing.isEmpty { problems.append(needs(missing)) }
+        if phase == .ended { problems = [] }
         var runProblem: String?
         if status == .failed, case .couldNotCheck(let reason)? = grey.first?.status { runProblem = "Couldn't check: " + reason }
         let last = ([watch.lastRunAt] + watch.items.map(\.checkedAt)).compactMap { $0 }.max()
@@ -278,10 +318,11 @@ enum Jobs {
         let troubled = !red.isEmpty || !grey.isEmpty
         return Job(id: watch.id, kind: watch.isTeam ? .teamWatch : .watch, name: watch.name, path: watch.isTeam ? watch.path : "",
                    does: items + (watch.isTeam ? " · " + fromTeam : ""), every: WatchListWords.schedule(watch, now: now),
-                   lastRun: lastRun, lastRunAt: last, status: status, resultIsProblem: watch.on && troubled, problems: problems,
+                   lastRun: lastRun, lastRunAt: last, status: status, resultIsProblem: live && watch.on && troubled, problems: problems,
                    runProblem: runProblem, notes: WatchListWords.notes(watch),
-                   needsAttention: (watch.on && input.problems[watch.id] != nil) || (running && (!missing.isEmpty || troubled)),
-                   paused: watch.paused, on: watch.on)
+                   needsAttention: live && ((watch.on && input.problems[watch.id] != nil) || (running && (!missing.isEmpty || troubled))),
+                   paused: watch.paused, on: watch.on, phase: phase,
+                   phaseAt: phase == .upcoming ? watch.starts?.date : phase == .ended ? watch.ends?.date : nil)
     }
 
     /// How a watch's items stand after its runs, in a few words: "2 of 8 not as expected · 1 couldn't check",
@@ -355,14 +396,16 @@ enum Jobs {
         store.savedReadingWorkflows.filter { workflow in !store.readingSources.contains { $0.id == workflow.draft.id } }
     }
 
-    /// The Jobs box on the Morning Files home, in one line: "5 jobs · 2 need attention · last run 6:31 PM". A team job
-    /// that is off isn't one of yours yet; with only those: "3 team jobs you can turn on".
+    /// The Jobs box on the Morning Files home, in one line: "5 jobs · 2 need attention · last run 6:31 PM". Only live
+    /// jobs count: one before its start or past its end isn't mentioned, and with only those, "No jobs running now". A
+    /// team job that is off isn't one of yours yet; with only those: "3 team jobs you can turn on".
     static func summary(_ jobs: [Job], demonstrations: Int = 0, now: Date) -> String {
-        let yours = jobs.filter { $0.status != .off }
+        let live = jobs.filter(\.isLive)
+        let yours = live.filter { $0.status != .off }
         var words: [String] = []
         if yours.isEmpty {
-            let off = jobs.count
-            words.append(off == 0 ? "No jobs yet" : "\(off) team job\(off == 1 ? "" : "s") you can turn on")
+            let off = live.count
+            words.append(off > 0 ? "\(off) team job\(off == 1 ? "" : "s") you can turn on" : jobs.isEmpty ? "No jobs yet" : noneLive)
         } else {
             words.append("\(yours.count) job\(yours.count == 1 ? "" : "s")")
             let running = yours.filter { $0.status == .running }.count
@@ -376,12 +419,15 @@ enum Jobs {
     }
 
     /// The buttons a job has on its row and its page: Run now, or Stop while it reads, or Open Settings when it needs
-    /// something there; and Pause or Resume for a watch of your own, or the on/off switch for your team's job.
+    /// something there; and Pause or Resume for a watch of your own, or the on/off switch for your team's job. Before
+    /// its start or after its end a job is only to be looked at, and has none, except that an upcoming team job keeps
+    /// its switch, so it can be turned on ahead of a start in the night.
     enum Control: Hashable {
         case runNow, stop, openSettings, pause, resume, onOff
     }
 
     static func controls(_ job: Job, canOpenSettings: Bool) -> [Control] {
+        guard job.isLive else { return job.phase == .upcoming && job.isTeam ? [.onOff] : [] }
         var controls: [Control] = []
         if !job.isWatch && job.status == .running { controls.append(.stop) }
         else if job.status == .needsSettings && canOpenSettings { controls.append(.openSettings) }

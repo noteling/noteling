@@ -38,7 +38,7 @@ final class WatchListStore: ObservableObject {
     var trash: (URL) throws -> Void
 
     nonisolated static let watchLimit = 20
-    /// Team watches turned on at once, and team watches listed at all.
+    /// Team watches turned on at once (those that ended take no room), and team watches listed at all.
     nonisolated static let teamOnLimit = 20
     nonisolated static let teamLimit = 200
     /// Items in one watch: a list check takes them all at once; a check that takes one item at a time, 50.
@@ -154,13 +154,14 @@ final class WatchListStore: ObservableObject {
         return watch
     }
 
-    /// Turns a team watch on or off for you. Off, it isn't checked and doesn't notify; what it found stays.
-    func setOn(_ id: UUID, _ on: Bool) throws {
+    /// Turns a team watch on or off for you. Off, it isn't checked and doesn't notify; what it found stays. Only jobs
+    /// that haven't ended at `now` count toward the limit: one that ended takes no room, on or not.
+    func setOn(_ id: UUID, _ on: Bool, at now: Date = Date()) throws {
         guard let index = watches.firstIndex(where: { $0.id == id }) else { throw WatchListError("That watch is gone.") }
         let watch = watches[index]
         guard watch.isTeam else { throw WatchListError("Only your team's watches are turned on and off; pause or resume your own.") }
         guard watch.on != on else { return }
-        if on, watches.filter({ $0.isTeam && $0.on }).count >= Self.teamOnLimit {
+        if on, watches.filter({ $0.isTeam && $0.on && !$0.ended(at: now) }).count >= Self.teamOnLimit {
             throw WatchListError("You can have up to \(Self.teamOnLimit) team watches on. Turn one off first.")
         }
         var next = teamOn

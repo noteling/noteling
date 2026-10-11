@@ -483,6 +483,28 @@ struct WatchListRulesTests {
         #expect(!WatchListSchedule.isDue(watch, at: start + 5_000))
     }
 
+    @Test func aWatchIsUpcomingLiveOrEndedByItsStartAndEndAlone() {
+        var watch = WatchListWatch(name: "Sale", check: "c", items: [WatchListItem(key: "1")])
+        #expect(watch.phase(at: start) == .live)                             // neither: always live
+        watch.starts = WatchListMoment(text: "start", date: start + 3_600)
+        watch.ends = WatchListMoment(text: "end", date: start + 7_200)
+        #expect(watch.phase(at: start) == .upcoming)
+        #expect(watch.phase(at: start + 3_600) == .live)                     // from its start
+        #expect(watch.phase(at: start + 7_200) == .live)                     // to its end
+        #expect(watch.phase(at: start + 7_201) == .ended)
+        watch.on = false                                                     // off or paused, it is where it is
+        watch.paused = true
+        #expect(watch.phase(at: start + 5_000) == .live && watch.phase(at: start + 7_201) == .ended)
+
+        // The next start or end of any watch: when what is live changes with nothing else changing.
+        var other = WatchListWatch(name: "Other", check: "c", items: [])
+        other.ends = WatchListMoment(text: "end", date: start + 600)
+        #expect(WatchListWatch.nextChange([watch, other], after: start) == start + 600)
+        #expect(WatchListWatch.nextChange([watch, other], after: start + 600) == start + 3_600)
+        #expect(WatchListWatch.nextChange([watch, other], after: start + 7_200) == nil)
+        #expect(WatchListWatch.nextChange([WatchListWatch(name: "No window", check: "c", items: [])], after: start) == nil)
+    }
+
     @Test func howOftenIsHeldBetweenFiveMinutesAndFourHours() {
         #expect(WatchListWatch(name: "a", check: "c", items: [], everyMinutes: 1).everyMinutes == 5)
         #expect(WatchListWatch(name: "a", check: "c", items: [], everyMinutes: 1_000).everyMinutes == 240)

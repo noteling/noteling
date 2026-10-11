@@ -86,6 +86,22 @@ struct WatchListTeamTests {
         }
     }
 
+    @Test func aTeamJobThatEndedTakesNoRoomAmongTheTwentyOn() throws {
+        let place = Place()
+        defer { place.remove() }
+        try place.job("job-1", #"{"items": ["1"], "ends": "2026-01-01T00:00:00Z"}"#)
+        for n in 2...21 { try place.job("job-\(n)", #"{"items": ["1"]}"#) }
+        let store = place.store()
+        let before = Date(timeIntervalSince1970: 1_700_000_000), after = Date(timeIntervalSince1970: 1_800_000_000)
+        for n in 1...20 { try store.setOn(WatchListStore.teamID("job-\(n)"), true, at: before) }
+        #expect(throws: WatchListError("You can have up to 20 team watches on. Turn one off first.")) {
+            try store.setOn(WatchListStore.teamID("job-21"), true, at: before)
+        }
+        // Once job 1 has ended, it is still on, and takes no room.
+        try store.setOn(WatchListStore.teamID("job-21"), true, at: after)
+        #expect(store.watches.filter { $0.isTeam && $0.on }.count == 21)
+    }
+
     @Test func whatATeamJobFoundOutlastsAnUpdateOfTheTeamsTools() throws {
         let place = Place()
         defer { place.remove() }

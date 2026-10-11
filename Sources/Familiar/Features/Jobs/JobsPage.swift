@@ -2,10 +2,14 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// Follows every store the jobs come from, whichever are there, so one view redraws when any of them changes.
+/// Follows every store the jobs come from, whichever are there, so one view redraws when any of them changes; and the
+/// clock, so a watch that starts or ends moves between the live jobs and Upcoming or Ended with nothing else changing.
 @MainActor
 final class JobsChanges: ObservableObject {
     private var subscriptions: [AnyCancellable] = []
+    private var windows: Task<Void, Never>?
+    /// The longest it waits before looking again for the next start or end, in case a job's dates changed.
+    static let windowLook: TimeInterval = 300
 
     init(sources: CalendarStore?, runner: CalendarCollectionRunner?, watches: WatchListPanel?, morning: MorningStore) {
         var publishers = [morning.objectWillChange]
@@ -13,7 +17,24 @@ final class JobsChanges: ObservableObject {
         if let runner { publishers.append(runner.objectWillChange) }
         if let watches { publishers += [watches.store.objectWillChange, watches.runner.objectWillChange, watches.notifier.objectWillChange] }
         subscriptions = publishers.map { $0.sink { [weak self] _ in self?.objectWillChange.send() } }
+        if let store = watches?.store { followWindows(store) }
     }
+
+    /// Wakes the views a second after the next watch starts or ends. It holds neither the views nor the store.
+    private func followWindows(_ store: WatchListStore) {
+        windows = Task { [weak self, weak store] in
+            while !Task.isCancelled {
+                let now = Date()
+                let next = store.flatMap { WatchListWatch.nextChange($0.watches, after: now) }
+                let wait = min(next.map { $0.timeIntervalSince(now) + 1 } ?? Self.windowLook, Self.windowLook)
+                try? await Task.sleep(nanoseconds: UInt64(max(1, wait) * 1_000_000_000))
+                guard !Task.isCancelled, let self else { return }
+                if let next, Date() > next { self.objectWillChange.send() }
+            }
+        }
+    }
+
+    deinit { windows?.cancel() }
 }
 
 /// What the job controls do: read a reading job now, check a watch now, stop a read, pause or resume a watch of your
@@ -187,15 +208,17 @@ private struct JobRow: View {
                 JobStatusLabel(status: job.status)
                 JobControls(job: job, actions: actions, openSettings: openSettings, problem: problem)
             }
+            // Under Upcoming, what it lacks is said quietly: it can wait until the job starts.
             ForEach(job.allProblems, id: \.self) { line in
-                Label(line, systemImage: "exclamationmark.triangle").font(.system(size: 12)).foregroundStyle(Pad.redInk)
+                Label(line, systemImage: "exclamationmark.triangle").font(.system(size: 12))
+                    .foregroundStyle(job.isLive ? Pad.redInk : Pad.inkSoft)
                     .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             }
             ForEach(job.notes, id: \.self) { note in
                 Text(note).font(.system(size: 11)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
-        }.padding(11).background(Color.white.opacity(job.on ? 0.5 : 0.35), in: RoundedRectangle(cornerRadius: 7))
+        }.padding(11).background(Color.white.opacity(job.on && job.isLive ? 0.5 : 0.35), in: RoundedRectangle(cornerRadius: 7))
     }
 
     private var summary: some View {
@@ -222,10 +245,11 @@ private struct JobRow: View {
     }
 }
 
-/// Every job in one list: those that read mail, a web page or a calendar, and those that check items, yours and your
-/// team's. Those that need attention come first, then yours, then your team's, each by name; a row opens the job's
-/// page. Around the list: Run all reading jobs, the latest run and Run history; folders that aren't jobs, and why;
-/// saved demonstrations to review; removed jobs to restore; and how to start a new job.
+/// Every live job in one list: those that read mail, a web page or a calendar, and those that check items, yours and
+/// your team's. Those that need attention come first, then yours, then your team's, each by name; a row opens the
+/// job's page. Watches before their start or past their end wait under one line, "Upcoming (1) · Ended (2) · Show",
+/// only to be looked at. Around the list: Run all reading jobs, the latest run and Run history; folders that aren't
+/// jobs, and why; saved demonstrations to review; removed jobs to restore; and how to start a new job.
 struct JobsPage: View {
     let morning: MorningStore
     let sources: CalendarStore?
@@ -240,9 +264,13 @@ struct JobsPage: View {
     @State private var feedback: String?
     /// A saved demonstration being reviewed before it becomes a job.
     @State private var reviewing: LearnedReadingSource?
+    /// The watches before their start or past their end are shown, under the live jobs.
+    @State private var showingOutside = false
 
+    /// `showingOutside` starts with the jobs before their start or past their end shown (a render).
     init(morning: MorningStore, sources: CalendarStore?, runner: CalendarCollectionRunner?, watches: WatchListPanel?,
-         setup: JobsSetup = JobsSetup(), navigation: MorningNavigation, teach: (() -> Void)? = nil, now: @escaping () -> Date = Date.init) {
+         setup: JobsSetup = JobsSetup(), navigation: MorningNavigation, teach: (() -> Void)? = nil, now: @escaping () -> Date = Date.init,
+         showingOutside: Bool = false) {
         self.morning = morning
         self.sources = sources
         self.runner = runner
@@ -252,6 +280,7 @@ struct JobsPage: View {
         self.teach = teach
         self.now = now
         _changes = StateObject(wrappedValue: JobsChanges(sources: sources, runner: runner, watches: watches, morning: morning))
+        _showingOutside = State(initialValue: showingOutside)
     }
 
     private var input: Jobs.Input { Jobs.Input(sources: sources, watches: watches, morning: morning, setup: setup, now: now()) }
@@ -264,7 +293,8 @@ struct JobsPage: View {
     }
 
     var body: some View {
-        let jobs = Jobs.list(input)
+        let all = Jobs.list(input)
+        let jobs = all.filter(\.isLive)
         let unreadable = watches.map { Jobs.unreadable(own: $0.store.unreadable, team: $0.store.teamUnreadable, directory: $0.store.directory) } ?? []
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -274,11 +304,13 @@ struct JobsPage: View {
                     ForEach(unreadable) { unreadableRow($0) }
                     list(jobs)
                     if jobs.isEmpty && unreadable.isEmpty {
-                        Text(Jobs.empty).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true).padding(.top, 4)
+                        Text(all.isEmpty ? Jobs.empty : Jobs.noneLive + ".").font(.system(size: 14))
+                            .foregroundStyle(all.isEmpty ? Pad.ink : Pad.inkSoft).fixedSize(horizontal: false, vertical: true).padding(.top, 4)
                     }
+                    outside(Jobs.outside(all))
                     demonstrations
                     removed
-                    footer(empty: jobs.isEmpty)
+                    footer(empty: all.isEmpty)
                 }
             }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -293,6 +325,31 @@ struct JobsPage: View {
                     .fixedSize(horizontal: false, vertical: true).padding(.top, 6)
             }
             JobRow(job: job, actions: actions, openSettings: setup.openSettings, open: { open(job) }, problem: { problem = $0 })
+        }
+    }
+
+    /// Watches before their start or past their end: one quiet line, and once it's clicked, their rows, which open their
+    /// pages and have no buttons but an upcoming team job's switch.
+    @ViewBuilder private func outside(_ jobs: (upcoming: [Job], ended: [Job])) -> some View {
+        if let line = Jobs.outsideLine(upcoming: jobs.upcoming.count, ended: jobs.ended.count, showing: showingOutside) {
+            Button(line) { showingOutside.toggle() }
+                .buttonStyle(.plain).font(.system(size: 12, weight: .medium)).foregroundStyle(Pad.penInk).padding(.top, 6)
+                .help("Jobs before their start or past their end. They come back here on their own when they start.")
+            if showingOutside {
+                Text(Jobs.outsideIntro + (jobs.upcoming.contains(where: \.isTeam) ? " " + Jobs.armIntro : ""))
+                    .font(.system(size: 11)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
+                group("Upcoming", jobs.upcoming)
+                group("Ended", jobs.ended)
+            }
+        }
+    }
+
+    @ViewBuilder private func group(_ title: String, _ jobs: [Job]) -> some View {
+        if !jobs.isEmpty {
+            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Pad.inkSoft).padding(.top, 4)
+            ForEach(jobs) { job in
+                JobRow(job: job, actions: actions, openSettings: setup.openSettings, open: { open(job) }, problem: { problem = $0 })
+            }
         }
     }
 
