@@ -7,7 +7,7 @@ import Foundation
 /// `jobs/`, which Noteling only reads and runs once you turn them on.
 struct FolderJob: Identifiable, Equatable {
     var id: UUID
-    var source: WatchListSource
+    var source: JobSource
     /// Its folder under `jobs/`, such as `holiday/oct/gm`.
     var path: String
     var name: String
@@ -15,8 +15,8 @@ struct FolderJob: Identifiable, Equatable {
     var about = ""
     /// How often it runs; nil runs it only on Run now.
     var everyMinutes: Int?
-    var starts: WatchListMoment?
-    var ends: WatchListMoment?
+    var starts: JobMoment?
+    var ends: JobMoment?
     /// Secrets its job.py gets from the person's Keychain, by name.
     var requires: [String] = []
     /// Yours always are; your team's only once you turn them on.
@@ -29,8 +29,8 @@ struct FolderJob: Identifiable, Equatable {
     func notStarted(at now: Date) -> Bool { starts.map { now < $0.date } ?? false }
     func ended(at now: Date) -> Bool { ends.map { now > $0.date } ?? false }
 
-    /// Where it stands against its start and end, as a watch does: before and after, it is out of the way.
-    func phase(at now: Date) -> WatchListPhase {
+    /// Where it stands against its start and end: before and after, it is out of the way.
+    func phase(at now: Date) -> JobPhase {
         notStarted(at: now) ? .upcoming : ended(at: now) ? .ended : .live
     }
 
@@ -43,7 +43,7 @@ struct FolderJob: Identifiable, Equatable {
         guard let everyMinutes, running(at: now) else { return false }
         guard let last = state.lastRunAt else { return true }
         if last > now.addingTimeInterval(60) { return true }   // the clock went back: don't wait out the difference
-        return now.timeIntervalSince(last) >= TimeInterval(everyMinutes * 60) - WatchListSchedule.slack
+        return now.timeIntervalSince(last) >= TimeInterval(everyMinutes * 60) - Self.slack
     }
 
     /// The next moment after `now` one of `jobs` starts or ends.
@@ -51,6 +51,8 @@ struct FolderJob: Identifiable, Equatable {
         jobs.flatMap { [$0.starts?.date, $0.ends?.date] }.compactMap { $0 }.filter { $0 > now }.min()
     }
 
+    /// A tick that lands a moment early still counts, so a job never slips a whole tick each round.
+    static let slack: TimeInterval = 5
     static let minimumMinutes = 5
     static let maximumMinutes = 1_440
 }

@@ -19,9 +19,9 @@ final class FolderJobCards {
     private var present: Set<String> = []
     private var listed = false
 
-    static let fileName = "job.json"
-    static let prefix = "job-"
-    static let scriptPrefix = "jobcards-"
+    nonisolated static let fileName = "job.json"
+    nonisolated static let prefix = "job-"
+    nonisolated static let scriptPrefix = "jobcards-"
 
     init(root: URL? = Config.dir.appendingPathComponent("cards/inbox")) { self.root = root }
 
@@ -47,7 +47,7 @@ final class FolderJobCards {
     /// preview's digest as its one part.
     static func card(for job: FolderJob, at now: Date, timeZone: TimeZone = .current) -> [String: Any]? {
         guard hasCard(job, at: now), let success = job.state.lastSuccessAt, let digest = job.state.preview else { return nil }
-        return ["title": job.name + " · " + WatchListCards.time(success, in: timeZone), "body": job.state.said ?? "",
+        return ["title": job.name + " · " + JobWords.clock(success, in: timeZone), "body": job.state.said ?? "",
                 "severity": "normal", "parts": [digest]]
     }
 
@@ -69,7 +69,7 @@ final class FolderJobCards {
             do {
                 try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
                                                         attributes: [.posixPermissions: 0o700])
-                try WatchListFiles.write(text, to: url)
+                try JobFiles.write(text, to: url)
                 written[file] = text
                 present.insert(file)
                 changed = true

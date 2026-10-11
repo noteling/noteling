@@ -5,10 +5,8 @@ import SwiftUI
         case folders, folder(UUID), card(UUID), people, person(UUID), editPerson(UUID?), editCard(UUID?), editFolder(UUID?), sources
         case sourceRuns, sourceRun(runID: UUID, sourceID: UUID?), latestRun, lessons
         case attention(AttentionScreen)
-        /// Every job in one list (`JobsPage`), and a reading job's page; a watch's page is `.watch`.
+        /// Every job in one list (`JobsPage`), and a reading job's page.
         case jobs, sourceJob(UUID)
-        /// Every watch, which is Jobs now, and one watch's page.
-        case watches, watch(UUID)
         /// A job kept as a folder's page.
         case folderJob(UUID)
     }
@@ -114,8 +112,6 @@ struct MorningFilesView: View {
     var attention: AttentionLedger? = nil
     /// An inbox card's question button: asks Noteling about the card in chat.
     var askAboutCard: ((MorningCard, String) -> Void)? = nil
-    /// The watches, with their pages here: among the jobs, one watch's page, and the line on a watch's cards folder.
-    var watches: WatchListPanel? = nil
     /// What a card's Files section does with a file: open it, save a copy, show it in Finder.
     var cardFiles = CardFileActions()
     /// What only the app knows about the jobs: secrets they still need, whether control is on, and Settings.
@@ -253,16 +249,16 @@ struct MorningFilesView: View {
         ]
     }
 
-    /// Jobs has something to show: reading jobs, watches, jobs kept as folders.
-    private var hasJobs: Bool { calendarSources != nil || watches != nil || folderJobs != nil }
+    /// Jobs has something to show: reading jobs, jobs kept as folders.
+    private var hasJobs: Bool { calendarSources != nil || folderJobs != nil }
 
     private var heading: String {
         Self.title(for: navigation.route, folderName: { id in store.folders.first { $0.id == id }?.name }, jobName: jobName)
     }
 
-    /// A job's name: a watch's, or a reading job's.
+    /// A job's name: a job kept as a folder's, or a reading job's.
     private func jobName(_ id: UUID) -> String? {
-        watches?.store.watch(id: id)?.name ?? folderJobs?.store.job(id: id)?.name
+        folderJobs?.store.job(id: id)?.name
             ?? calendarSources?.readingSources.first { $0.id == id }?.name ?? calendarSources?.sources.first { $0.id == id }?.name
     }
 
@@ -282,8 +278,8 @@ struct MorningFilesView: View {
         case .editPerson(let id): return id == nil ? "Someone you work with" : "Edit person"
         case .editCard(let id): return id == nil ? "A new note" : "Edit note"
         case .editFolder(let id): return id == nil ? "A new folder" : "Rename folder"
-        case .jobs, .watches: return "Jobs"
-        case .sourceJob(let id), .watch(let id), .folderJob(let id): return jobName(id) ?? "Job"
+        case .jobs: return "Jobs"
+        case .sourceJob(let id), .folderJob(let id): return jobName(id) ?? "Job"
         }
     }
 
@@ -313,9 +309,9 @@ struct MorningFilesView: View {
                               teaching: teaching)
             } else { empty("Run results are unavailable.") }
         case .lessons: LessonsView(morning: store, attention: attention)
-        case .jobs, .watches:
+        case .jobs:
             if hasJobs {
-                JobsPage(morning: store, sources: calendarSources, runner: calendarRunner, watches: watches, setup: jobs,
+                JobsPage(morning: store, sources: calendarSources, runner: calendarRunner, setup: jobs,
                          navigation: navigation, teach: teachCalendar, folderJobs: folderJobs)
             } else { empty("Jobs are unavailable.") }
         case .sourceJob(let id):
@@ -326,16 +322,11 @@ struct MorningFilesView: View {
                               openHistory: { navigation.open(.sourceRuns, returningTo: .sourceJob(id)) },
                               removed: { navigation.removedJob = $0; navigation.route = .jobs }).id(id)
             } else { empty("Jobs are unavailable.") }
-        case .watch(let id):
-            if let watches {
-                WatchJobPage(store: watches.store, runner: watches.runner, notifier: watches.notifier, morning: store, id: id,
-                             why: watches.why, openCards: openCards, stopped: { navigation.route = .jobs },
-                             openCard: { navigation.open(.card($0), returningTo: .watch(id)) }, setup: jobs).id(id)
-            } else { empty("Jobs are unavailable.") }
         case .folderJob(let id):
             if let folderJobs {
                 FolderJobPage(store: folderJobs.store, runner: folderJobs.runner, morning: store, id: id,
-                              openCard: { navigation.open(.card($0), returningTo: .folderJob(id)) }, files: cardFiles, setup: jobs).id(id)
+                              openCard: { navigation.open(.card($0), returningTo: .folderJob(id)) }, files: cardFiles, setup: jobs,
+                              notifier: folderJobs.notifier).id(id)
             } else { empty("Jobs are unavailable.") }
         case .attention(let screen):
             if let attention {
@@ -370,7 +361,7 @@ struct MorningFilesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 if hasJobs {
-                    JobsEntry(morning: store, sources: calendarSources, runner: calendarRunner, watches: watches, setup: jobs,
+                    JobsEntry(morning: store, sources: calendarSources, runner: calendarRunner, setup: jobs,
                               open: { navigation.route = .jobs }, folderJobs: folderJobs)
                 }
                 if let attention {
@@ -469,13 +460,8 @@ struct MorningFilesView: View {
         let cards = store.cards.filter { $0.folderID == id && $0.displayDisposition == navigation.disposition }
         return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                // A watch's cards: when it last checked, Run now, and its job's page, from which Back comes here.
-                if let watches, let watch = WatchListWords.watch(forFolder: id, in: watches.store.watches) {
-                    WatchCardsFolderLine(store: watches.store, runner: watches.runner, watchID: watch.id,
-                                         openJob: { navigation.open(.watch(watch.id), returningTo: .folder(id)) })
-                }
-                // A job's folder: when it last ran, Run now, and its page.
-                if let folderJobs, let job = folderJobs.store.jobs.first(where: { CardInboxFormat.folderID(FolderJobCards.source(for: $0)) == id }) {
+                // A job's folder: when it last ran, Run now, and its page, from which Back comes here.
+                if let folderJobs, let job = Self.job(forFolder: id, in: folderJobs.store.jobs) {
                     FolderJobFolderLine(store: folderJobs.store, runner: folderJobs.runner, jobID: job.id,
                                         openJob: { navigation.open(.folderJob(job.id), returningTo: .folder(id)) })
                 }
@@ -568,11 +554,16 @@ struct MorningFilesView: View {
             .contextMenu { if !card.isFromInbox { Button("Edit note") { navigation.route = .editCard(card.id) } } }
     }
 
-    /// Why a card from the inbox went away: its watch ended (or hasn't started), so its card was put away; otherwise its
-    /// script no longer reports it.
-    static func goneLine(_ card: MorningCard, gone: Date, watches: [WatchListWatch], now: Date) -> String {
-        if let watch = WatchListWords.watch(forFolder: card.folderID, in: watches),
-           let line = WatchListWords.putAway(watch, gone: gone, now: now) { return line }
+    /// The job kept as a folder whose cards a Morning Files folder holds, if any: its preview card's and the ones its
+    /// job.py wrote share it.
+    static func job(forFolder id: UUID, in jobs: [FolderJob]) -> FolderJob? {
+        jobs.first { CardInboxFormat.folderID(FolderJobCards.source(for: $0)) == id }
+    }
+
+    /// Why a card from the inbox went away: its job ended (or hasn't started, or is off), so its card was put away;
+    /// otherwise its script no longer reports it.
+    static func goneLine(_ card: MorningCard, gone: Date, jobs: [FolderJob], now: Date) -> String {
+        if let job = job(forFolder: card.folderID, in: jobs), let line = FolderJobWords.putAway(job, gone: gone, now: now) { return line }
         return "Its script no longer reports this (\(gone.formatted(date: .abbreviated, time: .shortened)))."
     }
 
@@ -623,7 +614,7 @@ struct MorningFilesView: View {
                             .fixedSize(horizontal: false, vertical: card.isFromInbox)
                     }
                     if let gone = card.inbox?.goneAt {
-                        Label(Self.goneLine(card, gone: gone, watches: watches?.store.watches ?? [], now: Date()), systemImage: "tray")
+                        Label(Self.goneLine(card, gone: gone, jobs: folderJobs?.store.jobs ?? [], now: Date()), systemImage: "tray")
                             .font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
                     }
                     if let context = card.personalContext, !context.isEmpty {
@@ -705,8 +696,8 @@ struct MorningFilesView: View {
         }
     }
 
-    /// An inbox card's buttons: each opens a web page, asks Noteling about the card in chat, or opens a watch's page
-    /// here, and nothing else. A card with a page and no button for it gets Open page.
+    /// An inbox card's buttons: each opens a web page or asks Noteling about the card in chat, and nothing else; a job's
+    /// card also opens its job's page. A card with a page and no button for it gets Open page.
     @ViewBuilder private func inboxButtons(_ card: MorningCard) -> some View {
         if let job = folderJob(of: card) { openJobButton(job, card: card, primary: true) }
         ForEach(Array(Self.inboxActions(card).enumerated()), id: \.offset) { index, action in
@@ -715,9 +706,6 @@ struct MorningFilesView: View {
             } else if let ask = action.ask {
                 Button(action.label) { askAboutCard?(card, ask) }.buttonStyle(MorningActionButton(primary: index == 0)).help(ask)
                     .disabled(askAboutCard == nil)
-            } else if let id = Self.openableWatch(action, in: watches?.store.watches ?? []) {
-                Button(action.label) { navigation.route = .watch(id) }.buttonStyle(MorningActionButton(primary: index == 0))
-                    .help("Open this watch’s items")
             }
         }
     }
@@ -733,12 +721,6 @@ struct MorningFilesView: View {
     private func folderJob(of card: MorningCard) -> FolderJob? {
         guard let key = card.inbox?.key, key.hasPrefix(FolderJobCards.prefix) else { return nil }
         return folderJobs?.store.jobs.first { FolderJobCards.key(for: $0) == key }
-    }
-
-    /// The watch an Open job button opens: only a watch that is there. It never runs anything.
-    static func openableWatch(_ action: CardInboxAction, in watches: [WatchListWatch]) -> UUID? {
-        guard let id = action.watch.flatMap(UUID.init(uuidString:)), watches.contains(where: { $0.id == id }) else { return nil }
-        return id
     }
 
     /// What an inbox card's buttons are: its file's, and Open page for its page when none opens it.
@@ -876,11 +858,6 @@ struct MorningFilesView: View {
     private func openRun(_ runID: UUID, _ sourceID: UUID?) {
         navigation.route = .sourceRun(runID: runID, sourceID: sourceID)
     }
-    /// A watch's cards, in the pile that has them.
-    private func openCards(_ link: WatchCardsLink) {
-        navigation.disposition = link.disposition
-        navigation.route = .folder(link.folderID)
-    }
     /// A run's Open job: the job's page, and Back comes back to the run.
     private func manageSource(_ id: UUID) {
         navigation.open(.sourceJob(id), returningTo: navigation.route)
@@ -909,7 +886,7 @@ struct MorningFilesView: View {
                 navigation.route = .folder(card.folderID)
             } else { navigation.route = .folders }
         case .person, .editPerson: navigation.route = .people
-        case .watch, .sourceJob, .folderJob, .sources, .sourceRuns, .latestRun: navigation.route = hasJobs ? .jobs : .folders
+        case .sourceJob, .folderJob, .sources, .sourceRuns, .latestRun: navigation.route = hasJobs ? .jobs : .folders
         default: navigation.route = .folders
         }
     }

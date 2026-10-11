@@ -9,7 +9,7 @@ network and access. Noteling never needs a server of yours. Everything here is a
 ```
 <repo>/
   noteling.json                 how Noteling reaches Claude (optional)
-  shop/                         a tool pack: any top-level folder except `watches` and `jobs`
+  shop/                         a tool pack: any top-level folder except `jobs` (and `watches`, which is no longer read)
     SKILL.md                    what the pack is for, when it's active, how to answer
     docs/*.md                   knowledge the model reads (pasted into requests up to a size limit)
     scripts/*.py                tools: each file with a top-level run() is one tool
@@ -18,10 +18,6 @@ network and access. Noteling never needs a server of yours. Everything here is a
       job.json                  what it is and when it runs: nothing else
       job.py                    run(): the one entry point
       input/                    any files it reads
-  watches/                      watch jobs (reserved name), nested as you like
-    holiday/oct/fashion/
-      watch.json
-      items.psv
 ```
 
 Give packs names of their own: a pack in a person's own tools folder with the same folder name wins over yours, and
@@ -55,7 +51,6 @@ match:
   titles: [Shop Admin]                  # or a window title
 requires: [SHOP_API_KEY]                # secrets Settings asks each person for
 brief: brief                            # run as soon as a matching page comes to the front
-watch: watch_check                      # the check watch jobs use by default
 pen: [Why this price?, What should I do?]   # up to 3 questions the pen offers as taps on these pages
 ---
 Free text for the model: who uses this page, how the page is put together, and exactly how to answer.
@@ -125,73 +120,12 @@ Say what is wrong and what to do in the person's terms, with the step from your 
 ("Nothing to fix") and what is coming up. A question someone then asks about the pick is one quick turn: the brief is in
 it, so the pack's scripts aren't offered again.
 
-## Watch checks
-
-A watch job's check takes one item, `run(item: str, …)`, or the whole list at once, `run(items: list, …)`; Noteling calls
-the list form once per run. Extra arguments in `watch.json`'s `args` are passed only if `run()` declares them.
-
-Each item's result (the list form returns a list in the same order, or an object keyed by item):
-
-```json
-{"title": "Blue kettle", "url": "https://shop.example.com/item/123",
- "state": {"seller": "Acme", "price": 19.99, "strikethrough": 24.99, "badges": ["Deal"], "in_stock": true, "problems": 0},
- "why": ["The page shows $19.99, but the price of record is $17.99 (set 10:12 AM)."],
- "expect": {"problems": 0, "in_stock": true},
- "facts": {"anything": "else the explanation should see"}}
-```
-
-- `state`: flat fields only (text, number, yes/no, none, or a list of texts), the same fields every time (none as `null`).
-  These are what jobs compare and what the CSV columns are.
-- `why`: your own short reasons, shown as written on alerts, cards and CSVs. Never make one up: leave it out instead.
-- `expect`: what counts as right unless the job says otherwise. With it, a job compares only what's stated, so planned
-  changes (an event starting) don't turn everything red. Comparing the page with the systems of record and reporting
-  `problems` as a count is the most useful default.
-- `{"error": "plain reason"}` (or an exception) means the item couldn't be checked; it is never shown as fine.
-- Limits: 60 seconds per item, or 60 seconds plus 1 per item for a list run (at most 10 minutes); 50 items per job for
-  per-item checks, 200 for list checks. A run over far more items belongs on a server that writes only the exceptions,
-  as cards (below).
-
-## Watch jobs
-
-`watches/<path>/watch.json`:
-
-```json
-{"name": "Holiday Oct · Fashion", "check": "shop__watch_check", "every_minutes": 60,
- "starts": "2026-10-05T00:00:00-04:00", "ends": "2026-10-08T23:59:00-04:00",
- "files": ["problems"], "args": {"zipcode": "10001"}}
-```
-
-- `check` is `<pack folder>__<script>`; leave it out to use the pack's `watch:` script. A `check.py` in the job's folder
-  replaces it for that job only (it gets the secrets listed under `requires` in `watch.json`).
-- `every_minutes` 5–240; `starts`/`ends` in ISO 8601; `cards`: `"all"` keeps the job's card even when everything is fine,
-  `false` gives none; `files`: `["problems"]` (default), `["problems", "all"]` or `[]` for the CSV files on the card.
-- Each person turns on the jobs that are theirs, in Jobs or in chat; only those run on their Mac.
-- `starts` and `ends` are when the job is worth anyone's attention. Before its start and after its end it stays out of
-  the way: it isn't checked, sends no notifications, has no card, and isn't counted on the Morning Files home. In Jobs
-  it waits under one quiet line, **Upcoming (1) · Ended (2) · Show**, where it can still be opened and looked at, and an
-  upcoming job's switch can be turned on ahead of its start. When a job ends, its card is put away (resolved, saying the
-  job ended); push a later `ends` and it comes back, open, once the update reaches each Mac. Give every job for an event
-  an `ends`, so it leaves people's desks when the event does.
-
-`items.psv` beside it (or `.csv`, `.tsv`): a header row, then one item per row.
-
-```
-item|price|strikethrough|badge|seller
-123|19.99|24.99|Deal|Acme
-456|8.50|none||
-```
-
-The first column is the item (an id or a page address). Other headers name `state` fields (case, spaces, `-` and `_`
-don't matter, and `badge` finds `badges`). An empty cell means don't care, `none` means should have none, numbers may
-carry `$` and thousands separators, `yes`/`no` are yes and no, and `a; b` is a list. One text against a list means "the
-list includes it". A row's values are that item's own expectations, and only what the table states counts.
-
 ## Jobs
 
 A job is a folder in `jobs/` holding a `job.json` and a `job.py`, at any depth. A job's folder is the job's: nothing
 inside it is looked at for another job. Noteling doesn't know what a job is for. It runs the entry point on schedule,
-shows the files in the output's `preview/` as they are, and offers every output file to open or save. Watches still
-work; jobs are expected to replace them.
+shows the files in the output's `preview/` as they are, and offers every output file to open or save. Jobs replace
+watches, which no longer run (see Moving a watch to a job, below).
 
 `job.json` is only what the job is and when it runs. Everything is optional:
 
@@ -202,8 +136,12 @@ work; jobs are expected to replace them.
 
 - `name` defaults to the folder's path; `about` is shown on its row and its page.
 - `every_minutes` 5–1440; without it the job runs only when someone presses **Run now**.
-- `starts` and `ends` work as for watches (below): before and after, the job doesn't run, has no card, and waits under
-  **Upcoming** or **Ended** in Jobs.
+- `starts` and `ends` (ISO 8601) are when the job is worth anyone's attention. Before its start and after its end it
+  stays out of the way: it doesn't run, sends no notifications, has no card (nor do the cards its `job.py` wrote), and
+  isn't counted on the Morning Files home. In Jobs it waits under one quiet line, **Upcoming (1) · Ended (2) · Show**,
+  where it can still be opened and looked at, and an upcoming job's switch can be turned on ahead of its start. When a
+  job ends, its cards are put away (resolved, saying the job ended); push a later `ends` and they come back, open, once
+  the update reaches each Mac. Give every job for an event an `ends`, so it leaves people's desks when the event does.
 - `requires`: secrets `job.py` gets as environment variables; Settings asks each person for them.
 - Its data never goes here: put it in `input/` as files, and let `job.py` read them.
 
@@ -256,9 +194,25 @@ follow-ups that deserve their own card; they share the job's folder in Morning F
 same thing when nothing changed. Keep times such as "checked at", run ids and anything else that moves by itself out of
 `preview/` (put them in the files beside it instead), or every run will notify.
 
-Each person turns on the team's jobs that are theirs, in Jobs, as many as they like; only those run on their Mac. Their
-own jobs are folders in `~/.noteling/jobs/` in the same shape, on while they're there, which is the way to try a job
-before pushing it.
+Each person turns on the team's jobs that are theirs, in Jobs or in chat, as many as they like; only those run on their
+Mac. The chat can list jobs, run one now, turn one on or off and read what one found, but never makes or changes one:
+jobs are yours to write. Their own jobs are folders in `~/.noteling/jobs/` in the same shape, on while they're there,
+which is the way to try a job before pushing it.
+
+### Moving a watch to a job
+
+Watches (`watches/<path>/watch.json` with `items.psv`) no longer run, and Jobs says so while your repository still has a
+`watches/` folder. Each one becomes a folder in `jobs/`:
+
+- `watch.json`'s `name`, `every_minutes`, `starts`, `ends` and `requires` go into `job.json` as they are. Its `check`,
+  `args`, `expect`, `fields`, `cards` and `files` don't: what they did is now `job.py`'s to do.
+- `items.psv` goes into `input/`, as it is or as `items.csv`.
+- `job.py` reads the items, calls the check you already have (import it from the pack's scripts folder on `sys.path`),
+  compares what it found with what each row expects, writes the rows that need a look into `preview/problems.csv` and
+  every row into `all.csv`, and returns a line such as "2 of 8 items need a look".
+
+A job's card and notification are one per job, when its preview changes: there are no per-item notifications. A job
+that wants one card per item writes them itself into `$NOTELING_CARDS_DIR`.
 
 ## Cards from your scripts
 
@@ -293,6 +247,6 @@ use a fine-grained, read-only token for this one repository, with an expiry. Nev
 - Copy a job's folder into `~/.noteling/jobs/`: it shows in Jobs at once, on, and **Run now** runs it with your tools
   and the team's on its path.
 - Run a script the way Noteling does:
-  `echo '{"item": "123"}' | NOTELING_CONTEXT='{"url": "https://shop.example.com/item/123"}' python3 /Applications/Noteling.app/Contents/Resources/py/run_tool.py shop/scripts/watch_check.py`
+  `echo '{"item_id": "123"}' | NOTELING_CONTEXT='{"url": "https://shop.example.com/item/123"}' python3 /Applications/Noteling.app/Contents/Resources/py/run_tool.py shop/scripts/offer.py`
 - Ask a pen question without the UI: `/Applications/Noteling.app/Contents/MacOS/Noteling --ask "" "<page address>" --pen "Deal"`
   runs the page's brief and prints the answer.

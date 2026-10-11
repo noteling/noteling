@@ -55,7 +55,6 @@ final class ToolPack {
     var irreversible: [String] = [] // control labels the background lane must confirm before pressing (SKILL.md `irreversible:`)
     var sources: [String] = []      // scripts a saved job can read through (SKILL.md `sources:`, script names without .py)
     var brief: String?              // script run ahead for the page in front, so the pen answers from it (SKILL.md `brief:`)
-    var watch: String?              // script that checks one item for a watch list (SKILL.md `watch:`)
     var pen: [String] = []          // questions the pen offers as taps on this pack's pages (SKILL.md `pen:`), up to 3
     var body = ""
     var docs: [DocFile] = []
@@ -121,7 +120,6 @@ final class ToolRegistry {
                 pack.irreversible = Self.list(fm["irreversible"])
                 pack.sources = Self.list(fm["sources"])
                 pack.brief = Self.list(fm["brief"]).first
-                pack.watch = Self.list(fm["watch"]).first
                 pack.pen = Self.list(fm["pen"]).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                 if let m = fm["match"] as? [String: Any] {
                     pack.match.urls = Self.list(m["urls"])
@@ -142,9 +140,10 @@ final class ToolRegistry {
         Log.info("tools: \(packs.count) pack(s), \(scriptCount) script(s), \(noteCount) note(s) in \(place); runtime: \(runner.summary)")
     }
 
-    /// A tools folder's `watches/` holds watch jobs (`WatchListStore`), not a pack: the name is reserved.
+    /// A tools folder's `watches/` held watches, which no longer run: the name stays reserved, so a folder of them left
+    /// behind isn't taken for a pack (Jobs says it's there).
     nonisolated static let watchesFolder = "watches"
-    /// And its `jobs/` holds jobs kept as folders (`FolderJobStore`).
+    /// Its `jobs/` holds jobs kept as folders (`FolderJobStore`).
     nonisolated static let jobsFolder = "jobs"
 
     /// The packs a tools folder holds: its folders (or links to one), not hidden ones, `watches/` or `jobs/`, by name.
@@ -292,7 +291,7 @@ final class ToolRegistry {
         }
     }
 
-    /// A pack's named script (`brief:` or `watch:` in its SKILL.md), when the pack has it.
+    /// A pack's named script (`brief:` in its SKILL.md), when the pack has it.
     func script(_ name: String?, in pack: ToolPack) -> ScriptTool? {
         guard let name, !name.isEmpty else { return nil }
         let stem = (name as NSString).deletingPathExtension

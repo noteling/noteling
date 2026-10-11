@@ -60,7 +60,7 @@ extension MorningRender {
         scan.folderName = { source in store.jobs.first { FolderJobCards.source(for: $0) == source }?.name }
         scan.scan()
 
-        let panel = FolderJobsPanel(store: store, runner: runner)
+        let panel = FolderJobsPanel(store: store, runner: runner, notifier: JobNotifier())
         let navigation = MorningNavigation()
         func save(_ name: String, _ route: MorningNavigation.Route, height: CGFloat? = nil) throws {
             navigation.route = route
@@ -76,7 +76,7 @@ extension MorningRender {
         let card = CardInboxFormat.cardID(FolderJobCards.key(for: gm))
         if let folder = morning.cards.first(where: { $0.id == card })?.folderID { try save("folder-job-folder.png", .folder(folder)) }
         try save("folder-job-card.png", .card(card), height: 1_000)
-        try image(JobsPage(morning: morning, sources: nil, runner: nil, watches: nil, navigation: navigation, showingOutside: true,
+        try image(JobsPage(morning: morning, sources: nil, runner: nil, navigation: navigation, showingOutside: true,
                            folderJobs: panel)
             .foregroundStyle(Pad.ink).background(Pad.fieldPaper), size: NSSize(width: 650, height: 760),
             to: directory.appendingPathComponent("folder-jobs-outside-shown.png"))

@@ -85,11 +85,15 @@ struct NotelingSetupTests {
     @Test func teamJobsAreCountedInTheLinkedCopy() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("setup-jobs-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
-        for path in ["watches/holiday/oct/fashion", "watches/holiday/oct/gm", "watches/notes"] {
+        for path in ["jobs/holiday/oct/fashion", "jobs/holiday/oct/gm", "jobs/notes", "watches/holiday/oct/shoes"] {
             try FileManager.default.createDirectory(at: root.appendingPathComponent(path), withIntermediateDirectories: true)
         }
-        try "{}".write(to: root.appendingPathComponent("watches/holiday/oct/fashion/watch.json"), atomically: true, encoding: .utf8)
-        try "{}".write(to: root.appendingPathComponent("watches/holiday/oct/gm/watch.json"), atomically: true, encoding: .utf8)
+        for job in ["jobs/holiday/oct/fashion", "jobs/holiday/oct/gm"] {
+            try "{}".write(to: root.appendingPathComponent(job + "/job.json"), atomically: true, encoding: .utf8)
+            try "def run():\n    return None\n".write(to: root.appendingPathComponent(job + "/job.py"), atomically: true, encoding: .utf8)
+        }
+        // Watches no longer run, so one left in watches/ isn't a job.
+        try "{}".write(to: root.appendingPathComponent("watches/holiday/oct/shoes/watch.json"), atomically: true, encoding: .utf8)
         #expect(NotelingSetup.teamJobCount(in: root) == 2)
         #expect(NotelingSetup.teamJobCount(in: nil) == 0)
     }

@@ -31,7 +31,7 @@ import QuartzCore
     /// Only the little folder is shown at launch. Opening a file is always an explicit action.
     init(store: MorningStore, hideFromScreenShare: Bool, calendarSources: CalendarStore? = nil,
          calendarRunner: CalendarCollectionRunner? = nil, cardGeneration: CardGenerationService? = nil,
-         attention: AttentionLedger? = nil, watches: WatchListPanel? = nil, jobs: JobsSetup = JobsSetup(), showLauncher: Bool = true,
+         attention: AttentionLedger? = nil, jobs: JobsSetup = JobsSetup(), showLauncher: Bool = true,
          folderJobs: FolderJobsPanel? = nil) {
         self.store = store
         launcherShown = showLauncher
@@ -56,7 +56,7 @@ import QuartzCore
             }, calendarSources: calendarSources, calendarRunner: calendarRunner,
             teachCalendar: { [weak self] in self?.onTeachCalendar?() }, cardGeneration: cardGeneration,
             discussCard: { [weak self] card in self?.onDiscussCard?(card) }, attention: attention,
-            askAboutCard: { [weak self] card, question in self?.onAskAboutCard?(card, question) }, watches: watches, jobs: jobs,
+            askAboutCard: { [weak self] card, question in self?.onAskAboutCard?(card, question) }, jobs: jobs,
             folderJobs: folderJobs
         ))
         routeObservation = navigation.$route.combineLatest(store.$workspace)
@@ -86,7 +86,7 @@ import QuartzCore
     }
 
     /// Jobs, every job in one list: from the menu bar's Jobs… (not part of the attention test), the chat's Open Jobs
-    /// tab (`trigger` .chat), or a notification whose watch is gone.
+    /// tab (`trigger` .chat), or a notification whose job is gone.
     func showJobs(trigger: AttentionOpenTrigger? = nil) {
         navigation.route = .jobs
         openContents(trigger)
@@ -101,12 +101,6 @@ import QuartzCore
     func showRun(id: UUID, sourceID: UUID? = nil, trigger: AttentionOpenTrigger = .run) {
         navigation.route = .sourceRun(runID: id, sourceID: sourceID)
         openContents(trigger)
-    }
-
-    /// One watch's page, such as for a notification about an item that is back to as expected.
-    func showWatch(id: UUID) {
-        navigation.route = .watch(id)
-        openContents(nil)
     }
 
     /// A job kept as a folder's page.
@@ -258,7 +252,7 @@ import QuartzCore
         case .card: return 470   // three parts: what it is, what it means for you, what you can do
         case .editCard, .editPerson, .sources, .sourceRuns, .sourceRun, .latestRun, .lessons: return 680
         case .attention: return 680   // the rest and the week
-        case .jobs, .watches, .sourceJob, .watch, .folderJob: return 680   // a row per job; a job's page with its results or all its items
+        case .jobs, .sourceJob, .folderJob: return 680   // a row per job; a job's page with its results
         }
     }
 
@@ -266,7 +260,7 @@ import QuartzCore
     var route: MorningNavigation.Route { navigation.route }
 
     /// One width for every screen, the jobs' too, so moving between them never shifts the panel sideways. It fits a
-    /// watch's item row: its dot, what it shows and what the check said, and Why? and Open page.
+    /// file's row on a job's page: its name and size, and Open, Save as… and Show in Finder.
     static func preferredWidth(for route: MorningNavigation.Route) -> CGFloat { 650 }
 
     /// The flight is a receipt: callers reach this only after the local save has succeeded.

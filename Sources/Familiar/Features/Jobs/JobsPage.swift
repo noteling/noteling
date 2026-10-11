@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 /// Follows every store the jobs come from, whichever are there, so one view redraws when any of them changes; and the
-/// clock, so a watch that starts or ends moves between the live jobs and Upcoming or Ended with nothing else changing.
+/// clock, so a job that starts or ends moves between the live jobs and Upcoming or Ended with nothing else changing.
 @MainActor
 final class JobsChanges: ObservableObject {
     private var subscriptions: [AnyCancellable] = []
@@ -11,24 +11,24 @@ final class JobsChanges: ObservableObject {
     /// The longest it waits before looking again for the next start or end, in case a job's dates changed.
     static let windowLook: TimeInterval = 300
 
-    init(sources: CalendarStore?, runner: CalendarCollectionRunner?, watches: WatchListPanel?, morning: MorningStore,
-         folderJobs: FolderJobsPanel? = nil) {
+    init(sources: CalendarStore?, runner: CalendarCollectionRunner?, morning: MorningStore, folderJobs: FolderJobsPanel? = nil) {
         var publishers = [morning.objectWillChange]
         if let sources { publishers += [sources.objectWillChange, sources.runStore.objectWillChange] }
         if let runner { publishers.append(runner.objectWillChange) }
-        if let watches { publishers += [watches.store.objectWillChange, watches.runner.objectWillChange, watches.notifier.objectWillChange] }
-        if let folderJobs { publishers += [folderJobs.store.objectWillChange, folderJobs.runner.objectWillChange] }
+        if let folderJobs {
+            publishers += [folderJobs.store.objectWillChange, folderJobs.runner.objectWillChange]
+            if let notifier = folderJobs.notifier { publishers.append(notifier.objectWillChange) }
+        }
         subscriptions = publishers.map { $0.sink { [weak self] _ in self?.objectWillChange.send() } }
-        if watches != nil || folderJobs != nil { followWindows(watches?.store, folderJobs?.store) }
+        if let folderJobs { followWindows(folderJobs.store) }
     }
 
     /// Wakes the views a second after the next job starts or ends. It holds neither the views nor the stores.
-    private func followWindows(_ store: WatchListStore?, _ jobs: FolderJobStore?) {
-        windows = Task { [weak self, weak store, weak jobs] in
+    private func followWindows(_ jobs: FolderJobStore) {
+        windows = Task { [weak self, weak jobs] in
             while !Task.isCancelled {
                 let now = Date()
-                let next = [store.flatMap { WatchListWatch.nextChange($0.watches, after: now) },
-                            jobs.flatMap { FolderJob.nextChange($0.jobs, after: now) }].compactMap { $0 }.min()
+                let next = jobs.flatMap { FolderJob.nextChange($0.jobs, after: now) }
                 let wait = min(next.map { $0.timeIntervalSince(now) + 1 } ?? Self.windowLook, Self.windowLook)
                 try? await Task.sleep(nanoseconds: UInt64(max(1, wait) * 1_000_000_000))
                 guard !Task.isCancelled, let self else { return }
@@ -40,45 +40,32 @@ final class JobsChanges: ObservableObject {
     deinit { windows?.cancel() }
 }
 
-/// What the job controls do: read a reading job now, check a watch now, stop a read, pause or resume a watch of your
-/// own, and turn your team's job on or off. Each says in plain words why it couldn't.
+/// What the job controls do: run a job now, stop a read, and turn your team's job on or off. Each says in plain words
+/// why it couldn't.
 @MainActor
 struct JobActions {
     var sources: CalendarStore?
     var runner: CalendarCollectionRunner?
-    var watches: WatchListPanel?
     var now: () -> Date = Date.init
     var folderJobs: FolderJobsPanel? = nil
 
-    func watch(_ id: UUID) -> WatchListWatch? { watches?.store.watch(id: id) }
-
-    private var watchActions: WatchListActions? {
-        watches.map { WatchListActions(store: $0.store, runner: $0.runner, notifier: $0.notifier) }
-    }
-
-    /// Whether Run now can start it: a reading job while nothing else reads and it can run as saved; a watch when
-    /// Check now could (a watch of your own between its start and end, your team's job while it's on and running).
+    /// Whether Run now can start it: a reading job while nothing else reads and it can run as saved; a job kept as a
+    /// folder while it's on, between its start and end, and not already running or waiting its turn.
     func canRun(_ job: Job) -> Bool {
         if job.isFolderJob {
             guard let folderJobs, let folderJob = folderJobs.store.job(id: job.id) else { return false }
             return !folderJobs.runner.isBusy(job.id) && folderJob.running(at: now())
         }
-        if job.isWatch {
-            guard let watches, let watch = watch(job.id) else { return false }
-            return WatchListWords.canCheckNow(watch, checking: watches.runner.checking.contains(job.id), now: now())
-        }
         guard let runner, !runner.isRunning else { return false }
         return job.status != .needsReview && job.status != .cantRunYet
     }
 
-    /// Run now. A reading job reads as Read source did, a calendar today from 9 AM to 5 PM as Run all does; a watch is
-    /// checked now, as Check now did. Nil once it started; otherwise why not.
+    /// Run now. A reading job reads as Read source did, a calendar today from 9 AM to 5 PM as Run all does; a job kept
+    /// as a folder runs its job.py. Nil once it started; otherwise why not.
     func runNow(_ job: Job) -> String? {
-        if job.isFolderJob { return folderJobs?.runner.run(job.id) ?? "This job is no longer here." }
-        if job.isWatch {
-            guard let watch = watch(job.id), let watchActions else { return "This job is no longer here." }
-            watchActions.checkNow(watch)
-            return nil
+        if job.isFolderJob {
+            guard let folderJobs else { return "This job is no longer here." }
+            return folderJobs.runner.run(job.id)
         }
         guard let sources, let runner else { return "Reading jobs are unavailable." }
         guard !runner.isRunning else { return "Another job is reading now. Run this one when it ends." }
@@ -96,18 +83,13 @@ struct JobActions {
 
     func stop() { _ = runner?.stopActive() }
 
-    func setPaused(_ job: Job, _ paused: Bool) -> String? {
-        guard let watch = watch(job.id), let watchActions else { return "This job is no longer here." }
-        return watchActions.setPaused(watch, paused)
-    }
-
     func turn(_ job: Job, on: Bool) -> String? {
-        if job.isFolderJob {
-            guard let folderJobs else { return "This job is no longer here." }
-            do { try folderJobs.runner.turn(job.id, on: on); return nil } catch { return error.localizedDescription }
-        }
-        guard let watch = watch(job.id), let watchActions else { return "This job is no longer here." }
-        return watchActions.turn(watch, on: on)
+        guard job.isFolderJob, let folderJobs else { return "This job is no longer here." }
+        do {
+            try folderJobs.runner.turn(job.id, on: on)
+            if on { folderJobs.notifier?.requestPermission() }
+            return nil
+        } catch { return error.localizedDescription }
     }
 }
 
@@ -135,9 +117,6 @@ struct JobControls: View {
             Button(job.status == .running ? "Running…" : "Run now") { problem(actions.runNow(job)) }
                 .buttonStyle(MorningActionButton()).disabled(!actions.canRun(job))
                 .accessibilityLabel("Run \(job.name) now")
-        case .pause, .resume:
-            Button(control == .pause ? "Pause" : "Resume") { problem(actions.setPaused(job, control == .pause)) }
-                .buttonStyle(MorningActionButton())
         case .onOff:
             Toggle("On", isOn: Binding(get: { job.on }, set: { problem(actions.turn(job, on: $0)) }))
                 .toggleStyle(.switch).controlSize(.small).labelsHidden()
@@ -159,7 +138,7 @@ struct JobStatusLabel: View {
     }
 }
 
-/// A job's card, one tap away: a watch's card, or a reading job's cards, a menu when there are several.
+/// A job's card, one tap away: a job kept as a folder's card, or a reading job's cards, a menu when there are several.
 struct JobCardLink: View {
     let cards: [MorningCard]
     let open: (UUID) -> Void
@@ -205,7 +184,7 @@ struct JobHeader: View {
 }
 
 /// One job in the list: what it is, what it does and how often, its last run and how it stands, which opens its page;
-/// its buttons; and what's wrong, or to know, about it.
+/// its buttons; and what's wrong with it.
 private struct JobRow: View {
     let job: Job
     let actions: JobActions
@@ -226,10 +205,6 @@ private struct JobRow: View {
                 Label(line, systemImage: "exclamationmark.triangle").font(.system(size: 12))
                     .foregroundStyle(job.isLive ? Pad.redInk : Pad.inkSoft)
                     .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-            }
-            ForEach(job.notes, id: \.self) { note in
-                Text(note).font(.system(size: 11)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
             }
         }.padding(11).background(Color.white.opacity(job.on && job.isLive ? 0.5 : 0.35), in: RoundedRectangle(cornerRadius: 7))
     }
@@ -253,22 +228,20 @@ private struct JobRow: View {
         case .mail: return "envelope"
         case .web: return "globe"
         case .calendar: return "calendar"
-        case .watch, .teamWatch: return "eye"
         case .job, .teamJob: return "folder"
         }
     }
 }
 
-/// Every live job in one list: those that read mail, a web page or a calendar, and those that check items, yours and
+/// Every live job in one list: those that read mail, a web page or a calendar, and those kept as folders, yours and
 /// your team's. Those that need attention come first, then yours, then your team's, each by name; a row opens the
-/// job's page. Watches before their start or past their end wait under one line, "Upcoming (1) · Ended (2) · Show",
+/// job's page. Jobs before their start or past their end wait under one line, "Upcoming (1) · Ended (2) · Show",
 /// only to be looked at. Around the list: Run all reading jobs, the latest run and Run history; folders that aren't
 /// jobs, and why; saved demonstrations to review; removed jobs to restore; and how to start a new job.
 struct JobsPage: View {
     let morning: MorningStore
     let sources: CalendarStore?
     let runner: CalendarCollectionRunner?
-    let watches: WatchListPanel?
     var setup = JobsSetup()
     @ObservedObject var navigation: MorningNavigation
     var teach: (() -> Void)? = nil
@@ -279,43 +252,42 @@ struct JobsPage: View {
     @State private var feedback: String?
     /// A saved demonstration being reviewed before it becomes a job.
     @State private var reviewing: LearnedReadingSource?
-    /// The watches before their start or past their end are shown, under the live jobs.
+    /// The jobs before their start or past their end are shown, under the live jobs.
     @State private var showingOutside = false
 
     /// `showingOutside` starts with the jobs before their start or past their end shown (a render).
-    init(morning: MorningStore, sources: CalendarStore?, runner: CalendarCollectionRunner?, watches: WatchListPanel?,
+    init(morning: MorningStore, sources: CalendarStore?, runner: CalendarCollectionRunner?,
          setup: JobsSetup = JobsSetup(), navigation: MorningNavigation, teach: (() -> Void)? = nil, now: @escaping () -> Date = Date.init,
          showingOutside: Bool = false, folderJobs: FolderJobsPanel? = nil) {
         self.morning = morning
         self.sources = sources
         self.runner = runner
-        self.watches = watches
         self.setup = setup
         self.navigation = navigation
         self.teach = teach
         self.now = now
         self.folderJobs = folderJobs
-        _changes = StateObject(wrappedValue: JobsChanges(sources: sources, runner: runner, watches: watches, morning: morning, folderJobs: folderJobs))
+        _changes = StateObject(wrappedValue: JobsChanges(sources: sources, runner: runner, morning: morning, folderJobs: folderJobs))
         _showingOutside = State(initialValue: showingOutside)
     }
 
     private var input: Jobs.Input {
-        Jobs.Input(sources: sources, watches: watches, morning: morning, setup: setup, now: now(), folderJobs: folderJobs)
+        Jobs.Input(sources: sources, morning: morning, setup: setup, now: now(), folderJobs: folderJobs)
     }
-    private var actions: JobActions { JobActions(sources: sources, runner: runner, watches: watches, now: now, folderJobs: folderJobs) }
+    private var actions: JobActions { JobActions(sources: sources, runner: runner, now: now, folderJobs: folderJobs) }
     private var isReading: Bool { runner?.isRunning == true }
 
-    /// A job's page: a watch's, a job kept as a folder's, or a reading job's.
+    /// A job's page: a job kept as a folder's, or a reading job's.
     func open(_ job: Job) {
-        navigation.route = job.isFolderJob ? .folderJob(job.id) : job.isWatch ? .watch(job.id) : .sourceJob(job.id)
+        navigation.route = job.isFolderJob ? .folderJob(job.id) : .sourceJob(job.id)
     }
 
     var body: some View {
         let all = Jobs.list(input)
         let jobs = all.filter(\.isLive)
-        let unreadable = Jobs.unreadable(own: watches?.store.unreadable ?? [:], team: watches?.store.teamUnreadable ?? [:],
-                                         directory: watches?.store.directory ?? Config.dir, ownJobs: folderJobs?.store.unreadable ?? [:],
-                                         teamJobs: folderJobs?.store.teamUnreadable ?? [:], jobsDirectory: folderJobs?.store.directory)
+        let unreadable = Jobs.unreadable(own: folderJobs?.store.unreadable ?? [:], team: folderJobs?.store.teamUnreadable ?? [:],
+                                         directory: folderJobs?.store.directory)
+            + Jobs.retiredWatches(own: folderJobs?.store.retiredWatches, team: folderJobs?.store.teamRetiredWatches())
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 notices
@@ -334,7 +306,7 @@ struct JobsPage: View {
                 }
             }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
         }
-        .task { await watches?.notifier.refresh() }
+        .task { await folderJobs?.notifier?.refresh() }
     }
 
     @ViewBuilder private func list(_ jobs: [Job]) -> some View {
@@ -348,7 +320,7 @@ struct JobsPage: View {
         }
     }
 
-    /// Watches before their start or past their end: one quiet line, and once it's clicked, their rows, which open their
+    /// Jobs before their start or past their end: one quiet line, and once it's clicked, their rows, which open their
     /// pages and have no buttons but an upcoming team job's switch.
     @ViewBuilder private func outside(_ jobs: (upcoming: [Job], ended: [Job])) -> some View {
         if let line = Jobs.outsideLine(upcoming: jobs.upcoming.count, ended: jobs.ended.count, showing: showingOutside) {
@@ -376,10 +348,9 @@ struct JobsPage: View {
     // MARK: around the list
 
     @ViewBuilder private var notices: some View {
-        if let watches, watches.store.watches.contains(where: \.on), let off = watches.notifier.offReason {
+        if let folderJobs, folderJobs.store.jobs.contains(where: \.on), let off = folderJobs.notifier?.offReason {
             Label(off, systemImage: "bell.slash").font(.system(size: 12)).foregroundStyle(Pad.redInk).fixedSize(horizontal: false, vertical: true)
         }
-        if let notice = watches?.store.notice { Text(notice).font(.system(size: 12)).foregroundStyle(Pad.inkSoft).textSelection(.enabled) }
         if let error = runner?.error ?? sources?.runStore.error ?? sources?.error {
             Label(error, systemImage: "exclamationmark.triangle").font(.system(size: 12)).foregroundStyle(Pad.redInk).textSelection(.enabled)
         }
@@ -500,21 +471,16 @@ struct JobsPage: View {
         } catch { problem = error.localizedDescription }
     }
 
-    /// How to start a job: teach one that reads with Watch Me, or ask the chat to watch items; and where your team's
-    /// jobs come from, when none are here.
+    /// How to start a job: teach one that reads with Watch Me; and where your team's jobs come from, when none are here.
     private func footer(empty: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if let teach, sources != nil {
                 Button("Teach a job with Watch Me", action: teach)
                     .buttonStyle(MorningActionButton(primary: empty)).disabled(isReading)
             }
-            if let watches {
-                Text(Jobs.watchHint).font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
-                if !watches.store.watches.contains(where: \.isTeam) && watches.store.teamUnreadable.isEmpty
-                    && !(folderJobs?.store.jobs.contains(where: \.isTeam) ?? false) {
-                    Text(Jobs.emptyTeam(linked: watches.store.teamDirectory() != nil))
-                        .font(.system(size: 11)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
-                }
+            if let folderJobs, !folderJobs.store.jobs.contains(where: \.isTeam) && folderJobs.store.teamUnreadable.isEmpty {
+                Text(Jobs.emptyTeam(linked: folderJobs.store.teamDirectory() != nil))
+                    .font(.system(size: 11)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
             }
         }.padding(.top, 8)
     }
@@ -525,28 +491,26 @@ struct JobsEntry: View {
     let morning: MorningStore
     let sources: CalendarStore?
     let runner: CalendarCollectionRunner?
-    let watches: WatchListPanel?
     var setup = JobsSetup()
     let open: () -> Void
     var now: () -> Date = Date.init
     var folderJobs: FolderJobsPanel? = nil
     @StateObject private var changes: JobsChanges
 
-    init(morning: MorningStore, sources: CalendarStore?, runner: CalendarCollectionRunner?, watches: WatchListPanel?,
+    init(morning: MorningStore, sources: CalendarStore?, runner: CalendarCollectionRunner?,
          setup: JobsSetup = JobsSetup(), open: @escaping () -> Void, now: @escaping () -> Date = Date.init, folderJobs: FolderJobsPanel? = nil) {
         self.morning = morning
         self.sources = sources
         self.runner = runner
-        self.watches = watches
         self.setup = setup
         self.open = open
         self.now = now
         self.folderJobs = folderJobs
-        _changes = StateObject(wrappedValue: JobsChanges(sources: sources, runner: runner, watches: watches, morning: morning, folderJobs: folderJobs))
+        _changes = StateObject(wrappedValue: JobsChanges(sources: sources, runner: runner, morning: morning, folderJobs: folderJobs))
     }
 
     var body: some View {
-        let jobs = Jobs.list(Jobs.Input(sources: sources, watches: watches, morning: morning, setup: setup, now: now(), folderJobs: folderJobs))
+        let jobs = Jobs.list(Jobs.Input(sources: sources, morning: morning, setup: setup, now: now(), folderJobs: folderJobs))
         let summary = Jobs.summary(jobs, demonstrations: sources.map { Jobs.demonstrations($0).count } ?? 0, now: now())
         let attention = jobs.contains { $0.needsAttention && $0.status != .off }
         // Saved runs or reading jobs that can't be opened or saved: said on the home, as the sources' box did.

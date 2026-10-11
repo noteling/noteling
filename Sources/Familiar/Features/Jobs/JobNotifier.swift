@@ -1,17 +1,14 @@
-import CryptoKit
 import Foundation
 import UserNotifications
 
-/// Tells the person about watched items through macOS notifications, and opens the chat when they click one.
-/// macOS asks for permission when the first watch is created. Without it everything else still works: Jobs and the chat
-/// say notifications are off. The notification center exists only for an app bundle; anywhere else (tests,
-/// `swift run`) touching it crashes, so there alerts go to the log.
+/// Tells the person through macOS notifications when a job's preview has something new, and opens its card when they
+/// click one. macOS asks for permission once a job is on. Without it everything else still works: Jobs and the chat say
+/// notifications are off. The notification center exists only for an app bundle; anywhere else (tests, `swift run`)
+/// touching it crashes, so there notifications go to the log.
 @MainActor
-final class WatchListNotifier: NSObject, ObservableObject {
+final class JobNotifier: NSObject, ObservableObject {
     /// Why notifications won't show, in plain words; nil when they will (or nobody has been asked yet).
     @Published private(set) var offReason: String?
-    /// A notification was clicked: the watch and the item it was about.
-    var onOpen: ((UUID, String) -> Void)?
     /// A job's notification was clicked (`post(job:title:body:)`): the job.
     var onOpenJob: ((UUID) -> Void)?
     private var asked = false
@@ -35,9 +32,9 @@ final class WatchListNotifier: NSObject, ObservableObject {
         Task {
             do {
                 let granted = try await center.requestAuthorization(options: [.alert, .sound])
-                Log.info("watch list: notifications \(granted ? "allowed" : "not allowed")")
+                Log.info("jobs: notifications \(granted ? "allowed" : "not allowed")")
             } catch {
-                Log.info("watch list: couldn't ask for notifications: \(error.localizedDescription)")
+                Log.info("jobs: couldn't ask for notifications: \(error.localizedDescription)")
             }
             await refresh()
         }
@@ -67,25 +64,6 @@ final class WatchListNotifier: NSObject, ObservableObject {
         }
     }
 
-    func post(_ alert: WatchListAlert) {
-        guard let center else {
-            Log.info("watch list: not shown as a notification: Noteling isn't running as an app")   // the runner logged the alert
-            return
-        }
-        let content = UNMutableNotificationContent()
-        content.title = alert.title
-        content.subtitle = alert.itemKey.isEmpty ? "" : alert.watchName   // an alert about several items is titled with the watch
-        content.body = alert.body
-        content.sound = .default
-        content.threadIdentifier = alert.watchID.uuidString
-        content.userInfo = ["watch": alert.watchID.uuidString, "item": alert.itemKey]
-        // One per item: a newer alert replaces the one before it in Notification Center.
-        let request = UNNotificationRequest(identifier: Self.identifier(alert), content: content, trigger: nil)
-        center.add(request) { error in
-            if let error { Log.info("watch list: couldn't show a notification: \(error.localizedDescription)") }
-        }
-    }
-
     /// That a job's preview has something new: one per job, a newer one replacing it in Notification Center.
     func post(job: UUID, title: String, body: String) {
         guard let center else {
@@ -102,14 +80,9 @@ final class WatchListNotifier: NSObject, ObservableObject {
             if let error { Log.info("jobs: couldn't show a notification: \(error.localizedDescription)") }
         }
     }
-
-    nonisolated static func identifier(_ alert: WatchListAlert) -> String {
-        let hash = SHA256.hash(data: Data(alert.itemKey.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
-        return "watch-\(alert.watchID.uuidString)-\(hash)"
-    }
 }
 
-extension WatchListNotifier: UNUserNotificationCenterDelegate {
+extension JobNotifier: UNUserNotificationCenterDelegate {
     /// Shown even while Noteling is the app in front.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                             withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
@@ -118,13 +91,9 @@ extension WatchListNotifier: UNUserNotificationCenterDelegate {
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
-        let info = response.notification.request.content.userInfo
-        let watch = (info["watch"] as? String).flatMap(UUID.init(uuidString:))
-        let item = info["item"] as? String
-        let job = (info["job"] as? String).flatMap(UUID.init(uuidString:))
+        let job = (response.notification.request.content.userInfo["job"] as? String).flatMap(UUID.init(uuidString:))
         let clicked = response.actionIdentifier == UNNotificationDefaultActionIdentifier
         Task { @MainActor in
-            if clicked, let watch, let item { self.onOpen?(watch, item) }
             if clicked, let job { self.onOpenJob?(job) }
             completionHandler()
         }

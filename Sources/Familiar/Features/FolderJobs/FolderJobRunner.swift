@@ -41,6 +41,8 @@ final class FolderJobRunner: ObservableObject {
     var cards: FolderJobCards?
     /// Card files changed: the app takes them into Morning Files.
     var onCardsChanged: (() -> Void)?
+    /// At each tick and after each run: the app looks at the cards inbox, where a job.py may have written cards of its own.
+    var onTick: (() -> Void)?
     /// A run left a preview that shows something it didn't before: the app tells the person.
     var onNews: ((FolderJob) -> Void)?
     /// Folders a job.py may import from, asked at each run.
@@ -102,6 +104,7 @@ final class FolderJobRunner: ObservableObject {
         let time = now()
         for job in store.jobs where job.isDue(at: time) { enqueue(job.id) }
         reconcileCards()
+        onTick?()
     }
 
     /// Run now. Nil once it's running or waiting its turn; otherwise why not.
@@ -169,6 +172,7 @@ final class FolderJobRunner: ObservableObject {
         do { try store.record(job.id, state) } catch { Log.info("jobs: couldn't save how \(job.path) ran: \(error.localizedDescription)") }
         Log.info("jobs: \(job.isTeam ? "the team's " : "")\(job.path) " + (state.error.map { "failed: \($0)" } ?? "ran"))
         reconcileCards()
+        onTick?()
         guard !quiet, state.error == nil, let preview = state.preview, preview != before,
               let latest = store.job(id: job.id), latest.running(at: now()) else { return }
         onNews?(latest)
@@ -227,7 +231,7 @@ final class FolderJobRunner: ObservableObject {
         default: return nil
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : WatchListValue.clip(trimmed, 1_000)
+        return trimmed.isEmpty ? nil : JobWords.clip(trimmed, 1_000)
     }
 
     /// Why a run failed, in its first line.
@@ -235,8 +239,7 @@ final class FolderJobRunner: ObservableObject {
         if let error = error as? ScriptRunnerError, error.timedOut { return "It took longer than \(Int(timeLimit / 60)) minutes, so it was stopped." }
         if error is CancellationError { return "Stopped." }
         if let error = error as? FolderJobError { return error.message }
-        let reason = WatchListRules.reason(error.localizedDescription)
-        return reason == WatchListRules.reason("") ? "It failed without saying why." : reason
+        return JobWords.reason(error.localizedDescription) ?? "It failed without saying why."
     }
 
     private func reconcileCards() {
@@ -244,22 +247,25 @@ final class FolderJobRunner: ObservableObject {
     }
 }
 
-/// What Morning Files needs to show the jobs kept as folders: where they're kept and what runs them.
+/// What Morning Files needs to show the jobs kept as folders: where they're kept, what runs them, and whether
+/// notifications are on.
 struct FolderJobsPanel {
     let store: FolderJobStore
     let runner: FolderJobRunner
+    var notifier: JobNotifier? = nil
 }
 
-/// The jobs kept as folders, put together once by the app: where they're kept, what runs them, their cards, and the
-/// notification when a preview has something new.
+/// The jobs kept as folders, put together once by the app: where they're kept, what runs them, their cards, the
+/// notification when a preview has something new, and their tools in chat.
 @MainActor
 final class FolderJobsFeature {
     let store: FolderJobStore
     let runner: FolderJobRunner
-    let notifier: WatchListNotifier
+    let notifier: JobNotifier
+    let conversation: FolderJobConversation
 
     /// `inbox` is the cards inbox its cards are written into.
-    init(registry: ToolRegistry, notifier: WatchListNotifier, store: FolderJobStore? = nil,
+    init(registry: ToolRegistry, notifier: JobNotifier, store: FolderJobStore? = nil,
          inbox: URL = Config.dir.appendingPathComponent("cards/inbox")) {
         // Your team's jobs are `jobs/` in the linked tools, wherever the latest update put them.
         let store = store ?? FolderJobStore(teamDirectory: { [weak registry] in
@@ -281,12 +287,16 @@ final class FolderJobsFeature {
         runner.onNews = { [weak notifier] job in
             notifier?.post(job: job.id, title: job.name, body: job.state.said ?? "Its preview has something new.")
         }
+        let conversation = FolderJobConversation(store: store, runner: runner)
+        conversation.notificationLine = { [weak notifier] in await notifier?.line() ?? "on" }
+        conversation.askForNotifications = { [weak notifier] in notifier?.requestPermission() }
         self.store = store
         self.runner = runner
         self.notifier = notifier
+        self.conversation = conversation
     }
 
-    var panel: FolderJobsPanel { FolderJobsPanel(store: store, runner: runner) }
+    var panel: FolderJobsPanel { FolderJobsPanel(store: store, runner: runner, notifier: notifier) }
 
     /// Starts the schedule; with jobs there, macOS is asked for notifications, which only prompts someone who never
     /// answered.
