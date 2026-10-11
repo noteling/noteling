@@ -21,12 +21,18 @@ import SwiftUI
         didSet {
             if let returning, route != returning.from { self.returning = nil }
             if removedJob != nil, route != .jobs { removedJob = nil }
+            if route != oldValue { selecting = false; selected = [] }   // choosing is for one folder
         }
     }
     @Published private(set) var returning: Return?
     /// A reading job just removed on its page: Jobs says so, with Undo, until the person leaves Jobs.
     @Published var removedJob: UUID?
-    @Published var disposition: MorningCardDisposition = .unreviewed
+    @Published var disposition: MorningCardDisposition = .unreviewed {
+        didSet { if disposition != oldValue { selected = [] } }   // and one view of it
+    }
+    /// Choosing several files in a folder to decide them together: on while choosing, and the ones chosen.
+    @Published var selecting = false
+    @Published var selected = Set<UUID>()
     @Published var newCardFolderID: UUID?
     @Published var calendarSourceID: UUID?
     /// Where What you've taught was opened from, so Back goes there.
@@ -117,6 +123,9 @@ struct MorningFilesView: View {
     @State private var undo: MorningCard?
     @State private var notice: String?
     @State private var showingHiddenFolders = false
+    @State private var showingQuietFolders = false
+    /// The files a decision for several changed, as they were, for its Undo.
+    @State private var batchUndo: [MorningCard]?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -143,12 +152,14 @@ struct MorningFilesView: View {
                 }.font(.system(size: 12)).foregroundStyle(Pad.redInk).padding(12)
             }
             content
+            if navigation.selecting, case .folder(let id) = navigation.route { selectionBar(folderID: id) }
             if let notice {
                 HStack {
                     Text(notice).font(.system(size: 12)).lineLimit(2)
                     Spacer()
                     if let undo { Button("Undo") { restore(undo) }.buttonStyle(.plain).foregroundStyle(Pad.penInk) }
-                    Button { self.notice = nil; undo = nil } label: { Image(systemName: "xmark") }
+                    else if let batchUndo { Button("Undo") { restoreBatch(batchUndo) }.buttonStyle(.plain).foregroundStyle(Pad.penInk) }
+                    Button { self.notice = nil; undo = nil; batchUndo = nil } label: { Image(systemName: "xmark") }
                         .buttonStyle(.plain).accessibilityLabel("Dismiss receipt")
                 }.padding(12).background(Pad.paperTop.opacity(0.5))
             }
@@ -159,7 +170,49 @@ struct MorningFilesView: View {
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Pad.tabEdge.opacity(0.6)))
         .foregroundStyle(Pad.ink)
         .environment(\.colorScheme, .light)
-        .onExitCommand { if navigation.route == .folders { close() } else { navigation.route = .folders } }
+        .onExitCommand {
+            if navigation.selecting { stopSelecting() }
+            else if navigation.route == .folders { close() } else { navigation.route = .folders }
+        }
+    }
+
+    /// The bar while files are being chosen: how many, what can be done to them, all or none, and Done.
+    private func selectionBar(folderID: UUID) -> some View {
+        let shown = store.cards.filter { $0.folderID == folderID && $0.displayDisposition == navigation.disposition }.map(\.id)
+        let chosen = shown.filter { navigation.selected.contains($0) }
+        return HStack(spacing: 14) {
+            Text(chosen.isEmpty ? "Choose files" : "\(chosen.count) selected").font(.system(size: 12, weight: .semibold))
+            ForEach(MorningStore.BatchDecision.offered(for: navigation.disposition), id: \.label) { decision in
+                Button(decision.label) { decideSelected(chosen, decision) }.disabled(chosen.isEmpty)
+            }
+            Spacer()
+            Button(chosen.count == shown.count && !shown.isEmpty ? "Select none" : "Select all") {
+                navigation.selected = chosen.count == shown.count ? [] : Set(shown)
+            }.disabled(shown.isEmpty)
+            Button("Done") { stopSelecting() }
+        }
+        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
+        .padding(.horizontal, 14).padding(.vertical, 11).background(Pad.paperTop.opacity(0.7))
+    }
+
+    private func stopSelecting() {
+        navigation.selecting = false
+        navigation.selected = []
+    }
+
+    /// One decision for the chosen files, with one Undo for all of them.
+    private func decideSelected(_ ids: [UUID], _ decision: MorningStore.BatchDecision) {
+        perform {
+            let (before, skipped) = try store.decide(cardIDs: ids, decision)
+            undo = nil
+            batchUndo = before.isEmpty ? nil : before
+            notice = decision.receipt(before.count) + (skipped > 0 ? " \(skipped) with work under way stayed as \(skipped == 1 ? "it was" : "they were")." : "")
+            stopSelecting()
+        }
+    }
+
+    private func restoreBatch(_ cards: [MorningCard]) {
+        perform { try store.restoreDecisions(cards); notice = nil; batchUndo = nil }
     }
 
     private var header: some View {
@@ -333,12 +386,18 @@ struct MorningFilesView: View {
                         dispositionPicker
                     }
                 }
+                let counts = folderCounts
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 18)], alignment: .leading, spacing: 25) {
-                    ForEach(Self.shownFolders(store.folders, showingHidden: showingHiddenFolders)) { item in folderTile(item) }
+                    ForEach(Self.shownFolders(store.folders, counts: counts, showingQuiet: showingQuietFolders,
+                                              showingHidden: showingHiddenFolders)) { item in folderTile(item) }
                 }
-                HStack {
+                HStack(spacing: 16) {
                     Button { createNote() } label: { Label("New note", systemImage: "plus") }
                     Spacer()
+                    if let line = Self.quietFoldersLine(store.folders, counts: counts, showingQuiet: showingQuietFolders) {
+                        Button(line) { showingQuietFolders.toggle() }
+                            .help("Folders with nothing to show under \(navigation.disposition.label). They come back on their own when a file arrives.")
+                    }
                     if let line = Self.hiddenFoldersLine(store.folders, showingHidden: showingHiddenFolders) {
                         Button(line) { showingHiddenFolders.toggle() }
                     }
@@ -367,9 +426,27 @@ struct MorningFilesView: View {
                                  toggleHidden: { perform { try store.setFolderHidden(folder.id, hidden: !folder.isHidden) } })
     }
 
-    /// The folders the home shows: all but the hidden ones, unless the person asked to see those too (they come last).
-    static func shownFolders(_ folders: [MorningFolder], showingHidden: Bool) -> [MorningFolder] {
-        folders.filter { !$0.isHidden } + (showingHidden ? folders.filter(\.isHidden) : [])
+    /// How many files each folder has under the decision the home shows.
+    private var folderCounts: [UUID: Int] {
+        store.cards.reduce(into: [:]) { counts, card in
+            if card.displayDisposition == navigation.disposition { counts[card.folderID, default: 0] += 1 }
+        }
+    }
+
+    /// The folders the home shows: those with files under the decision shown; then the quiet ones (nothing under it),
+    /// and the hidden ones, each only when the person asked to see them.
+    static func shownFolders(_ folders: [MorningFolder], counts: [UUID: Int], showingQuiet: Bool, showingHidden: Bool) -> [MorningFolder] {
+        let open = folders.filter { !$0.isHidden }
+        return open.filter { counts[$0.id, default: 0] > 0 }
+            + (showingQuiet ? open.filter { counts[$0.id, default: 0] == 0 } : [])
+            + (showingHidden ? folders.filter(\.isHidden) : [])
+    }
+
+    /// "Quiet folders (4) · Show", or "Hide quiet folders" while they're shown; nothing when every folder has files.
+    static func quietFoldersLine(_ folders: [MorningFolder], counts: [UUID: Int], showingQuiet: Bool) -> String? {
+        let quiet = folders.filter { !$0.isHidden && counts[$0.id, default: 0] == 0 }.count
+        guard quiet > 0 else { return nil }
+        return showingQuiet ? "Hide quiet folders" : "Quiet folders (\(quiet)) · Show"
     }
 
     /// "Hidden folders (2) · Show", or "Hide them again" while they're shown; nothing when no folder is hidden.
@@ -389,8 +466,14 @@ struct MorningFilesView: View {
                                          openJob: { navigation.open(.watch(watch.id), returningTo: .folder(id)) })
                 }
                 HStack {
-                    Text("Pick up a file. Put it back whenever you like.").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
-                    Spacer(); dispositionPicker
+                    Text(navigation.selecting ? "Click files to choose them, or ⌘-click any time." : "Pick up a file. Put it back whenever you like.")
+                        .font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
+                    Spacer()
+                    if !cards.isEmpty && !navigation.selecting {
+                        Button("Select") { navigation.selecting = true }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
+                            .help("Choose several files to resolve, file away or keep together")
+                    }
+                    dispositionPicker
                 }
                 // A folder of cards from a script says which of its files couldn't be read, and why.
                 ForEach(store.inboxNotes[id] ?? [], id: \.self) { note in
@@ -422,7 +505,16 @@ struct MorningFilesView: View {
 
     private func fileTile(_ card: MorningCard) -> some View {
         let attached = Self.attachedLabel(card)
-        return Button { navigation.route = .card(card.id) } label: {
+        let chosen = navigation.selected.contains(card.id)
+        return Button {
+            // ⌘-click starts choosing; while choosing, a click chooses or unchooses instead of opening.
+            if navigation.selecting || NSEvent.modifierFlags.contains(.command) {
+                navigation.selecting = true
+                if chosen { navigation.selected.remove(card.id) } else { navigation.selected.insert(card.id) }
+            } else {
+                navigation.route = .card(card.id)
+            }
+        } label: {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text(card.isSample ? "SAMPLE FILE" : Self.tileLabel(card))
@@ -449,9 +541,16 @@ struct MorningFilesView: View {
                 Spacer(minLength: 0)
             }.padding(18).frame(maxWidth: .infinity, minHeight: 200, maxHeight: 200, alignment: .topLeading)
                 .background(Pad.fieldPaper, in: RoundedRectangle(cornerRadius: 5))
-                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Pad.tabEdge.opacity(0.55)))
+                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(chosen ? Pad.penInk : Pad.tabEdge.opacity(0.55), lineWidth: chosen ? 2 : 1))
+                .overlay(alignment: .bottomTrailing) {
+                    if navigation.selecting {
+                        Image(systemName: chosen ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 18)).foregroundStyle(chosen ? Pad.penInk : Pad.inkSoft).padding(12)
+                    }
+                }
                 .shadow(color: Pad.ink.opacity(0.07), radius: 4, x: 1, y: 3)
-        }.buttonStyle(.plain).accessibilityLabel("Open file: \(card.title)" + (attached.map { ", " + $0 } ?? ""))
+        }.buttonStyle(.plain)
+            .accessibilityLabel((navigation.selecting ? (chosen ? "Chosen: " : "Choose: ") : "Open file: ") + card.title + (attached.map { ", " + $0 } ?? ""))
             .contextMenu { if !card.isFromInbox { Button("Edit note") { navigation.route = .editCard(card.id) } } }
     }
 
@@ -548,7 +647,7 @@ struct MorningFilesView: View {
                 // The files it carries stay with it, resolved or not.
                 if !card.files.isEmpty || card.inbox?.fileNotes != nil {
                     CardFilesSection(card: card, actions: cardFiles, report: { message, problem in
-                        if problem { localError = message } else { localError = nil; undo = nil; notice = message }
+                        if problem { localError = message } else { localError = nil; undo = nil; batchUndo = nil; notice = message }
                     })
                 }
                 originalLink(card)
@@ -782,6 +881,7 @@ struct MorningFilesView: View {
         perform {
             try store.setDisposition(cardID: card.id, to: disposition)
             undo = [.unreviewed, .ignored, .mine].contains(card.disposition) ? card : nil
+            batchUndo = nil
             notice = disposition == .ignored ? "Filed away. You can find it under Filed away." : "Kept for you under I’ll handle it."
             navigation.route = .folder(card.folderID)
             filed()
@@ -794,6 +894,7 @@ struct MorningFilesView: View {
         perform {
             let item = try store.enqueue(cardID: card.id, kind: kind, optionID: optionID)
             undo = nil
+            batchUndo = nil
             notice = kind == .context ? "Noteling will help clarify this file. Your decision stays open." : "Handed to Noteling. Progress and results stay with this file."
             if kind == .action { navigation.route = .folder(card.folderID) }
             handoff(item)

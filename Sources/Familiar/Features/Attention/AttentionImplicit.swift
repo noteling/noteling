@@ -13,8 +13,18 @@ enum AttentionImplicit {
         var optionMode: MorningActionMode? = nil
     }
 
+    /// What a decision about a card says. Several cards decided in one save (a choice of files resolved or filed away
+    /// together, or its Undo) say nothing about any one of them, so those don't count.
+    static let decisions: Set<AttentionSignal> = [.mine, .ignored, .handled, .retract]
+
     /// Each change once, card by card in the new workspace's order.
     static func signals(from old: MorningWorkspace, to new: MorningWorkspace) -> [Change] {
+        let changes = cardSignals(from: old, to: new)
+        let decided = Set(changes.filter { decisions.contains($0.signal) }.map(\.cardID))
+        return decided.count > 1 ? changes.filter { !decisions.contains($0.signal) } : changes
+    }
+
+    private static func cardSignals(from old: MorningWorkspace, to new: MorningWorkspace) -> [Change] {
         let before = Dictionary(old.cards.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let oldWork = Set(old.workItems.map(\.id))
         var changes: [Change] = []

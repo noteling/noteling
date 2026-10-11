@@ -23,6 +23,10 @@ enum MorningRender {
         if let card = store.cards.first {
             navigation.route = .folder(card.folderID)
             try save("morning-spread.png")
+            // choosing files to decide together: two chosen, the bar at the bottom
+            navigation.selecting = true
+            navigation.selected = Set(store.cards.filter { $0.folderID == card.folderID }.prefix(2).map(\.id))
+            try save("morning-select.png")
             navigation.route = .card(card.id)
             try save("morning-file.png")
             let work = try store.enqueue(cardID: card.id)

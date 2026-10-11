@@ -139,6 +139,100 @@ final class MorningStore: ObservableObject {
         }
     }
 
+    /// One decision for several cards, chosen together on a folder's page.
+    enum BatchDecision: Equatable {
+        case resolve, reopen, fileAway, mine, toReview
+
+        var label: String {
+            switch self {
+            case .resolve: return "Resolve"
+            case .reopen: return "Reopen"
+            case .fileAway: return "File away"
+            case .mine: return "I’ll do it"
+            case .toReview: return "Back to review"
+            }
+        }
+
+        /// "Resolved 3 files."
+        func receipt(_ count: Int) -> String {
+            let files = count == 1 ? "1 file" : "\(count) files"
+            switch self {
+            case .resolve: return "Resolved \(files)."
+            case .reopen: return "Reopened \(files)."
+            case .fileAway: return "Filed away \(files)."
+            case .mine: return "Kept \(files) for you under I’ll handle it."
+            case .toReview: return "Put \(files) back to review."
+            }
+        }
+
+        /// What can be done to the files a folder shows under one decision: never the decision they already have.
+        static func offered(for shown: MorningCardDisposition) -> [BatchDecision] {
+            switch shown {
+            case .unreviewed: return [.resolve, .fileAway, .mine]
+            case .ignored: return [.resolve, .toReview]
+            case .mine: return [.resolve, .fileAway, .toReview]
+            case .resolved: return [.reopen]
+            case .delegated, .completed: return [.resolve, .fileAway]
+            }
+        }
+    }
+
+    /// Several cards decided at once, in one save. A card with work waiting or under way is left as it is (`skipped`).
+    /// `before` is each changed card as it was, for Undo (`restoreDecisions`).
+    @discardableResult
+    func decide(cardIDs: [UUID], _ decision: BatchDecision) throws -> (before: [MorningCard], skipped: Int) {
+        var before: [MorningCard] = [], skipped = 0
+        try transact { next in
+            let now = Date()
+            for id in cardIDs {
+                guard let index = next.cards.firstIndex(where: { $0.id == id }) else { continue }
+                guard !next.workItems.contains(where: { $0.cardID == id && $0.status.isPending }) else { skipped += 1; continue }
+                let card = next.cards[index]
+                switch decision {
+                case .resolve:
+                    guard !card.isResolved else { continue }
+                    before.append(card)
+                    try MorningCardReconciliation.setResolution(cardID: id, resolved: true, at: now, in: &next)
+                case .reopen:
+                    guard card.isResolved else { continue }
+                    before.append(card)
+                    try MorningCardReconciliation.setResolution(cardID: id, resolved: false, at: now, in: &next)
+                    if next.cards[index].disposition == .resolved { next.cards[index].disposition = .unreviewed }
+                case .fileAway, .mine, .toReview:
+                    let disposition: MorningCardDisposition = decision == .fileAway ? .ignored : decision == .mine ? .mine : .unreviewed
+                    guard card.disposition != disposition else { continue }
+                    before.append(card)
+                    next.cards[index].disposition = disposition
+                    next.cards[index].updatedAt = now
+                }
+            }
+        }
+        return (before, skipped)
+    }
+
+    /// Undo for `decide(cardIDs:_:)`: each card's decision and resolution as they were. Its words, files and anything a
+    /// run changed since stay as they are now.
+    func restoreDecisions(_ cards: [MorningCard]) throws {
+        try transact { next in
+            for card in cards {
+                guard let index = next.cards.firstIndex(where: { $0.id == card.id }) else { continue }
+                next.cards[index].disposition = card.disposition
+                if var tracking = next.cards[index].tracking, let was = card.tracking {
+                    tracking.resolution = was.resolution
+                    tracking.resolvedByUser = was.resolvedByUser
+                    tracking.resolutionEvidence = was.resolutionEvidence
+                    tracking.changes = was.changes
+                    next.cards[index].tracking = tracking
+                }
+                if var link = next.cards[index].inbox, let was = card.inbox {
+                    link.resolvedParts = was.resolvedParts
+                    next.cards[index].inbox = link
+                }
+                next.cards[index].updatedAt = Date()
+            }
+        }
+    }
+
     /// Hands a card to Noteling. `optionID` picks one of its other options: it becomes the card's first option before the
     /// work is snapshotted, so the work always runs the card's `action`.
     @discardableResult
