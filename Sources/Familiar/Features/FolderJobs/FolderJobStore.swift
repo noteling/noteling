@@ -4,8 +4,9 @@ import Foundation
 /// The jobs kept as folders: yours, in `jobs/` in Noteling's folder, on as soon as they're there, so a job can be tried
 /// before it's pushed; and your team's, in the linked tools' `jobs/`, which Noteling only reads and runs once you turn
 /// them on. A job.json changed by hand or by an update is read again at the next look. What their runs leave is kept
-/// apart from them, in `job-results/` in Noteling's folder: `<team|own>/<path>/output/` and `run.json` for each, and
-/// which of your team's you turned on in `on.json`, since every update replaces the team's copy.
+/// apart from them, in `job-results/` in Noteling's folder: `<team|own>/<path>/output/` and `run.json` for each, which
+/// of your team's you turned on in `on.json`, since every update replaces the team's copy, and the last search over
+/// them in `search.json`.
 @MainActor
 final class FolderJobStore: ObservableObject {
     @Published private(set) var jobs: [FolderJob] = []
@@ -13,6 +14,8 @@ final class FolderJobStore: ObservableObject {
     @Published private(set) var unreadable: [String: String] = [:]
     /// The same for your team's.
     @Published private(set) var teamUnreadable: [String: String] = [:]
+    /// What the person last searched your team's jobs for in Jobs, kept until they clear it.
+    @Published private(set) var search = ""
     let directory: URL
     /// Your team's jobs, `jobs/` in the linked tools, when they are linked. Asked at every look.
     let teamDirectory: () -> URL?
@@ -41,6 +44,7 @@ final class FolderJobStore: ObservableObject {
         self.results = results
         self.teamDirectory = teamDirectory
         teamOn = Self.readOn(results)
+        search = Self.readSearch(results)
         refresh()
         cleanUpTeam()
     }
@@ -155,6 +159,29 @@ final class FolderJobStore: ObservableObject {
             .flatMap { try? decoder.decode(FolderJobState.self, from: $0) } ?? FolderJobState()
         states[job.id] = state
         return state
+    }
+
+    // MARK: search.json
+
+    /// Keeps the search over your team's jobs, so Jobs shows the same ones next time. Not saving it only loses that.
+    func setSearch(_ text: String) {
+        let text = String(text.prefix(200))
+        guard text != search else { return }
+        search = text
+        do {
+            try FileManager.default.createDirectory(at: results, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try JobFiles.write(JSONText.pretty(["search": text], indent: "") + "\n", to: Self.searchFile(results))
+        } catch {
+            Log.info("jobs: couldn't keep the search: \(error.localizedDescription)")
+        }
+    }
+
+    private static func searchFile(_ results: URL) -> URL { results.appendingPathComponent("search.json") }
+
+    private static func readSearch(_ results: URL) -> String {
+        guard let data = try? Data(contentsOf: searchFile(results)),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return "" }
+        return String((object["search"] as? String ?? "").prefix(200))
     }
 
     // MARK: on.json

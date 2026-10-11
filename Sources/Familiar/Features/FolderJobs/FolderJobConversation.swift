@@ -166,6 +166,7 @@ final class FolderJobConversation {
                                      "from": job.isTeam ? "your team's tools" : "your own jobs folder",
                                      "runs": FolderJobWords.every(job), "last_run": FolderJobWords.lastRun(job, now: now())]
         if !job.about.isEmpty { result["about"] = JobWords.clip(job.about, 400) }
+        if let names = FolderJobWords.names(job.contributors) { result["shared_by"] = names }
         if job.isTeam { result["on"] = job.on }
         if let window = FolderJobWords.window(job, now: now()) { result["window"] = window }
         switch job.phase(at: now()) {

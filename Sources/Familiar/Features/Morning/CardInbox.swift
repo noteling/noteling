@@ -271,6 +271,9 @@ final class CardInbox {
     let store: MorningStore
     /// The card view's folder name for a source: a job's name; nil keeps the folder's own name.
     var folderName: (String) -> String? = { _ in nil }
+    /// Sources whose cards are put away for now, their files left as they are: the cards a job's script wrote, while the
+    /// job is off, or before its start or after its end. They come back when it runs again.
+    var held: (String) -> Bool = { _ in false }
     private var cache: [String: (stamp: Stamp, result: Result<CardInboxEntry, CardInboxError>)] = [:]
     private var logged: Set<String> = []
 
@@ -316,6 +319,8 @@ final class CardInbox {
         var links: [UUID: CardInboxLink]?   // the inbox cards as they are, once a new file needs them
         for folder in sources.prefix(CardInboxFormat.sourceLimit) {
             let source = folder.lastPathComponent
+            // Put away for now: as if its files weren't there, so its cards go, and come back when they are read again.
+            if held(source) { continue }
             var notes: [String] = []
             let files: [URL]
             do {

@@ -924,6 +924,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         RetiredWatchCards.cleanUp(inbox: Config.dir.appendingPathComponent("cards/inbox"))
         let inbox = CardInbox(store: morning)
         inbox.folderName = { [weak self] source in self?.folderJobs?.cardFolderName(source) }
+        inbox.held = { [weak self] source in self?.folderJobs?.holds(source) ?? false }
         folderJobs?.runner.onTick = { [weak inbox] in inbox?.scan() }
         folderJobs?.runner.onCardsChanged = { [weak inbox] in inbox?.scan() }
         morningPanel.onAskAboutCard = { [weak self] card, question in self?.askAboutCard(card, question: question) }

@@ -19,6 +19,8 @@ struct FolderJob: Identifiable, Equatable {
     var ends: JobMoment?
     /// Secrets its job.py gets from the person's Keychain, by name.
     var requires: [String] = []
+    /// Who wrote it and shares it, by name, as its job.json says (`contributor`): thanked on its card and its row.
+    var contributors: [String] = []
     /// Yours always are; your team's only once you turn them on.
     var on = true
     /// How its runs went, as kept on this Mac.

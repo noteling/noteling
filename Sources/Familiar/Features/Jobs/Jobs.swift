@@ -62,6 +62,8 @@ struct Job: Identifiable, Equatable {
     var phase = JobPhase.live
     /// When an upcoming job starts, or when an ended one ended: the order they're listed in.
     var phaseAt: Date? = nil
+    /// Who shared it: "Shared by Yang", for a job kept as a folder whose job.json names them.
+    var sharedBy: String? = nil
 
     var isTeam: Bool { kind == .teamJob }
     /// A job kept as a folder, yours or your team's.
@@ -167,6 +169,29 @@ enum Jobs {
         let counts = [(upcoming, "Upcoming"), (ended, "Ended")].filter { $0.0 > 0 }.map { "\($0.1) (\($0.0))" }
         return (counts + ["Show"]).joined(separator: " · ")
     }
+
+    // MARK: searching your team's jobs
+
+    /// Your team's jobs a search leaves in the list: every job that isn't your team's, every team job you turned on, and
+    /// the others whose name or path has every word of `search`, ignoring case. An empty search leaves them all.
+    static func searched(_ jobs: [Job], _ search: String) -> [Job] {
+        let words = search.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !words.isEmpty else { return jobs }
+        return jobs.filter { job in
+            !job.isTeam || job.on || words.allSatisfy { job.name.localizedCaseInsensitiveContains($0) || job.path.localizedCaseInsensitiveContains($0) }
+        }
+    }
+
+    /// Under the search box while it holds a search: "Showing 5 of 100 · Clear". Nil without one.
+    static func searchLine(shown: Int, of total: Int, search: String) -> String? {
+        guard !search.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return "Showing \(shown) of \(total)"
+    }
+
+    /// The search box shows once your team has more jobs than fit at a glance, and whenever a search is kept, so a
+    /// kept search is never out of sight.
+    static func showsSearch(teamJobs: Int, search: String) -> Bool { teamJobs > searchFrom || !search.isEmpty }
+    static let searchFrom = 6
 
     /// Those that need attention first; then yours, then your team's; each by name.
     static func sorted(_ jobs: [Job]) -> [Job] {
@@ -308,7 +333,8 @@ enum Jobs {
                    resultIsProblem: live && job.on && failed, problems: problems,
                    runProblem: live && failed ? job.state.error : nil,
                    needsAttention: live && job.on && (failed || !missing.isEmpty), meaning: job.about, on: job.on, phase: phase,
-                   phaseAt: phase == .upcoming ? job.starts?.date : phase == .ended ? job.ends?.date : nil)
+                   phaseAt: phase == .upcoming ? job.starts?.date : phase == .ended ? job.ends?.date : nil,
+                   sharedBy: FolderJobWords.sharedBy(job))
     }
 
     /// What a job is for, on its row: the first line of its `about`, up to 90 characters, without a closing full stop,

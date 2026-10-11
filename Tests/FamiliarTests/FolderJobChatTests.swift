@@ -13,7 +13,7 @@ struct FolderJobChatTests {
         let place = ChatPlace()
         defer { place.remove() }
         try place.job("stuck-orders", #"{"name": "Stuck orders", "about": "Orders waiting on me"}"#)
-        try place.job("holiday/oct/gm", #"{"name": "Holiday Oct · GM", "about": "Prices on the GM items", "every_minutes": 60}"#, team: true)
+        try place.job("holiday/oct/gm", #"{"name": "Holiday Oct · GM", "about": "Prices on the GM items", "every_minutes": 60, "contributor": "Yang"}"#, team: true)
         try place.job("autumn/sale", #"{"name": "Autumn sale", "ends": "2020-01-01T00:00:00Z"}"#, team: true)
         let store = place.store()
         var said = "2 of 8 prices wrong"
@@ -44,6 +44,7 @@ struct FolderJobChatTests {
         let gm = try #require(jobs.first { $0["path"] as? String == "holiday/oct/gm" })
         #expect(gm["on"] as? Bool == false && gm["runs"] as? String == "every hour" && gm["from"] as? String == "your team's tools")
         #expect(gm["about"] as? String == "Prices on the GM items" && gm["last_run"] as? String == "Not run yet")
+        #expect(gm["shared_by"] as? String == "Yang")
         #expect(jobs.first { $0["name"] as? String == "Autumn sale" }?["where_in_jobs"] as? String == "under Ended")
         #expect(jobs.first { $0["name"] as? String == "Stuck orders" }?["on"] == nil)   // yours: no switch
 

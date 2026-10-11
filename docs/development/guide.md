@@ -467,7 +467,13 @@ in [Writing a team tools repository](../team-tools.md); here is how the app keep
 - **Cards and notifications** (`FolderJobCards`, `JobNotifier`): while the latest output has a preview, the job has one
   card, `cards/inbox/job-<own|team>-<path>/job.json`, whose one part is the preview's digest; a change of digest
   reopens a card the person resolved and posts one notification. Cards the job's script writes go to
-  `cards/inbox/jobcards-…/` and share the job's folder in Morning Files. Outside its start and end, a job has neither.
+  `cards/inbox/jobcards-…/` and share the job's folder in Morning Files. While a job is off, and outside its start and
+  end, it has neither: its preview card's file is deleted, and the inbox holds its script's folder (`CardInbox.held`),
+  leaving the files, so those cards come back when it runs again.
+- **Finding and thanking** (`JobsSearchBox`, `FolderJobWords.thanks`): past `Jobs.searchFrom` team jobs, Jobs has a
+  search over their names and paths, kept in `job-results/search.json`; jobs that are on always show. A job.json's
+  `contributor` shows as "Shared by …" and as a thank-you, picked per run from a fixed set, on its card and its Run now
+  receipt, never in a notification.
 - **In chat** (`FolderJobConversation`): `list_jobs`, `run_job_now`, `turn_on_job`, `turn_off_job` and
   `read_job_result`. The chat never makes or changes a job.
 - **Watches are gone.** They no longer run, and nothing reads `watches/` or `team-watches/`. At launch

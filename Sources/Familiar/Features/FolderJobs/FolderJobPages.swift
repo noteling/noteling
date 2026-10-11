@@ -48,6 +48,49 @@ enum FolderJobWords {
         return "From the last run that worked, " + JobWords.time(success, now: now) + "."
     }
 
+    /// What a Run now came to, where it was pressed: "“GM” ran: 2 of 8 items need a look. Thanks to Yang for sharing
+    /// this job." A run that failed says why, and thanks nobody.
+    static func receipt(_ job: FolderJob) -> String {
+        let name = "“" + JobWords.clip(job.name, 60) + "”"
+        if let error = job.state.error { return "\(name) couldn't finish: " + error }
+        let said = job.state.said.map { JobWords.clip($0.components(separatedBy: .newlines).first ?? $0, 120) }
+            ?? (job.state.preview == nil ? "nothing to look at" : "something to look at")
+        let line = "\(name) ran: " + said + (said.hasSuffix(".") ? "" : ".")
+        return [line, thanks(job, run: job.state.lastSuccessAt)].compactMap { $0 }.joined(separator: " ")
+    }
+
+    // MARK: thanks
+
+    /// The ways a job thanks whoever shared it, one at a time; `{name}` is their names.
+    static let thanks = [
+        "Thanks to {name} for sharing this job.",
+        "{name} shared this so nobody has to check it by hand.",
+        "This check is {name}'s work. A thank-you goes a long way.",
+        "Made by {name} for the team, and run here on your Mac.",
+        "{name} built this. If it helped, tell them.",
+        "Shared by {name}. One less thing to click through.",
+    ]
+
+    /// "Yang", "Yang and Ana", "Yang, Ana and Sam"; nil with nobody.
+    static func names(_ names: [String]) -> String? {
+        switch names.count {
+        case 0: return nil
+        case 1: return names[0]
+        default: return names.dropLast().joined(separator: ", ") + " and " + names[names.count - 1]
+        }
+    }
+
+    /// "Shared by Yang", on its row and its page; nil when its job.json names nobody.
+    static func sharedBy(_ job: FolderJob) -> String? { names(job.contributors).map { "Shared by " + $0 } }
+
+    /// The thank-you for one run of a job: picked by the run, so it stays the same while that run's result is shown and
+    /// changes from one run to the next. Nil when its job.json names nobody, or before a run worked.
+    static func thanks(_ job: FolderJob, run: Date?) -> String? {
+        guard let names = names(job.contributors), let run else { return nil }
+        let seed = (job.path + "|" + String(Int(run.timeIntervalSince1970.rounded()))).utf8.reduce(UInt64(5_381)) { ($0 &* 33) &+ UInt64($1) }
+        return thanks[Int(seed % UInt64(thanks.count))].replacingOccurrences(of: "{name}", with: names)
+    }
+
     /// Why a job's card was put away, said on the card in place of "Its script no longer reports this": the job ended,
     /// hasn't started, or is off. Nil while it runs, or when the card went away before the job ended (`gone`, when the
     /// inbox found its file gone), for another reason.
@@ -111,6 +154,7 @@ struct FolderJobPage: View {
                 }
                 if let problem { Text(problem).font(.system(size: 12)).foregroundStyle(Pad.redInk).textSelection(.enabled) }
                 if let notice { Text(notice).font(.system(size: 12)).foregroundStyle(Pad.penInk) }
+                if let receipt = runner.receipt, receipt.jobID == id { FolderJobReceiptLine(receipt: receipt, dismiss: runner.dismissReceipt) }
                 ForEach(job.allProblems, id: \.self) { line in
                     Label(line, systemImage: "exclamationmark.triangle").font(.system(size: 12))
                         .foregroundStyle(job.isLive ? Pad.redInk : Pad.inkSoft).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
@@ -214,33 +258,51 @@ struct FolderJobPreviewView: View {
     }
 }
 
-/// A table as its file has it: the first row as the heading, each cell on up to three lines, scrolling sideways when
-/// it's wide.
+/// A table as its file has it: the first row as the heading, each cell on up to three lines. A table wider than the
+/// page scrolls sideways, with its scroll bar always showing and a line under it that says so, rather than cutting off
+/// its last columns.
 struct FolderJobTable: View {
     let rows: [[String]]
     /// Columns drawn; a wider table is opened in its app.
     static let columnLimit = 30
 
     var body: some View {
-        let width = min(Self.columnLimit, rows.map(\.count).max() ?? 0)
-        ScrollView(.horizontal) {
-            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                    GridRow {
-                        ForEach(0..<width, id: \.self) { column in
-                            Text(column < row.count ? row[column] : "")
-                                .font(.system(size: 12, weight: index == 0 ? .semibold : .regular)).lineLimit(3)
-                                .frame(minWidth: 40, maxWidth: 240, alignment: .leading)
-                                .padding(.horizontal, 8).padding(.vertical, 5)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    .background(index == 0 ? Pad.paperTop.opacity(0.8) : index.isMultiple(of: 2) ? Color.white.opacity(0.4) : Color.white.opacity(0.75))
-                }
+        ViewThatFits(in: .horizontal) {
+            framed(grid)
+            VStack(alignment: .leading, spacing: 5) {
+                framed(ScrollView(.horizontal) { grid }.scrollIndicators(.visible))
+                Text(Self.wideLine(columns: width)).font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
             }
         }
-        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Pad.tabEdge.opacity(0.5)))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var width: Int { min(Self.columnLimit, rows.map(\.count).max() ?? 0) }
+
+    /// Under a table too wide for the page: "Scroll sideways for all 6 columns."
+    static func wideLine(columns: Int) -> String { "Scroll sideways for all \(columns) columns." }
+
+    private func framed(_ content: some View) -> some View {
+        content
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Pad.tabEdge.opacity(0.5)))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var grid: some View {
+        let width = self.width
+        return Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                GridRow {
+                    ForEach(0..<width, id: \.self) { column in
+                        Text(column < row.count ? row[column] : "")
+                            .font(.system(size: 12, weight: index == 0 ? .semibold : .regular)).lineLimit(3)
+                            .frame(minWidth: 40, maxWidth: 240, alignment: .leading)
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .textSelection(.enabled)
+                    }
+                }
+                .background(index == 0 ? Pad.paperTop.opacity(0.8) : index.isMultiple(of: 2) ? Color.white.opacity(0.4) : Color.white.opacity(0.75))
+            }
+        }.fixedSize(horizontal: true, vertical: false)
     }
 }
 
@@ -347,6 +409,23 @@ struct FolderJobFolderLine: View {
                 Button("Open job", action: openJob).help("Open this job’s page, with its input and its latest result")
                 Spacer(minLength: 0)
             }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
+            if let receipt = runner.receipt, receipt.jobID == job.id { FolderJobReceiptLine(receipt: receipt, dismiss: runner.dismissReceipt) }
         }
+    }
+}
+
+/// What a Run now came to, until it's dismissed: one line, and a way to put it away.
+struct FolderJobReceiptLine: View {
+    let receipt: FolderJobReceipt
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(receipt.text).font(.system(size: 12)).foregroundStyle(Pad.penInk).fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+            Spacer(minLength: 8)
+            Button(action: dismiss) { Image(systemName: "xmark") }.buttonStyle(.plain).foregroundStyle(Pad.inkSoft)
+                .accessibilityLabel("Dismiss")
+        }.padding(10).background(Pad.paperTop.opacity(0.5), in: RoundedRectangle(cornerRadius: 7))
     }
 }
