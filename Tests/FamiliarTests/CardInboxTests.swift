@@ -56,6 +56,27 @@ struct CardInboxTests {
         #expect(CardInboxFormat.webAddress("http:///no-host") == "" && CardInboxFormat.webAddress("mailto:a@example.com") == "")
     }
 
+    @Test func onlyAJobsOwnCardMayHaveAButtonAndItOnlyNamesAFunction() throws {
+        let big = String(repeating: "x", count: 5_000)
+        let text = """
+        {"title": "Item 4417 has the wrong price",
+         "actions": [{"label": "Mark as fixed", "run": "mark_fixed", "args": {"price": 12.5, "item": "4417"},
+                      "confirm": "  This changes 4417 on the live site.  "},
+                     {"label": "Check again", "run": " recheck "}, {"label": "Helper", "run": "_fetch"}, {"label": "Again", "run": "run"},
+                     {"label": "Path", "run": "../fashion/job.py:delete_all"}, {"label": "Module", "run": "os.remove"},
+                     {"label": "Shell", "run": "rm -rf ~"}, {"label": "List", "run": "fix", "args": ["4417"]},
+                     {"label": "Big", "run": "fix", "args": {"rows": "\(big)"}}]}
+        """
+        let own = try CardInboxFormat.parse(Data(text.utf8), source: "jobcards-team-holiday-oct-gm", id: "4417", modifiedAt: at)
+        #expect(own.actions == [CardInboxAction(label: "Mark as fixed", run: "mark_fixed", args: #"{"item":"4417","price":12.5}"#,
+                                                confirm: "This changes 4417 on the live site."),
+                                CardInboxAction(label: "Check again", run: "recheck")])
+        // Anywhere else, such as a pack's folder or the card Noteling writes for a job's preview, no button runs anything.
+        for source in ["pack-shop", "job-team-holiday-oct-gm", "brief-shop"] {
+            #expect(try CardInboxFormat.parse(Data(text.utf8), source: source, id: "4417", modifiedAt: at).actions.isEmpty)
+        }
+    }
+
     @Test func aFileThatIsntACardSaysWhyInPlainWords() {
         #expect(throws: CardInboxError("it needs a title.")) { try parse(#"{"body": "No title"}"#) }
         #expect(throws: CardInboxError("it needs a title.")) { try parse(#"{"title": "   "}"#) }

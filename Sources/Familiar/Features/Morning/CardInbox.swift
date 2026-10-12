@@ -43,8 +43,9 @@ struct CardInboxSummary: Equatable {
 /// The cards inbox: `cards/inbox/<source>/<id>.json` in Noteling's folder, one file per card, so a script makes a card
 /// just by writing a file. Whatever is there in the right format is a card in Morning Files, with no model involved:
 /// writing the same file again changes the same card's words, deleting it means the matter went away, and nothing
-/// the person did to the card is ever changed by a file. Cards from the inbox never run anything: their buttons only
-/// open a web page or ask Noteling about the card in chat.
+/// the person did to the card is ever changed by a file. Cards from the inbox never run anything by themselves: their
+/// buttons open a web page or ask Noteling about the card in chat, and on a card a job's job.py wrote, a button may
+/// run a function of that job.py when the person presses it.
 enum CardInboxFormat {
     static let fileLimit = 64 * 1024
     static let perSource = 500
@@ -57,9 +58,20 @@ enum CardInboxFormat {
     static let askLimit = 1_000
     static let partLimit = 1_000
     static let partLength = 300
+    static let argsLimit = 4_000
+    static let confirmLimit = 300
+
+    /// A button's function: a plain name a job.py can define, not a `_helper`, and not `run`, which is the job's own.
+    static func buttonFunction(_ text: String) -> String? {
+        let name = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard name != "run", name.range(of: #"^[A-Za-z][A-Za-z0-9_]{0,63}$"#, options: .regularExpression) != nil else { return nil }
+        return name
+    }
 
     /// Reads one card file. Only `title` is required; keys it doesn't know are left out, and so is any button that
-    /// would do more than open a web page or ask a question.
+    /// would do more than open a web page, ask a question, or run a function of its job's job.py. Only a job's script
+    /// writes into a folder whose cards may run something (`FolderJobCards.scriptPrefix`); elsewhere such a button is
+    /// left out.
     static func parse(_ data: Data, source: String, id: String, modifiedAt: Date) throws -> CardInboxEntry {
         let value: Any
         do { value = try JSONSerialization.jsonObject(with: data) }
@@ -100,6 +112,16 @@ enum CardInboxFormat {
                 entry.actions.append(CardInboxAction(label: short, url: webAddress(url)))
             } else if let ask = (action["ask"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !ask.isEmpty {
                 entry.actions.append(CardInboxAction(label: short, ask: ask.count > askLimit ? String(ask.prefix(askLimit - 1)) + "…" : ask))
+            } else if let run = action["run"] as? String, source.hasPrefix(FolderJobCards.scriptPrefix), let function = buttonFunction(run) {
+                var args: String?
+                if let value = action["args"], !(value is NSNull) {
+                    guard value is [String: Any], let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
+                          data.count <= argsLimit else { continue }
+                    args = String(decoding: data, as: UTF8.self)
+                }
+                let confirm = ((action["confirm"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                entry.actions.append(CardInboxAction(label: short, run: function, args: args,
+                    confirm: confirm.isEmpty ? nil : confirm.count > confirmLimit ? String(confirm.prefix(confirmLimit - 1)) + "…" : confirm))
             }
         }
         let parts = (object["parts"] as? [Any] ?? []).compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }

@@ -391,6 +391,18 @@ final class MorningStore: ObservableObject {
         }
     }
 
+    /// Keeps what pressing one of an inbox card's buttons came to on the card: the latest five presses.
+    func recordPress(cardID: UUID, _ press: CardPress) throws {
+        try transact { next in
+            guard let index = next.cards.firstIndex(where: { $0.id == cardID }), next.cards[index].inbox != nil else {
+                throw MorningStoreError.invalid("This card could not be found.")
+            }
+            let presses = (next.cards[index].inbox?.presses ?? []) + [press]
+            next.cards[index].inbox?.presses = Array(presses.suffix(5))
+            next.cards[index].updatedAt = press.at
+        }
+    }
+
     /// Takes in what the cards inbox holds now (`CardInboxFormat.apply`), saving only when a card changed. It never
     /// touches a card's decision, the person's context, or any card that didn't come from the inbox.
     @discardableResult

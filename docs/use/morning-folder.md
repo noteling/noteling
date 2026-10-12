@@ -25,8 +25,10 @@ Open a card, then pick one:
 - **Ignore** files it away.
 - **I've handled this** marks it resolved. **Reopen this card** brings it back.
 
-A card from your team's tools has its own buttons instead. They only open a page, ask Noteling about the card in chat, or
-open the job's page; such a card never makes Noteling do anything by itself.
+A card from your team's tools has its own buttons instead. They open a page, ask Noteling about the card in chat, or
+open the job's page. A card a job wrote can also have a button that does something about it, such as **Mark as fixed**:
+pressing it runs that job's own step, as you, and the card says what came of it. A button that changes something asks
+first. Such a card never makes Noteling do anything by itself.
 
 In the card's **⋯** menu, **Discuss or adjust** opens a chat about it, to ask a question or explain what matters to you.
 Talking about a card doesn't start any work unless you ask.

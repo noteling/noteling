@@ -920,8 +920,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: cards inbox
 
     /// Cards that scripts and jobs write into `cards/inbox/`, picked up into Morning Files at the jobs' tick, after each
-    /// run, and right after a job's card changes. A card's buttons only open its page or ask about it in chat. What
-    /// watches wrote there goes first: they no longer run.
+    /// run, right after a job's card changes, and after a press of a button on a job's card. A card's buttons open its
+    /// page, ask about it in chat, or run a function of its job's job.py. What watches wrote there goes first: they no
+    /// longer run.
     private func setupCardInbox() {
         RetiredWatchCards.cleanUp(inbox: Config.dir.appendingPathComponent("cards/inbox"))
         let inbox = CardInbox(store: morning)
@@ -929,6 +930,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         inbox.held = { [weak self] source in self?.folderJobs?.holds(source) ?? false }
         folderJobs?.runner.onTick = { [weak inbox] in inbox?.scan() }
         folderJobs?.runner.onCardsChanged = { [weak inbox] in inbox?.scan() }
+        // A card's button that runs its job's code: what it came to stays on the card, and the card follows its file.
+        folderJobs?.buttons.onCardsChanged = { [weak inbox] in inbox?.scan() }
+        folderJobs?.buttons.record = { [weak self] id, press in
+            do { try self?.morning.recordPress(cardID: id, press) }
+            catch { Log.info("cards: couldn't keep what a button came to: \(error.localizedDescription)") }
+        }
         morningPanel.onAskAboutCard = { [weak self] card, question in self?.askAboutCard(card, question: question) }
         cardInbox = inbox
         inbox.scan()

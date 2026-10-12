@@ -4,23 +4,36 @@ import Darwin
 import Foundation
 
 /// What one run of a job gets: its job.py in its folder, its input folder, a fresh empty output folder, its own folder
-/// in the cards inbox, and the folders its job.py may import from.
+/// in the cards inbox, and the folders its job.py may import from. A press of one of its cards' buttons gets the same
+/// but an output folder, and calls that button's function instead of run().
 struct FolderJobRun {
     var job: FolderJob
     var folder: URL
     var input: URL
+    /// For a press, its latest output: not given to the function.
     var output: URL
     /// Its folder in the cards inbox, for cards its job.py writes itself (NOTELING_CARDS_DIR).
     var cardsSource: String
     /// Your tools folder, then your team's: a job.py imports helpers from either.
     var importPaths: [URL]
     var timeout: TimeInterval
+    /// A card's button: the function of job.py to call instead of run(), and its arguments as one JSON object.
+    var function: String? = nil
+    var args: String? = nil
 
     var script: URL { folder.appendingPathComponent(FolderJobFiles.entry) }
 
     /// What its script's environment gets for this run, besides what every script gets.
     var env: [String: String] {
-        ["NOTELING_INPUT": input.path, "NOTELING_OUTPUT": output.path, "PYTHONPATH": importPaths.map(\.path).joined(separator: ":")]
+        var env = ["NOTELING_INPUT": input.path, "PYTHONPATH": importPaths.map(\.path).joined(separator: ":")]
+        if function == nil { env["NOTELING_OUTPUT"] = output.path }
+        return env
+    }
+
+    /// The button's arguments; none for a run.
+    var arguments: [String: Any] {
+        guard let args, let object = try? JSONSerialization.jsonObject(with: Data(args.utf8)) as? [String: Any] else { return [:] }
+        return object
     }
 }
 
@@ -265,12 +278,14 @@ struct FolderJobReceipt: Equatable {
     var text: String
 }
 
-/// What Morning Files needs to show the jobs kept as folders: where they're kept, what runs them, and whether
-/// notifications are on.
+/// What Morning Files needs to show the jobs kept as folders: where they're kept, what runs them and their cards'
+/// buttons, and whether notifications are on.
 struct FolderJobsPanel {
     let store: FolderJobStore
     let runner: FolderJobRunner
     var notifier: JobNotifier? = nil
+    /// What the buttons on the jobs' cards run; nil shows them unable to run.
+    var buttons: FolderJobButtons? = nil
 }
 
 /// The jobs kept as folders, put together once by the app: where they're kept, what runs them, their cards, the
@@ -279,6 +294,8 @@ struct FolderJobsPanel {
 final class FolderJobsFeature {
     let store: FolderJobStore
     let runner: FolderJobRunner
+    /// What the buttons on its jobs' cards run.
+    let buttons: FolderJobButtons
     let notifier: JobNotifier
     let conversation: FolderJobConversation
 
@@ -290,17 +307,21 @@ final class FolderJobsFeature {
             registry?.linkedRoot.map { $0.appendingPathComponent(ToolRegistry.jobsFolder) }
         })
         let scripts = registry.runner
-        let runner = FolderJobRunner(store: store, execute: { run in
+        let execute: FolderJobRunner.Execute = { run in
             let script = ScriptTool(id: ToolRegistry.toolName("job__" + run.job.path), packDir: run.folder.lastPathComponent,
                                     fileName: FolderJobFiles.entry, path: run.script, description: run.job.about,
                                     inputSchema: ["type": "object", "properties": [:]], dependencies: [])
-            return try await scripts.result(script, secrets: run.job.requires, timeout: run.timeout, toolDir: run.folder,
-                                            cardsSource: run.cardsSource, env: run.env)
-        })
-        runner.importPaths = { [weak registry] in
+            return try await scripts.result(script, args: run.arguments, function: run.function, secrets: run.job.requires,
+                                            timeout: run.timeout, toolDir: run.folder, cardsSource: run.cardsSource, env: run.env)
+        }
+        let runner = FolderJobRunner(store: store, execute: execute)
+        let importPaths = { [weak registry] () -> [URL] in
             guard let registry else { return [] }
             return [registry.root] + (registry.linkedRoot.map { [$0] } ?? [])
         }
+        runner.importPaths = importPaths
+        let buttons = FolderJobButtons(store: store, execute: execute)
+        buttons.importPaths = importPaths
         runner.cards = FolderJobCards(root: inbox)
         runner.onNews = { [weak notifier] job in
             notifier?.post(job: job.id, title: job.name, body: job.state.said ?? "Its preview has something new.")
@@ -310,11 +331,12 @@ final class FolderJobsFeature {
         conversation.askForNotifications = { [weak notifier] in notifier?.requestPermission() }
         self.store = store
         self.runner = runner
+        self.buttons = buttons
         self.notifier = notifier
         self.conversation = conversation
     }
 
-    var panel: FolderJobsPanel { FolderJobsPanel(store: store, runner: runner, notifier: notifier) }
+    var panel: FolderJobsPanel { FolderJobsPanel(store: store, runner: runner, notifier: notifier, buttons: buttons) }
 
     /// Starts the schedule; with jobs there, macOS is asked for notifications, which only prompts someone who never
     /// answered.
