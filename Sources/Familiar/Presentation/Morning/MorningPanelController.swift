@@ -27,6 +27,8 @@ import QuartzCore
     /// An inbox card's question button: the app asks Noteling about the card in chat.
     var onAskAboutCard: ((MorningCard, String) -> Void)?
     var handoffDestination: (() -> NSRect?)?
+    /// Morning Files opened, not already open: the app looks for a newer copy of the team's tools.
+    var onOpen: (() -> Void)?
 
     /// Only the little folder is shown at launch. Opening a file is always an explicit action.
     init(store: MorningStore, hideFromScreenShare: Bool, calendarSources: CalendarStore? = nil,
@@ -163,6 +165,7 @@ import QuartzCore
         // Open already, or it would be but for a desktop grant.
         let wasOpen = contentsRequested
         contentsRequested = true
+        if !wasOpen { onOpen?() }
         position()
         guard !hiddenForForegroundGrant else {
             if let trigger { heldOpen = AttentionOpen.hold(trigger, wasOpen: wasOpen, over: heldOpen) }

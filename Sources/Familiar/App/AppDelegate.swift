@@ -244,6 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.assistant.startWatching(source: true)
         }
         morningPanel.handoffDestination = { [weak self] in self?.taskPanel.landingFrame }
+        morningPanel.onOpen = { [weak self] in self?.linkedTools.checkSoon() }   // a job pushed a moment ago shows without a restart
         morningPanel.onHandoff = { [weak self] _ in
             guard let self else { return }
             self.morningTasks.wake()
@@ -749,6 +750,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         assistant.reconfigure(effectiveConfig)
         morningTasks?.wake()
         cardGeneration?.start()
+        folderJobs?.toolsChanged()   // the team's jobs as the new copy has them, now rather than at the next tick
     }
 
     @objc private func openSettings() {

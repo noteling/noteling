@@ -11,6 +11,8 @@ enum LinkedTools {
     /// config.json or the log, and never handed to a script.
     static let tokenKey = "NOTELING_TOOLS_REPO_TOKEN"
     static let checkInterval: TimeInterval = 600
+    /// Opening Morning Files checks again only after this long.
+    static let openCheckInterval: TimeInterval = 60
 
     /// The installed copy's folder, when a repository is linked.
     static func root(for config: Config, home: URL = Config.dir) -> URL? {
@@ -357,8 +359,8 @@ struct LinkedToolsFolder {
 
 // MARK: - Keeping it current
 
-/// Keeps the linked copy current: checks at launch, every 10 minutes, on Update now, and right after Settings saves a
-/// changed address, branch or token. One check at a time. When one fails, the copy that worked stays in use and the
+/// Keeps the linked copy current: checks at launch, every 10 minutes, when Morning Files opens (at most once a minute),
+/// on Update now, and right after Settings saves a changed address, branch or token. One check at a time. When one fails, the copy that worked stays in use and the
 /// error stays visible until a check succeeds.
 @MainActor
 final class LinkedToolsUpdater: ObservableObject {
@@ -401,6 +403,14 @@ final class LinkedToolsUpdater: ObservableObject {
     func stop() {
         loop?.cancel()
         loop = nil
+    }
+
+    /// Morning Files opened: checks unless one ran in the last minute, so a job pushed a moment ago is there without
+    /// waiting for the 10-minute check or restarting.
+    func checkSoon(now: Date = Date()) {
+        guard loop != nil, !config().toolsRepo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !checking else { return }
+        if let last = record?.lastCheckedAt, now.timeIntervalSince(last) < LinkedTools.openCheckInterval { return }
+        Task { await check() }
     }
 
     /// After Settings saves: a changed address, branch or token is checked right away.

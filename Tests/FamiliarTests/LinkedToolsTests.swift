@@ -12,6 +12,7 @@ import Testing
 struct LinkedToolsTests {
     static let first = String(repeating: "a1", count: 20)
     static let second = String(repeating: "b2", count: 20)
+    static let third = String(repeating: "c3", count: 20)
 
     // MARK: - The address
 
@@ -113,6 +114,66 @@ struct LinkedToolsTests {
         #expect(updater.record?.sha == Self.second && f.changes == 2)
         #expect(!FileManager.default.fileExists(atPath: f.folder.incoming.path))
         #expect(try FileManager.default.contentsOfDirectory(atPath: f.home.path).sorted() == ["linked-tools", "linked-tools.json", "tools"])
+    }
+
+    @Test func aPushedJobIsListedAsSoonAsItsCopyLands() async throws {
+        let f = Fixture()
+        defer { f.remove() }
+        let py = "def run():\n    return None\n"
+        f.serve(sha: Self.first, archive: try Self.archive(["item-page/SKILL.md": "---\nname: Item page\n---\n",
+                                                            "watches/gm/watch.json": "{}"]))
+        let registry = ToolRegistry(root: f.home.appendingPathComponent("tools"), runner: ScriptRunner(config: Config()))
+        registry.linkedRoot = f.folder.root
+        let updater = f.makeUpdater()
+        await updater.check()
+        await registry.reload()
+        // As the app has it: the team's jobs are `jobs/` wherever the registry's linked copy is, and an update reloads it.
+        let store = FolderJobStore(directory: f.home.appendingPathComponent("jobs"), results: f.home.appendingPathComponent("job-results"),
+                                   teamDirectory: { [weak registry] in registry?.linkedRoot.map { $0.appendingPathComponent("jobs") } })
+        let feature = FolderJobsFeature(registry: registry, notifier: JobNotifier(), store: store, inbox: f.home.appendingPathComponent("cards/inbox"))
+        updater.onToolsChanged = { registry.linkedRoot = f.folder.root; await registry.reload(); feature.toolsChanged() }
+        feature.runner.start()
+        defer { feature.runner.stop() }
+        #expect(store.jobs.isEmpty)
+
+        try await Task.sleep(for: .seconds(1.1))   // GitHub's archives date every file at its commit
+        f.serve(sha: Self.second, archive: try Self.archive(["item-page/SKILL.md": "---\nname: Item page\n---\n",
+                                                             "jobs/holiday/oct/gm/job.json": #"{"name": "GM", "every_minutes": 60}"#,
+                                                             "jobs/holiday/oct/gm/job.py": py], top: "acme-tools-b2b2b2b"))
+        await updater.check()   // Update now
+        #expect(store.jobs.map(\.name) == ["GM"])   // not 30 seconds later, at the next tick
+
+        try await Task.sleep(for: .seconds(1.1))
+        f.serve(sha: Self.third, archive: try Self.archive(["item-page/SKILL.md": "---\nname: Item page\n---\n",
+                                                            "jobs/holiday/oct/gm/job.json": #"{"name": "GM items", "every_minutes": 60}"#,
+                                                            "jobs/holiday/oct/gm/job.py": py,
+                                                            "jobs/holiday/oct/fashion/job.json": #"{"name": "Fashion", "every_minutes": 5}"#,
+                                                            "jobs/holiday/oct/fashion/job.py": py], top: "acme-tools-c3c3c3c"))
+        await updater.check()
+        #expect(store.jobs.map(\.name).sorted() == ["Fashion", "GM items"])
+    }
+
+    @Test func openingMorningFilesChecksAtMostOnceAMinute() async throws {
+        let f = Fixture()
+        defer { f.remove() }
+        f.serve(sha: Self.first, archive: try Self.archive(["shop/SKILL.md": "---\nname: Shop\n---\n"]))
+        let updater = f.makeUpdater()
+        updater.checkSoon()   // not started yet: launch checks first
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(f.server.paths.isEmpty)
+
+        updater.start()
+        defer { updater.stop() }
+        try await Self.waitUntil { updater.record?.sha == Self.first && !updater.checking }
+        let checked = f.server.paths.count
+        updater.checkSoon()   // checked a moment ago
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(f.server.paths.count == checked)
+
+        f.serve(sha: Self.second, archive: try Self.archive(["shop/SKILL.md": "---\nname: Shop\n---\nNew."], top: "acme-tools-b2b2b2b"))
+        updater.checkSoon(now: Date().addingTimeInterval(LinkedTools.openCheckInterval + 1))
+        try await Self.waitUntil { updater.record?.sha == Self.second }
+        #expect(f.changes == 2)
     }
 
     @Test func theTokenNeverFollowsARedirectToAnotherHost() async throws {
