@@ -47,8 +47,8 @@ up; choose **Set up**. That's all. You can also open one from **Settings → Tea
 **By hand.** In **Settings → Team tools from GitHub**, paste the repository's address and the token they gave you, then
 choose **Save**. The line under the token says which version you have, or what went wrong.
 
-Either way, Noteling checks for changes every 10 minutes, so a fix reaches you without you doing anything. **Update now**
-checks right away. You don't need git or Terminal.
+Either way, Noteling checks for changes when you open the Morning folder and every 10 minutes, so a fix reaches you
+without you doing anything. **Update now** checks right away. You don't need git or Terminal.
 
 ## Notifications
 

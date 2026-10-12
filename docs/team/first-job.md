@@ -43,7 +43,8 @@ folder with one card. Open it:
 2. In `job.json`, put your own name in `contributor`.
 3. Commit and push.
 
-Within 10 minutes, or right away with **Update now** in Settings, Noteling has the new version. The next run (choose
+Close the Morning folder and open it again, and in a few seconds Noteling has the new version (or choose **Update now**
+in Settings). The next run (choose
 **Run now**) finds nothing wrong, writes no preview, and the card goes away by itself. "Shared by" now shows your name.
 
 That's the whole loop: you push, every Mac that turned the job on runs it, and people only hear about what needs them.

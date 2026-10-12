@@ -115,6 +115,50 @@ struct LinkedToolsTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: f.home.path).sorted() == ["linked-tools", "linked-tools.json", "tools"])
     }
 
+    @Test func aNewCommitReachesTheTeamsJobsWithoutARestart() async throws {
+        let f = Fixture()
+        defer { f.remove() }
+        let py = "def run():\n    return None\n"
+        f.serve(sha: Self.first, archive: try Self.archive(["jobs/gm/job.json": #"{"name": "GM one", "every_minutes": 60}"#,
+                                                            "jobs/gm/job.py": py]))
+        let updater = f.makeUpdater()
+        await updater.check()
+        let store = FolderJobStore(directory: f.home.appendingPathComponent("jobs"), results: f.home.appendingPathComponent("job-results"),
+                                   teamDirectory: { [folder = f.folder] in folder.root.appendingPathComponent("jobs") })
+        #expect(store.jobs.map(\.name) == ["GM one"])
+        try await Task.sleep(for: .seconds(1.1))   // GitHub's archives date every file at its commit
+        f.serve(sha: Self.second, archive: try Self.archive(["jobs/gm/job.json": #"{"name": "GM two", "every_minutes": 60}"#,
+                                                             "jobs/gm/job.py": py,
+                                                             "jobs/fashion/job.json": #"{"name": "Fashion", "every_minutes": 5}"#,
+                                                             "jobs/fashion/job.py": py], top: "acme-tools-b2b2b2b"))
+        await updater.check()
+        store.refresh()
+        #expect(store.jobs.map(\.name).sorted() == ["Fashion", "GM two"])
+    }
+
+    @Test func openingMorningFilesChecksAtMostOnceAMinute() async throws {
+        let f = Fixture()
+        defer { f.remove() }
+        f.serve(sha: Self.first, archive: try Self.archive(["shop/SKILL.md": "---\nname: Shop\n---\n"]))
+        let updater = f.makeUpdater()
+        updater.checkSoon()   // not started yet: launch checks first
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(f.server.paths.isEmpty)
+
+        updater.start()
+        defer { updater.stop() }
+        try await Self.waitUntil { updater.record?.sha == Self.first && !updater.checking }
+        let checked = f.server.paths.count
+        updater.checkSoon()   // checked a moment ago
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(f.server.paths.count == checked)
+
+        f.serve(sha: Self.second, archive: try Self.archive(["shop/SKILL.md": "---\nname: Shop\n---\nNew."], top: "acme-tools-b2b2b2b"))
+        updater.checkSoon(now: Date().addingTimeInterval(LinkedTools.openCheckInterval + 1))
+        try await Self.waitUntil { updater.record?.sha == Self.second }
+        #expect(f.changes == 2)
+    }
+
     @Test func theTokenNeverFollowsARedirectToAnotherHost() async throws {
         let f = Fixture()
         defer { f.remove() }

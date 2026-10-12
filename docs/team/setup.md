@@ -13,8 +13,9 @@ Make a **fine-grained token** for that one repository, with **Contents: Read-onl
 can share it: it can read your tools and nothing else. When it expires, the line under the token says Noteling couldn't
 update, and it keeps using the copy it has; send people a new setup file.
 
-Noteling follows the `main` branch by default, and checks it every 10 minutes. A push reaches every linked Mac within 10
-minutes, or right away with **Update now** in Settings.
+Noteling follows the `main` branch by default. It checks when the Morning folder opens (at most once a minute) and every
+10 minutes, so a push reaches every linked Mac within 10 minutes, or as soon as someone opens the folder. **Update now**
+in Settings checks right away.
 
 ## The setup file
 
