@@ -750,7 +750,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         assistant.reconfigure(effectiveConfig)
         morningTasks?.wake()
         cardGeneration?.start()
-        folderJobs?.runner.tick()   // the team's jobs as the new copy has them, now rather than at the next tick
+        folderJobs?.toolsChanged()   // the team's jobs as the new copy has them, now rather than at the next tick
     }
 
     @objc private func openSettings() {

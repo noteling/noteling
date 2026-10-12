@@ -12,6 +12,7 @@ import Testing
 struct LinkedToolsTests {
     static let first = String(repeating: "a1", count: 20)
     static let second = String(repeating: "b2", count: 20)
+    static let third = String(repeating: "c3", count: 20)
 
     // MARK: - The address
 
@@ -115,25 +116,41 @@ struct LinkedToolsTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: f.home.path).sorted() == ["linked-tools", "linked-tools.json", "tools"])
     }
 
-    @Test func aNewCommitReachesTheTeamsJobsWithoutARestart() async throws {
+    @Test func aPushedJobIsListedAsSoonAsItsCopyLands() async throws {
         let f = Fixture()
         defer { f.remove() }
         let py = "def run():\n    return None\n"
-        f.serve(sha: Self.first, archive: try Self.archive(["jobs/gm/job.json": #"{"name": "GM one", "every_minutes": 60}"#,
-                                                            "jobs/gm/job.py": py]))
+        f.serve(sha: Self.first, archive: try Self.archive(["item-page/SKILL.md": "---\nname: Item page\n---\n",
+                                                            "watches/gm/watch.json": "{}"]))
+        let registry = ToolRegistry(root: f.home.appendingPathComponent("tools"), runner: ScriptRunner(config: Config()))
+        registry.linkedRoot = f.folder.root
         let updater = f.makeUpdater()
         await updater.check()
+        await registry.reload()
+        // As the app has it: the team's jobs are `jobs/` wherever the registry's linked copy is, and an update reloads it.
         let store = FolderJobStore(directory: f.home.appendingPathComponent("jobs"), results: f.home.appendingPathComponent("job-results"),
-                                   teamDirectory: { [folder = f.folder] in folder.root.appendingPathComponent("jobs") })
-        #expect(store.jobs.map(\.name) == ["GM one"])
+                                   teamDirectory: { [weak registry] in registry?.linkedRoot.map { $0.appendingPathComponent("jobs") } })
+        let feature = FolderJobsFeature(registry: registry, notifier: JobNotifier(), store: store, inbox: f.home.appendingPathComponent("cards/inbox"))
+        updater.onToolsChanged = { registry.linkedRoot = f.folder.root; await registry.reload(); feature.toolsChanged() }
+        feature.runner.start()
+        defer { feature.runner.stop() }
+        #expect(store.jobs.isEmpty)
+
         try await Task.sleep(for: .seconds(1.1))   // GitHub's archives date every file at its commit
-        f.serve(sha: Self.second, archive: try Self.archive(["jobs/gm/job.json": #"{"name": "GM two", "every_minutes": 60}"#,
-                                                             "jobs/gm/job.py": py,
-                                                             "jobs/fashion/job.json": #"{"name": "Fashion", "every_minutes": 5}"#,
-                                                             "jobs/fashion/job.py": py], top: "acme-tools-b2b2b2b"))
+        f.serve(sha: Self.second, archive: try Self.archive(["item-page/SKILL.md": "---\nname: Item page\n---\n",
+                                                             "jobs/holiday/oct/gm/job.json": #"{"name": "GM", "every_minutes": 60}"#,
+                                                             "jobs/holiday/oct/gm/job.py": py], top: "acme-tools-b2b2b2b"))
+        await updater.check()   // Update now
+        #expect(store.jobs.map(\.name) == ["GM"])   // not 30 seconds later, at the next tick
+
+        try await Task.sleep(for: .seconds(1.1))
+        f.serve(sha: Self.third, archive: try Self.archive(["item-page/SKILL.md": "---\nname: Item page\n---\n",
+                                                            "jobs/holiday/oct/gm/job.json": #"{"name": "GM items", "every_minutes": 60}"#,
+                                                            "jobs/holiday/oct/gm/job.py": py,
+                                                            "jobs/holiday/oct/fashion/job.json": #"{"name": "Fashion", "every_minutes": 5}"#,
+                                                            "jobs/holiday/oct/fashion/job.py": py], top: "acme-tools-c3c3c3c"))
         await updater.check()
-        store.refresh()
-        #expect(store.jobs.map(\.name).sorted() == ["Fashion", "GM two"])
+        #expect(store.jobs.map(\.name).sorted() == ["Fashion", "GM items"])
     }
 
     @Test func openingMorningFilesChecksAtMostOnceAMinute() async throws {

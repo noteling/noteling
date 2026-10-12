@@ -325,6 +325,9 @@ final class FolderJobsFeature {
 
     func stop() { runner.stop() }
 
+    /// A new copy of the team's tools, or none: their jobs as it has them, now rather than at the next tick.
+    func toolsChanged() { runner.tick() }
+
     /// The card view's folder name for a job's folders in the inbox: the job's name.
     func cardFolderName(_ source: String) -> String? {
         store.jobs.first { FolderJobCards.source(for: $0) == source || FolderJobCards.scriptSource(for: $0) == source }?.name
