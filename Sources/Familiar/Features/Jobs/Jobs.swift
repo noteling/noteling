@@ -426,6 +426,13 @@ enum Jobs {
         store.savedReadingWorkflows.filter { workflow in !store.readingSources.contains { $0.id == workflow.draft.id } }
     }
 
+    /// Delete on a saved demonstration only takes it off the list: the steps stay with what Watch Me learned.
+    static let deleteDemonstrationHelp = "Takes it off this list. What Watch Me learned stays, so the pen still helps on that page."
+
+    static func deletedDemonstration(_ name: String) -> String {
+        "“\(name)” is off Saved demonstrations. What Watch Me learned stays, so the pen still helps on that page."
+    }
+
     /// The Jobs box on the Morning Files home, in one line: "5 jobs · 2 need attention · last run 6:31 PM". Only live
     /// jobs count: one before its start or past its end isn't mentioned, and with only those, "No jobs running now". A
     /// team job that is off isn't one of yours yet; with only those: "3 team jobs you can turn on".

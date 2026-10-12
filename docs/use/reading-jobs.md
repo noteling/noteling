@@ -29,6 +29,9 @@ For anything else, such as a calendar or a page you check every day, show Noteli
 5. To let it look in that app by itself, turn on **Allow Noteling to control the mouse and keyboard when asked** in
    Settings. Then choose **Run now** on the new job.
 
+A demonstration that isn’t a job yet waits under **Saved demonstrations** in Jobs. **Review & add** makes it a
+job. **Delete** takes it off that list and nothing more: what Watch Me learned stays, so the pen still helps on that page.
+
 **Run all reading jobs** in Jobs reads every one of them in turn and opens **Latest run**, which shows what each found.
 **Run history** has the earlier runs. You can also change a job from chat: "change it to only unread email from today".
 

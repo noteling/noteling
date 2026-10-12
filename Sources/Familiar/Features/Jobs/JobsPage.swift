@@ -258,13 +258,16 @@ struct JobsPage: View {
     @State private var feedback: String?
     /// A saved demonstration being reviewed before it becomes a job.
     @State private var reviewing: LearnedReadingSource?
+    /// The saved demonstration just deleted, for Undo.
+    @State private var deleted: SavedReadingWorkflow?
     /// The jobs before their start or past their end are shown, under the live jobs.
     @State private var showingOutside = false
 
-    /// `showingOutside` starts with the jobs before their start or past their end shown (a render).
+    /// `showingOutside` starts with the jobs before their start or past their end shown, and `deleted` with the Undo line
+    /// for a saved demonstration just deleted (renders).
     init(morning: MorningStore, sources: CalendarStore?, runner: CalendarCollectionRunner?,
          setup: JobsSetup = JobsSetup(), navigation: MorningNavigation, teach: (() -> Void)? = nil, now: @escaping () -> Date = Date.init,
-         showingOutside: Bool = false, folderJobs: FolderJobsPanel? = nil) {
+         showingOutside: Bool = false, deleted: SavedReadingWorkflow? = nil, folderJobs: FolderJobsPanel? = nil) {
         self.morning = morning
         self.sources = sources
         self.runner = runner
@@ -275,6 +278,7 @@ struct JobsPage: View {
         self.folderJobs = folderJobs
         _changes = StateObject(wrappedValue: JobsChanges(sources: sources, runner: runner, morning: morning, folderJobs: folderJobs))
         _showingOutside = State(initialValue: showingOutside)
+        _deleted = State(initialValue: deleted)
     }
 
     private var input: Jobs.Input {
@@ -390,6 +394,15 @@ struct JobsPage: View {
                 Button { navigation.removedJob = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("Dismiss")
             }.padding(12).background(Pad.paperTop.opacity(0.5), in: RoundedRectangle(cornerRadius: 7))
         }
+        if let deleted {
+            HStack(alignment: .top, spacing: 10) {
+                Text(Jobs.deletedDemonstration(deleted.name))
+                    .font(.system(size: 12)).foregroundStyle(Pad.penInk).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Button("Undo") { undoDelete(deleted) }.buttonStyle(MorningActionButton())
+                Button { self.deleted = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("Dismiss")
+            }.padding(12).background(Pad.paperTop.opacity(0.5), in: RoundedRectangle(cornerRadius: 7))
+        }
         if let feedback { Text(feedback).font(.system(size: 12)).foregroundStyle(Pad.penInk) }
         if let runner = folderJobs?.runner, let receipt = runner.receipt { FolderJobReceiptLine(receipt: receipt, dismiss: runner.dismissReceipt) }
     }
@@ -443,7 +456,7 @@ struct JobsPage: View {
         }.padding(11).background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 7))
     }
 
-    /// Saved demonstrations that aren't jobs yet, each with Review & add.
+    /// Saved demonstrations that aren't jobs yet, each with Review & add, and Delete to take it off this list.
     @ViewBuilder private var demonstrations: some View {
         if let sources, !Jobs.demonstrations(sources).isEmpty {
             VStack(alignment: .leading, spacing: 10) {
@@ -458,8 +471,12 @@ struct JobsPage: View {
                                 Text(workflow.draft.meaning).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
                             }
                             Spacer(minLength: 10)
-                            Button("Review & add") { problem = nil; reviewing = workflow.draft }
-                                .buttonStyle(MorningActionButton()).disabled(isReading)
+                            HStack(spacing: 8) {
+                                Button("Review & add") { problem = nil; reviewing = workflow.draft }
+                                    .buttonStyle(MorningActionButton()).disabled(isReading)
+                                Button("Delete") { delete(workflow) }.buttonStyle(MorningActionButton())
+                                    .help(Jobs.deleteDemonstrationHelp).accessibilityLabel("Delete \(workflow.name)")
+                            }
                         }
                         Label("Needs review before it can run", systemImage: "exclamationmark.circle")
                             .font(.system(size: 11)).foregroundStyle(Pad.redInk)
@@ -485,6 +502,26 @@ struct JobsPage: View {
         if let sources, !sources.removedSources.isEmpty {
             RemovedSourcesList(sources: sources.removedSources, isRunning: isReading, restore: restore)
         }
+    }
+
+    /// Takes a saved demonstration off the list, with Undo; what Watch Me learned stays.
+    func delete(_ workflow: SavedReadingWorkflow) {
+        guard let sources else { return }
+        do {
+            try sources.deleteDemonstration(path: workflow.relativePath)
+            if reviewing?.workflowPath == workflow.relativePath { reviewing = nil }
+            problem = nil
+            feedback = nil
+            deleted = workflow
+        } catch { problem = "Couldn't delete “\(workflow.name)”. \(error.localizedDescription)" }
+    }
+
+    func undoDelete(_ workflow: SavedReadingWorkflow) {
+        guard let sources else { return }
+        do {
+            try sources.restoreDemonstration(path: workflow.relativePath)
+            deleted = nil
+        } catch { problem = "Couldn't bring back “\(workflow.name)”. \(error.localizedDescription)" }
     }
 
     /// Brings a removed job back, with its saved results: Undo after removing it, and Restore under Removed jobs.
