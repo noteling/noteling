@@ -38,6 +38,10 @@ echo '{}' | NOTELING_CONTEXT='{"url": "https://orders.example.com/order/4417"}' 
 # A job, into a folder you can look at:
 mkdir -p /tmp/out && echo '{}' | NOTELING_INPUT=jobs/sales/stuck-orders/input NOTELING_OUTPUT=/tmp/out \
   python3 /Applications/Noteling.app/Contents/Resources/py/run_tool.py jobs/sales/stuck-orders/job.py
+
+# A card's button: its function's name after the file, its card's args as the JSON:
+mkdir -p /tmp/cards && echo '{"order": "4417"}' | NOTELING_CARDS_DIR=/tmp/cards \
+  python3 /Applications/Noteling.app/Contents/Resources/py/run_tool.py jobs/sales/stuck-orders/job.py nudge
 ```
 
 It prints `{"result": …}`, or `{"error": …}` with the traceback. Add any secrets the script needs as environment
@@ -80,6 +84,21 @@ To ask the pen about a page without the UI, run its brief and get the answer Cla
 | It took longer than 10 minutes, so it was stopped. | Make it faster: fewer items per run, calls side by side, or a shorter timeout per call. |
 | It failed without saying why. | It raised an exception with no message. Give your exceptions one. |
 | Its job.py isn't there any more. | An update removed it while it was waiting to run. |
+
+**On a card, after pressing one of its buttons that run your job's code:**
+
+| Message | What it means |
+|---|---|
+| `job.py has no function x() of its own.` | The card's `run` names a function `job.py` doesn't define, or one it only imported. |
+| An exception's first line, in red | The function raised it. The card stays as it was. |
+| It took longer than 2 minutes, so it was stopped. | A button should do one thing quickly; leave long work to the job's run. |
+| Turn its job on in Jobs to use this button. | The person turned your team's job off. |
+| Its job hasn't started yet / has ended, so this button can't run. | It's outside the job's `starts` and `ends`. |
+| Needs `ORDERS_API_KEY` in Settings. | A secret the job `requires` isn't entered yet. |
+| Its job isn't here any more, so this button can't run. | The job's folder was removed or moved, so its cards have no job. |
+
+A button that doesn't show at all was left out of its card file: `run` must be a plain function name (not `run`, not
+`_…`), `args` one JSON object of up to 4 KB, and the card must come from a job's `NOTELING_CARDS_DIR`.
 
 **In Settings, under the token:** "Couldn't update. … Using the copy from …" means the last check failed (often an
 expired token, or no network), and the copy Noteling already has keeps working.

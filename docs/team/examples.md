@@ -60,6 +60,7 @@ def run():
 
 When each item deserves its own follow-up, write a card per item instead of a preview. The card's file name is the
 item's id, so the same item keeps the same card, and deleting the files of items that came unstuck resolves their cards.
+Each card also has a button that reminds the warehouse, and resolves the card once it has.
 
 ```json
 {"name": "Stuck orders", "about": "Orders waiting on us for more than a day, one card each.",
@@ -89,7 +90,9 @@ def run():
                 "body": f"{order['customer']}: {order['status']}.",
                 "url": f"https://orders.example.com/order/{order['id']}",
                 "severity": "high" if order["waiting_hours"] > 72 else "normal",
-                "actions": [{"label": "Who can unblock it?", "ask": f"Who can unblock order {order['id']}?"}]}
+                "actions": [{"label": "Nudge the warehouse", "run": "nudge", "args": {"order": order["id"]},
+                             "confirm": f"This sends the warehouse a reminder about order {order['id']}."},
+                            {"label": "Who can unblock it?", "ask": f"Who can unblock order {order['id']}?"}]}
         with open(os.path.join(cards, name + ".tmp"), "w") as f:
             json.dump(card, f)
         os.replace(os.path.join(cards, name + ".tmp"), os.path.join(cards, name))
@@ -102,9 +105,21 @@ def run():
         writer.writerow(["order", "customer", "status", "hours waiting"])
         writer.writerows([o["id"], o["customer"], o["status"], o["waiting_hours"]] for o in stuck)
     return f"{len(stuck)} orders stuck" if stuck else "Nothing stuck"
+
+
+def nudge(order):
+    """The card's button: reminds the warehouse about one order, as the person who pressed it."""
+    order = int(order)
+    request = urllib.request.Request(f"https://api.example.com/orders/{order}/nudge", data=b"{}", method="POST",
+                                     headers={"Authorization": "Bearer " + os.environ["ORDERS_API_KEY"],
+                                              "Content-Type": "application/json"})
+    urllib.request.urlopen(request, timeout=30).close()
+    os.remove(os.path.join(os.environ["NOTELING_CARDS_DIR"], f"order-{order}.json"))
+    return f"Reminded the warehouse about order {order}."
 ```
 
-Writing each card under a temporary name and then renaming it means Noteling never reads half a file.
+Writing each card under a temporary name and then renaming it means Noteling never reads half a file. The next run
+writes the card again if the order is still stuck, and the person sees it come back.
 
 ## A daily exceptions report
 

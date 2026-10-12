@@ -365,6 +365,123 @@ struct FolderJobsTests {
         #expect(Jobs.cards(for: row, Jobs.Input(at: Date(), cards: morning.cards, panel: feature.panel)).count == 2)
     }
 
+    // MARK: a card's buttons
+
+    /// A button on a card the job's job.py wrote runs a function of that job.py, with the card's arguments, the way the
+    /// app runs it. A function it imported isn't one of its buttons, nor is one it doesn't have; one that fails says
+    /// why; and one that deletes its card's file resolves the card.
+    @Test func aButtonOnAJobsCardRunsAFunctionOfItsOwnJobPyAndNothingElse() async throws {
+        let place = Place()
+        defer { place.remove() }
+        try place.job("gm", #"{"name": "GM"}"#, py: """
+        import json, os
+        from os import remove
+
+        def _card(item):
+            return os.path.join(os.environ["NOTELING_CARDS_DIR"], item + ".json")
+
+        def run():
+            keep = os.path.join(os.environ["NOTELING_INPUT"], "items.csv")
+            with open(_card("4417"), "w") as f:
+                json.dump({"title": "Item 4417 has the wrong price", "actions": [
+                    {"label": "Remove", "run": "remove", "args": {"path": keep}},
+                    {"label": "Missing", "run": "nowhere"},
+                    {"label": "Break", "run": "broken"},
+                    {"label": "Mark as fixed", "run": "mark_fixed", "args": {"item": "4417", "price": 12.5}}]}, f)
+
+        def mark_fixed(item, price):
+            remove(_card(item))
+            return f"Marked {item} as fixed at {price}."
+
+        def broken():
+            raise ValueError("The pricing service said no.")
+        """, input: ["items.csv": "item,price\n4417,9.99\n"])
+        let scripts = ScriptRunner(config: Config())
+        scripts.cardsRoot = place.inbox
+        let registry = ToolRegistry(root: place.root.appendingPathComponent("tools"), runner: scripts)
+        let feature = FolderJobsFeature(registry: registry, notifier: JobNotifier(), store: place.store(), inbox: place.inbox)
+        let morning = MorningStore(directory: place.root.appendingPathComponent("morning"))
+        let inbox = CardInbox(store: morning, directory: place.inbox)
+        feature.runner.onTick = { inbox.scan() }   // as the app has it: after each run, the inbox is looked at
+        feature.buttons.onCardsChanged = { inbox.scan() }
+        feature.buttons.record = { try? morning.recordPress(cardID: $0, $1) }
+        let job = try #require(feature.store.jobs.first)
+        feature.runner.run(job.id)
+        await feature.runner.finish()
+
+        func card() throws -> MorningCard { try #require(morning.cards.first { $0.inbox?.key == "jobcards-own-gm/4417" }) }
+        func press(_ label: String) async throws -> CardPress? {
+            let current = try card()
+            await feature.buttons.press(current, try #require(current.inbox?.actions.first { $0.label == label }))
+            return try card().inbox?.presses?.last
+        }
+        #expect(try card().inbox?.actions.map(\.label) == ["Remove", "Missing", "Break", "Mark as fixed"])
+        let first = try card()
+        #expect(feature.buttons.job(for: first)?.id == job.id && feature.buttons.unavailable(first) == nil)
+
+        let removed = try await press("Remove")
+        #expect(removed?.said == "job.py has no function remove() of its own." && removed?.failed == true)
+        #expect(FileManager.default.fileExists(atPath: place.own.appendingPathComponent("gm/input/items.csv").path))
+        let missing = try await press("Missing")
+        #expect(missing?.said == "job.py has no function nowhere() of its own." && missing?.failed == true)
+        let broken = try await press("Break")
+        #expect(broken?.said == "The pricing service said no." && broken?.failed == true)
+        #expect(try card().disposition == .unreviewed)
+
+        let fixed = try await press("Mark as fixed")
+        #expect(fixed?.said == "Marked 4417 as fixed at 12.5." && fixed?.failed == false && fixed?.label == "Mark as fixed")
+        #expect(try card().disposition == .resolved)
+        #expect(try card().inbox?.goneAt != nil)   // its file went
+        #expect(try card().inbox?.presses?.map(\.label) == ["Remove", "Missing", "Break", "Mark as fixed"])
+        #expect(CardRunWords.line(try #require(fixed), now: fixed?.at ?? Date()).hasSuffix(" · Marked 4417 as fixed at 12.5."))
+    }
+
+    /// A card's button runs only while its job could: from the job whose cards folder holds the card, turned on, between
+    /// its start and its end, with its secrets in Settings. It runs that job's job.py, with the card's arguments.
+    @Test func aCardsButtonRunsOnlyWhileItsJobCould() async throws {
+        let place = Place()
+        defer { place.remove() }
+        try place.job("holiday/gm", #"{"name": "GM", "requires": ["PRICING_TOKEN"]}"#, team: true)
+        try place.job("autumn", #"{"name": "Autumn", "ends": "2020-09-01T00:00:00Z"}"#, team: true)
+        try place.job("winter", #"{"name": "Winter", "starts": "2099-12-01T00:00:00Z"}"#, team: true)
+        let store = place.store()
+        for job in store.jobs { try store.setOn(job.id, true) }
+        var runs: [FolderJobRun] = []
+        let buttons = FolderJobButtons(store: store, execute: { run in runs.append(run); return "Fixed." })
+        var hasToken = false
+        buttons.hasSecret = { _ in hasToken }
+        var presses: [CardPress] = []
+        buttons.record = { presses.append($1) }
+        let morning = MorningStore(directory: place.root.appendingPathComponent("morning"))
+        let inbox = CardInbox(store: morning, directory: place.inbox)
+        let button = #"{"title": "T", "actions": [{"label": "Fix", "run": "fix", "args": {"item": "4417"}}]}"#
+        for source in ["jobcards-team-holiday-gm", "jobcards-team-autumn", "jobcards-team-winter", "jobcards-team-gone"] {
+            try place.write(place.inbox.appendingPathComponent("\(source)/x.json"), button)
+        }
+        inbox.scan()
+        func card(_ source: String) throws -> MorningCard { try #require(morning.cards.first { $0.inbox?.key == source + "/x" }) }
+
+        #expect(buttons.unavailable(try card("jobcards-team-gone")) == "Its job isn't here any more, so this button can't run.")
+        #expect(buttons.unavailable(try card("jobcards-team-autumn")) == "Its job has ended, so this button can't run.")
+        #expect(buttons.unavailable(try card("jobcards-team-winter")) == "Its job hasn't started yet, so this button can't run.")
+        let gm = try card("jobcards-team-holiday-gm")
+        #expect(buttons.unavailable(gm) == "Needs PRICING_TOKEN in Settings.")
+        await buttons.press(gm, try #require(gm.inbox?.actions.first))
+        #expect(runs.isEmpty && presses.map(\.said) == ["Needs PRICING_TOKEN in Settings."] && presses[0].failed)
+
+        try store.setOn(try #require(store.jobs.first { $0.path == "holiday/gm" }).id, false)
+        #expect(buttons.unavailable(gm) == "Turn its job on in Jobs to use this button.")
+        try store.setOn(try #require(store.jobs.first { $0.path == "holiday/gm" }).id, true)
+        hasToken = true
+        #expect(buttons.unavailable(gm) == nil)
+        await buttons.press(gm, try #require(gm.inbox?.actions.first))
+        let run = try #require(runs.first)
+        #expect(run.job.path == "holiday/gm" && run.function == "fix" && run.arguments["item"] as? String == "4417")
+        #expect(run.script == place.team.appendingPathComponent("holiday/gm/job.py")  && run.env["NOTELING_OUTPUT"] == nil)
+        #expect(run.cardsSource == "jobcards-team-holiday-gm" && run.timeout == FolderJobButtons.timeLimit)
+        #expect(presses.last == CardPress(label: "Fix", at: try #require(presses.last?.at), said: "Fixed.", failed: false))
+    }
+
     // MARK: fixtures
 
     private struct Place {

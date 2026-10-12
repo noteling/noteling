@@ -34,15 +34,16 @@ final class ScriptRunner {
         return "no Python runtime found"
     }
 
-    private func command(helper: String, script: URL, deps: [String]) -> (String, [String])? {
+    /// `function` is the one to call instead of run(): a card's button, in its job's job.py.
+    private func command(helper: String, script: URL, deps: [String], function: String? = nil) -> (String, [String])? {
         let helperPath = helpers.appendingPathComponent(helper).path
+        let call = [helperPath, script.path] + (function.map { [$0] } ?? [])
         if let uv {
             var args = ["run", "--no-project", "--quiet"]
             for d in deps { args += ["--with", d] }
-            args += [helperPath, script.path]
-            return (uv, args)
+            return (uv, args + call)
         }
-        if let python { return (python, [helperPath, script.path]) }
+        if let python { return (python, call) }
         return nil
     }
 
@@ -92,16 +93,17 @@ final class ScriptRunner {
     /// itself: its folder is a person's, or the team's copy, which Noteling never writes into.
     /// `cardsSource` names its folder in the cards inbox, instead of its pack's. `env` is what this run alone gets
     /// besides, such as a job's input and output folders; a PYTHONPATH in it comes before one from Settings.
-    func result(_ tool: ScriptTool, args: [String: Any] = [:], context: ScreenContext? = nil, secrets: [String] = [],
+    /// `function` calls one the script defines instead of run(), as a card's button does.
+    func result(_ tool: ScriptTool, args: [String: Any] = [:], function: String? = nil, context: ScreenContext? = nil, secrets: [String] = [],
                 timeout: TimeInterval = 90, toolDir: URL? = nil, cardsSource: String? = nil, env: [String: String] = [:]) async throws -> Any {
-        try await execute(tool, args: args, context: context, secrets: secrets, timeout: timeout, stopsWithCaller: true,
+        try await execute(tool, args: args, function: function, context: context, secrets: secrets, timeout: timeout, stopsWithCaller: true,
                           toolDir: toolDir, cardsSource: cardsSource, env: env)["result"] ?? NSNull()
     }
 
-    private func execute(_ tool: ScriptTool, args: [String: Any], context: ScreenContext?, secrets: [String],
+    private func execute(_ tool: ScriptTool, args: [String: Any], function: String? = nil, context: ScreenContext?, secrets: [String],
                          timeout: TimeInterval = 90, stopsWithCaller: Bool = false, toolDir home: URL? = nil,
                          cardsSource: String? = nil, env own: [String: String] = [:]) async throws -> [String: Any] {
-        guard let (exe, cmdArgs) = command(helper: "run_tool.py", script: tool.path, deps: tool.dependencies) else {
+        guard let (exe, cmdArgs) = command(helper: "run_tool.py", script: tool.path, deps: tool.dependencies, function: function) else {
             throw ScriptRunnerError(message: "no Python runtime")
         }
         let stdin = try JSONSerialization.data(withJSONObject: args)

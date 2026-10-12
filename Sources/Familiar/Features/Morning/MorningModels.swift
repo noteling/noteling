@@ -73,8 +73,8 @@ struct MorningCard: Codable, Identifiable, Equatable {
     var personalContext: String? = nil
     /// Options after the first (the first is `action`), best first. Optional so cards saved before it still load.
     var alternatives: [MorningAction]? = nil
-    /// A card a script wrote into the cards inbox (`CardInbox`): its file says what it shows, and it never runs anything.
-    /// Nil for every other card; the card step and the attention test never touch one that has it.
+    /// A card a script wrote into the cards inbox (`CardInbox`): its file says what it shows, and it never runs anything
+    /// by itself. Nil for every other card; the card step and the attention test never touch one that has it.
     var inbox: CardInboxLink? = nil
 }
 
@@ -84,7 +84,7 @@ struct CardInboxLink: Codable, Equatable {
     var key: String
     /// high, normal or low.
     var severity: String
-    /// Buttons that only open a page or ask Noteling a question in chat.
+    /// Buttons that open a page, ask Noteling a question in chat, or run a function of its job's job.py.
     var actions: [CardInboxAction]
     /// When its file was deleted: the script no longer reports it.
     var goneAt: Date? = nil
@@ -100,6 +100,17 @@ struct CardInboxLink: Codable, Equatable {
     var fileNotes: [String]? = nil
     /// The modification date of the card file its files were taken from: that file read again keeps them as they are.
     var filesFrom: Date? = nil
+    /// What pressing its buttons that run its job's code came to, the latest five, newest last. Its file never changes them.
+    var presses: [CardPress]? = nil
+}
+
+/// One press of a card's button that runs its job's code: which button, when, and what came of it.
+struct CardPress: Codable, Equatable {
+    var label: String
+    var at: Date
+    /// What its function returned, or why it didn't run or failed.
+    var said: String
+    var failed: Bool
 }
 
 /// A file an inbox card carries, such as a run's full results for Excel: Noteling's own copy, taken from beside the
@@ -113,13 +124,21 @@ struct CardFile: Codable, Equatable, Identifiable {
     var id: String { name }
 }
 
-/// One button on an inbox card: open a web page, or ask Noteling something about the card in chat. Never anything else.
-/// (A button that opened a watch's page, saved before watches went, decodes as one without either, and doesn't show.)
+/// One button on an inbox card: open a web page, ask Noteling something about the card in chat, or, on a card a job's
+/// job.py wrote, run a function that job.py defines when the person presses it. Never anything else.
+/// (A button that opened a watch's page, saved before watches went, decodes as one with none of these, and doesn't show.)
 struct CardInboxAction: Codable, Equatable, Identifiable {
     var label: String
     var url: String? = nil
     var ask: String? = nil
-    var id: String { [label, url ?? "", ask ?? ""].joined(separator: "\u{1F}") }
+    /// The name of a function in the job.py of the job whose card this is. Which job.py is the card's folder's, never
+    /// anything the card says.
+    var run: String? = nil
+    /// What it's called with: one JSON object, as the card file wrote it.
+    var args: String? = nil
+    /// Asked before it runs: the job says what pressing it changes.
+    var confirm: String? = nil
+    var id: String { [label, url ?? "", ask ?? "", run ?? "", args ?? ""].joined(separator: "\u{1F}") }
 }
 
 extension MorningCard {

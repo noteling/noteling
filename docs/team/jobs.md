@@ -86,6 +86,9 @@ sign in again.")`. The job's row shows its first line in red, the last output st
 **Shared code:** put it in a pack's `scripts/` folder, in a file whose name starts with `_` (so it isn't offered as a
 tool), and add that folder to the path in `job.py`. [Examples](examples.md#shared-code) shows the three lines.
 
+**Other functions:** a card your job writes can have buttons that call other functions of `job.py`, such as one that
+fixes the item the card is about. See [Cards](cards.md#buttons-that-run-your-jobs-code).
+
 ## What it leaves
 
 A run that works replaces the job's output on that Mac. It lives only there, never in the repository.

@@ -126,6 +126,8 @@ struct MorningFilesView: View {
     @State private var showingQuietFolders = false
     /// The files a decision for several changed, as they were, for its Undo.
     @State private var batchUndo: [MorningCard]?
+    /// A card's button that runs its job's code and asks first, while it asks.
+    @State private var confirming: CardRunConfirm?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -619,6 +621,12 @@ struct MorningFilesView: View {
                     if let job = folderJob(of: card), let thanks = FolderJobWords.thanks(job, run: job.state.lastSuccessAt) {
                         Text(thanks).font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
                     }
+                    // What pressing one of its buttons that run its job's code came to, last time.
+                    if let press = card.inbox?.presses?.last {
+                        Label(CardRunWords.line(press, now: Date()), systemImage: press.failed ? "exclamationmark.triangle" : "checkmark.circle")
+                            .font(.system(size: 12)).foregroundStyle(press.failed ? Pad.redInk : Pad.inkSoft)
+                            .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    }
                     if let gone = card.inbox?.goneAt {
                         Label(Self.goneLine(card, gone: gone, jobs: folderJobs?.store.jobs ?? [], now: Date()), systemImage: "tray")
                             .font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
@@ -654,6 +662,7 @@ struct MorningFilesView: View {
                             HStack(spacing: 9) { inboxButtons(card) }
                             VStack(alignment: .leading, spacing: 8) { inboxButtons(card) }
                         }
+                        runButtonNotes(card)
                     } else {
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: 9) { optionButtons(card, history: history) }
@@ -712,6 +721,30 @@ struct MorningFilesView: View {
             } else if let ask = action.ask {
                 Button(action.label) { askAboutCard?(card, ask) }.buttonStyle(MorningActionButton(primary: index == 0)).help(ask)
                     .disabled(askAboutCard == nil)
+            } else if action.run != nil {
+                if let buttons = folderJobs?.buttons {
+                    CardRunButton(card: card, action: action, buttons: buttons, primary: index == 0) {
+                        confirming = CardRunConfirm(card: card.id, action: action.id)
+                    }
+                } else {
+                    Button(action.label) {}.buttonStyle(MorningActionButton(primary: index == 0)).disabled(true)
+                }
+            }
+        }
+    }
+
+    /// Under a card's buttons: what one that runs its job's code asks before it runs, and why such buttons can't run now.
+    @ViewBuilder private func runButtonNotes(_ card: MorningCard) -> some View {
+        if let buttons = folderJobs?.buttons, card.inbox?.actions.contains(where: { $0.run != nil }) == true {
+            if let confirming, confirming.card == card.id, let action = card.inbox?.actions.first(where: { $0.id == confirming.action }) {
+                CardRunConfirmRow(action: action, run: {
+                    self.confirming = nil
+                    Task { await buttons.press(card, action) }
+                }, cancel: { self.confirming = nil })
+            }
+            if let why = buttons.unavailable(card) {
+                Label(why, systemImage: "exclamationmark.circle").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

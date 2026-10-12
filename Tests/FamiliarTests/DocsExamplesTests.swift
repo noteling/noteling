@@ -109,7 +109,8 @@ struct DocsExamplesTests {
                     #expect(PageGlance.parse(block) != nil, "\(place)")
                     checked["glance", default: 0] += 1
                 } else if keys.contains("title") {
-                    let card = try CardInboxFormat.parse(data, source: "docs", id: "example", modifiedAt: Date())
+                    // As a job's script writes it: the only folder whose cards may have buttons that run something.
+                    let card = try CardInboxFormat.parse(data, source: FolderJobCards.scriptPrefix + "own-docs", id: "example", modifiedAt: Date())
                     #expect(!card.title.isEmpty && card.actions.count == (object["actions"] as? [Any])?.count ?? 0, "\(place)")
                     checked["card", default: 0] += 1
                 } else {

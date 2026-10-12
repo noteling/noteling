@@ -3,7 +3,8 @@ import SwiftUI
 
 /// Jobs kept as folders, from fictional files: the Jobs list with a job of yours that ran and your team's (one on,
 /// one off, one ended), a job's page with its input, its preview table and text and the files to take away, its card
-/// in Morning Files with the same, and the job's folder there. Nothing runs a script.
+/// in Morning Files with the same, the job's folder there, and a card its job.py wrote with buttons that run its code,
+/// before and after one was pressed, and what one asks first. Nothing runs a script.
 extension MorningRender {
     @MainActor static func renderFolderJobs(fixtures: URL, directory: URL) throws {
         let root = fixtures.appendingPathComponent("folder-jobs")
@@ -57,10 +58,14 @@ extension MorningRender {
         let cards = FolderJobCards(root: inbox)
         cards.reconcile(store.jobs)
         let scan = CardInbox(store: morning, directory: inbox)
-        scan.folderName = { source in store.jobs.first { FolderJobCards.source(for: $0) == source }?.name }
+        scan.folderName = { source in
+            store.jobs.first { FolderJobCards.source(for: $0) == source || FolderJobCards.scriptSource(for: $0) == source }?.name
+        }
         scan.scan()
 
-        let panel = FolderJobsPanel(store: store, runner: runner, notifier: JobNotifier())
+        let buttons = FolderJobButtons(store: store, execute: { _ in NSNull() })
+        buttons.hasSecret = { _ in true }
+        let panel = FolderJobsPanel(store: store, runner: runner, notifier: JobNotifier(), buttons: buttons)
         let navigation = MorningNavigation()
         func save(_ name: String, _ route: MorningNavigation.Route, height: CGFloat? = nil) throws {
             navigation.route = route
@@ -76,6 +81,27 @@ extension MorningRender {
         let card = CardInboxFormat.cardID(FolderJobCards.key(for: gm))
         if let folder = morning.cards.first(where: { $0.id == card })?.folderID { try save("folder-job-folder.png", .folder(folder)) }
         try save("folder-job-card.png", .card(card), height: 1_000)
+
+        // A card the GM job's job.py wrote for one item, with buttons that run its own code; then one pressed.
+        try write(inbox.appendingPathComponent(FolderJobCards.scriptSource(for: gm) + "/K-1.json"), #"""
+            {"title": "K-1 shows 18.99, not the event price 16.99 (fictional)",
+             "body": "Plant pots, set of 5 – green. The page still shows the list price; the event price starts at 9 AM.",
+             "url": "https://shop.example.com/item/K-1", "severity": "high",
+             "actions": [{"label": "Set the event price", "run": "set_price", "args": {"item": "K-1", "price": 16.99},
+                          "confirm": "This sets K-1 to 16.99 on the live site, as you."},
+                         {"label": "Check K-1 again", "run": "check_item", "args": {"item": "K-1"}},
+                         {"label": "Who owns pricing?", "ask": "Who owns pricing for K-1?"}]}
+            """#)
+        scan.scan()
+        let itemCard = CardInboxFormat.cardID(FolderJobCards.scriptSource(for: gm) + "/K-1")
+        try save("folder-job-card-buttons.png", .card(itemCard), height: 760)
+        try morning.recordPress(cardID: itemCard, CardPress(label: "Check K-1 again", at: ran.addingTimeInterval(9 * 60),
+                                                           said: "Still 18.99 on the live page.", failed: false))
+        try save("folder-job-card-pressed.png", .card(itemCard), height: 760)
+        if let action = morning.cards.first(where: { $0.id == itemCard })?.inbox?.actions.first {
+            try image(CardRunConfirmRow(action: action, run: {}, cancel: {}).padding(23).foregroundStyle(Pad.ink).background(Pad.fieldPaper),
+                      size: NSSize(width: 650, height: 150), to: directory.appendingPathComponent("folder-job-card-confirm.png"))
+        }
 
         // Your team's jobs past a handful, with a search kept from last time: only those that match, and the ones on.
         for (path, name) in [("spring/shoes", "Spring · Shoes"), ("spring/garden", "Spring · Garden"), ("home/kitchen", "Kitchen"),

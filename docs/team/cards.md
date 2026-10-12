@@ -17,7 +17,9 @@ id is the same card.
  "details": "Anything longer: shown under Show original, and read by Noteling when someone asks about the card.",
  "files": ["order-4417.csv"],
  "actions": [{"label": "Open order", "url": "https://orders.example.com/4417"},
-             {"label": "Who can unblock it?", "ask": "Who can unblock order 4417, and what should I tell them?"}]}
+             {"label": "Who can unblock it?", "ask": "Who can unblock order 4417, and what should I tell them?"},
+             {"label": "Nudge the warehouse", "run": "nudge", "args": {"order": "4417"},
+              "confirm": "This sends the warehouse a reminder about order 4417."}]}
 ```
 
 | Key | What it does |
@@ -28,7 +30,7 @@ id is the same card.
 | `severity` | `high` (marked "Needs a look"), `normal`, or `low` (marked "For your information"). |
 | `details` | Longer text, kept out of the way under **Show original**. Up to 8,000 characters. |
 | `files` | Files in the same folder that the card carries. See below. |
-| `actions` | Up to 6 buttons. Each opens a web page (`url`) or asks Noteling about the card in chat (`ask`). Labels up to 40 characters. |
+| `actions` | Up to 6 buttons. Each opens a web page (`url`), asks Noteling about the card in chat (`ask`), or, on a card a job wrote, runs a function of that job's `job.py` (`run`, [below](#buttons-that-run-your-jobs-code)). Labels up to 40 characters. |
 | `parts` | What the matter is made of, by key, such as `["4417", "4420"]`. A card someone resolved opens again only when a later file names a part it didn't have. |
 
 A file can hold up to 64 KB, and one folder up to 500 cards.
@@ -46,6 +48,42 @@ A file can hold up to 64 KB, and one folder up to 500 cards.
 So a script that writes a card for each stuck order, and deletes the cards of orders no longer stuck, keeps the
 person's folder exactly as current as your data. [Examples](examples.md#stuck-items-become-cards) has one.
 
+## Buttons that run your job's code
+
+On a card a job's `job.py` wrote, a button can run a function of that same `job.py` when the person presses it. This is
+how a card goes from "this needs you" to "done" in one click:
+
+```python
+def nudge(order):
+    """Reminds the warehouse about one order, as the person who pressed the button."""
+    order = int(order)   # check what a card hands you, as you would any input
+    ...                  # call your service
+    os.remove(os.path.join(os.environ["NOTELING_CARDS_DIR"], f"order-{order}.json"))   # the card resolves
+    return f"Reminded the warehouse about order {order}."
+```
+
+| Key | What it does |
+|---|---|
+| `run` | The name of a function in the job's `job.py`. Not `run` itself, and not a name starting with `_`. |
+| `args` | One JSON object, passed as the function's arguments: `{"order": "4417"}` calls `nudge(order="4417")`. Up to 4 KB. |
+| `confirm` | Asked before it runs, with the button again and **Cancel**. Give every button that changes something outside the Mac one. |
+
+- **What runs:** always the `job.py` of the job whose folder holds the card. The card only names a function; it can't
+  point at another file or another job. And only a function `job.py` defines itself: `from os import remove` doesn't
+  make `remove` a button. So a card written from data you don't control can choose only among your job's own buttons.
+- **What it gets:** what `run()` gets ([Jobs](jobs.md#jobpy)) except `NOTELING_OUTPUT`: the job's input, its cards
+  folder, its secrets and its imports. It runs as the person who pressed it, right away rather than after the job's run,
+  for up to 2 minutes.
+- **What it says:** the words it returns show on the card, such as "Reminded the warehouse about order 4417." An
+  exception's first line shows in red. The card keeps its last five presses.
+- **What it does to the card:** rewrite the card's file to change the card, or delete it to resolve it, as above.
+  Noteling looks at the folder again as soon as the function returns.
+- **When it can't run:** while the job is off, before its start, after its end, or while a secret it `requires` is
+  missing, its buttons can't be pressed, and the card says why.
+
+Only cards a job writes can have these buttons. The cards packs and briefs write, and the card Noteling makes for a job's
+preview, can't.
+
 ## Files on a card
 
 Write the files first, then the card file. `files` names files in the same folder, without a path. Noteling copies them
@@ -60,5 +98,6 @@ Each file has **Open**, **Save as…** and **Show in Finder** on the card.
 
 ## What a card never does
 
-A card from a script never makes Noteling do anything by itself. Its buttons only open web pages or start a chat about
-the card. That holds whatever a card file says, so a card is safe to write from data you don't control.
+A card from a script never makes Noteling do anything by itself. Its buttons open web pages, start a chat about the card,
+or, on a card a job wrote, run that job's own function when the person presses one. That holds whatever a card file says,
+so a card is safe to write from data you don't control.
