@@ -265,6 +265,55 @@ struct JobsPageTests {
                 == "No jobs yet · 1 demonstration to review")
     }
 
+    @Test func deletingASavedDemonstrationTakesOnlyTheOfferAwayAndWhatWatchMeLearnedStays() async throws {
+        let fixture = try JobsFixture()
+        defer { fixture.remove() }
+        let tools = fixture.root.appendingPathComponent("tools")
+        let pack = tools.appendingPathComponent("sample")
+        try FileManager.default.createDirectory(at: pack.appendingPathComponent("docs/workflows"), withIntermediateDirectories: true)
+        let skill = pack.appendingPathComponent("SKILL.md")
+        let classPage = pack.appendingPathComponent("docs/workflows/class.md")
+        try "---\nname: Sample\ndescription: The school site\nmatch:\n  urls: [school.example.test]\n---\nLearned by watching. Recordings: 2.\n"
+            .write(to: skill, atomically: true, encoding: .utf8)
+        try "# Read the class page\nRead the new posts at `school.example.test/news` in the browser."
+            .write(to: classPage, atomically: true, encoding: .utf8)
+        try "# Read the lunch menu\nRead this week's menu at `school.example.test/lunch`."
+            .write(to: pack.appendingPathComponent("docs/workflows/lunch.md"), atomically: true, encoding: .utf8)
+        fixture.sources.refreshSavedWorkflows(root: tools)
+        #expect(Jobs.demonstrations(fixture.sources).map(\.name) == ["Read the class page", "Read the lunch menu"])
+        let before = try [skill, classPage].map { try Data(contentsOf: $0) }
+
+        // Delete takes it off the list and out of the home's count, and only that.
+        let page = try #require(find(JobsPage.self, in: fixture.files(route: .jobs).body))
+        let gone = try #require(Jobs.demonstrations(fixture.sources).first)
+        page.delete(gone)
+        #expect(Jobs.demonstrations(fixture.sources).map(\.name) == ["Read the lunch menu"])
+        #expect(Jobs.summary(Jobs.list(fixture.input()), demonstrations: Jobs.demonstrations(fixture.sources).count, now: now)
+                == "No jobs yet · 1 demonstration to review")
+        #expect(try [skill, classPage].map { try Data(contentsOf: $0) } == before)
+        let registry = ToolRegistry(root: tools, runner: ScriptRunner(config: Config()))
+        await registry.reload()
+        #expect(registry.packs.first { $0.dirName == "sample" }?.docs.map(\.relPath).contains("sample/docs/workflows/class.md") == true)
+
+        // It stays deleted when Noteling opens again; Undo offers it again.
+        let reopened = CalendarStore(directory: fixture.root.appendingPathComponent("sources"))
+        reopened.refreshSavedWorkflows(root: tools)
+        #expect(reopened.savedReadingWorkflows.map(\.name) == ["Read the lunch menu"])
+        page.undoDelete(gone)
+        #expect(Jobs.demonstrations(fixture.sources).map(\.name) == ["Read the class page", "Read the lunch menu"])
+
+        // Showing Watch Me again saves a new file, which is offered anew.
+        page.delete(gone)
+        try "# Read the class page\nRead the new posts, then the pinned one.".write(to: pack.appendingPathComponent("docs/workflows/class-2.md"), atomically: true, encoding: .utf8)
+        fixture.sources.refreshSavedWorkflows(root: tools)
+        #expect(Jobs.demonstrations(fixture.sources).map(\.relativePath) == ["sample/docs/workflows/class-2.md", "sample/docs/workflows/lunch.md"])
+    }
+
+    @Test func deletingADemonstrationSaysWhatStays() {
+        #expect(Jobs.deletedDemonstration("Read Primary")
+                == "“Read Primary” is off Saved demonstrations. What Watch Me learned stays, so the pen still helps on that page.")
+    }
+
     // MARK: each row
 
     @Test func aReadingJobsRowSaysWhatItReadAndHowItStands() {

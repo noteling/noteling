@@ -29,17 +29,23 @@ final class CalendarStore: ObservableObject {
     private let repository: any SourceRulesRepository
     private var blockedReason: String?
     private var workflowRoot: URL?
+    /// Saved demonstrations deleted from Jobs, by workflow path, kept in `deleted-demonstrations.json`.
+    private var deletedDemonstrations: Set<String>
+    private let deletedDemonstrationsFile: URL?
 
     convenience init(directory: URL = Config.dir.appendingPathComponent("calendar"), runsDirectory: URL? = nil) {
         let defaultDirectory = Config.dir.appendingPathComponent("calendar")
         let runs = SourceRunStore(directory: runsDirectory ?? (directory.standardizedFileURL == defaultDirectory.standardizedFileURL
             ? Config.dir.appendingPathComponent("runs") : directory.appendingPathComponent("runs")))
-        self.init(repository: FileSourceRulesRepository(directory: directory), runStore: runs)
+        self.init(repository: FileSourceRulesRepository(directory: directory), runStore: runs,
+                  deletedDemonstrations: directory.appendingPathComponent("deleted-demonstrations.json"))
     }
 
-    init(repository: any SourceRulesRepository, runStore: SourceRunStore) {
+    init(repository: any SourceRulesRepository, runStore: SourceRunStore, deletedDemonstrations file: URL? = nil) {
         self.repository = repository
         self.runStore = runStore
+        deletedDemonstrationsFile = file
+        deletedDemonstrations = Self.readDeleted(file)
         do {
             if let loaded = try repository.load() {
                 let workspace = Workspace(sources: loaded.rules.sources,
@@ -177,7 +183,36 @@ final class CalendarStore: ObservableObject {
         workflowRoot = root
         let registered = Set(sources.map(\.id) + readingSources.map(\.id) + removedSources.map(\.id))
         let paths = Set(sources.compactMap(\.workflowPath) + readingSources.map(\.workflowPath) + removedSources.compactMap(\.workflowPath))
-        savedReadingWorkflows = SavedReadingWorkflow.discover(root: root).filter { !registered.contains($0.draft.id) && !paths.contains($0.relativePath) }
+        savedReadingWorkflows = SavedReadingWorkflow.discover(root: root).filter {
+            !registered.contains($0.draft.id) && !paths.contains($0.relativePath) && !deletedDemonstrations.contains($0.relativePath)
+        }
+    }
+
+    /// Takes a saved demonstration off the list for good. Its file stays where it is: the workflow is part of what Watch
+    /// Me learned, which the pen and chat still follow on that page. Showing Watch Me again saves a new file, offered anew.
+    func deleteDemonstration(path: String) throws {
+        try keepDeleted(deletedDemonstrations.union([path]))
+    }
+
+    /// Undo for Delete: offers the demonstration again.
+    func restoreDemonstration(path: String) throws {
+        try keepDeleted(deletedDemonstrations.subtracting([path]))
+    }
+
+    private func keepDeleted(_ paths: Set<String>) throws {
+        if let file = deletedDemonstrationsFile {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            try JobFiles.write(JSONText.pretty(["deleted": paths.sorted()], indent: "") + "\n", to: file)
+        }
+        deletedDemonstrations = paths
+        if let workflowRoot { refreshSavedWorkflows(root: workflowRoot) }
+    }
+
+    private static func readDeleted(_ file: URL?) -> Set<String> {
+        guard let file, let data = try? Data(contentsOf: file),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return [] }
+        return Set(object["deleted"] as? [String] ?? [])
     }
 
     func latest(for sourceID: UUID) -> CalendarSnapshot? {
