@@ -106,7 +106,6 @@ struct MorningFilesView: View {
     let handoff: (MorningWorkItem) -> Void
     var calendarSources: CalendarStore? = nil
     var calendarRunner: CalendarCollectionRunner? = nil
-    var teachCalendar: (() -> Void)? = nil
     var cardGeneration: CardGenerationService? = nil
     var discussCard: ((MorningCard) -> Void)? = nil
     var attention: AttentionLedger? = nil
@@ -297,7 +296,7 @@ struct MorningFilesView: View {
         case .sources:
             if let calendarSources, let calendarRunner {
                 CalendarSourcesHost(store: calendarSources, runner: calendarRunner, initialSourceID: navigation.calendarSourceID,
-                                    teach: { teachCalendar?() }, openRun: openRun)
+                                    openRun: openRun)
             } else { empty("Sources are unavailable.") }
         case .sourceRuns:
             if let calendarSources { SourceRunHistoryView(runs: calendarSources.runStore, openRun: openRun) }
@@ -316,7 +315,7 @@ struct MorningFilesView: View {
         case .jobs:
             if hasJobs {
                 JobsPage(morning: store, sources: calendarSources, runner: calendarRunner, setup: jobs,
-                         navigation: navigation, teach: teachCalendar, folderJobs: folderJobs)
+                         navigation: navigation, folderJobs: folderJobs)
             } else { empty("Jobs are unavailable.") }
         case .sourceJob(let id):
             if let calendarSources, let calendarRunner {

@@ -92,33 +92,6 @@ struct ReadingDataTests {
         #expect(throws: CalendarDataError.self) { try ReadingSubmission.parse(value, request: nextRequest) }
     }
 
-    @Test func recoveringKeptGmailOffersReviewAndReusesTheObservedMailboxURL() throws {
-        let root = directory()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let tools = root.appendingPathComponent("tools")
-        let pack = tools.appendingPathComponent("gmail")
-        let workflows = pack.appendingPathComponent("docs/workflows")
-        try FileManager.default.createDirectory(at: workflows, withIntermediateDirectories: true)
-        try "---\nname: Gmail\n---\nLearned by watching. Recordings: 1.".write(to: pack.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
-        try "# Check the Gmail inbox\n1. In Google Chrome, open a New Tab.\n2. Chrome autocompletes `mail.google.com/mail/u/0/#inbox`.\n3. Read the message list on the **Primary** tab.\nNo individual email was opened.".write(to: workflows.appendingPathComponent("check-email-inbox.md"), atomically: true, encoding: .utf8)
-        let store = CalendarStore(directory: root.appendingPathComponent("sources"))
-        store.refreshSavedWorkflows(root: tools)
-        let candidate = try #require(store.savedReadingWorkflows.first)
-        #expect(candidate.name == "Check the Gmail inbox")
-        #expect(candidate.draft.url == "https://mail.google.com/mail/u/0/#inbox")
-        #expect(candidate.draft.kind == .mail)
-        #expect(candidate.draft.account.isEmpty)
-        #expect(candidate.draft.requiresReview)
-        #expect(store.readingSources.isEmpty)
-        #expect(throws: CalendarDataError.self) { try candidate.draft.validateForRead() }
-        var reviewed = candidate.draft
-        reviewed.requiresReview = false
-        try reviewed.validateForRead()
-        try store.saveReadingSource(reviewed)
-        #expect(store.savedReadingWorkflows.isEmpty)
-        #expect(CalendarStore(directory: root.appendingPathComponent("sources")).readingSources == [reviewed])
-    }
-
     @Test func brokenVersionTwoWorkspaceIsNotTreatedAsEmpty() throws {
         let root = directory()
         defer { try? FileManager.default.removeItem(at: root) }

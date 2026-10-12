@@ -421,22 +421,10 @@ enum Jobs {
         return rows
     }
 
-    /// Saved demonstrations that aren't jobs yet: each needs a review before it can be added.
-    static func demonstrations(_ store: CalendarStore) -> [SavedReadingWorkflow] {
-        store.savedReadingWorkflows.filter { workflow in !store.readingSources.contains { $0.id == workflow.draft.id } }
-    }
-
-    /// Delete on a saved demonstration only takes it off the list: the steps stay with what Watch Me learned.
-    static let deleteDemonstrationHelp = "Takes it off this list. What Watch Me learned stays, so the pen still helps on that page."
-
-    static func deletedDemonstration(_ name: String) -> String {
-        "“\(name)” is off Saved demonstrations. What Watch Me learned stays, so the pen still helps on that page."
-    }
-
     /// The Jobs box on the Morning Files home, in one line: "5 jobs · 2 need attention · last run 6:31 PM". Only live
     /// jobs count: one before its start or past its end isn't mentioned, and with only those, "No jobs running now". A
     /// team job that is off isn't one of yours yet; with only those: "3 team jobs you can turn on".
-    static func summary(_ jobs: [Job], demonstrations: Int = 0, now: Date) -> String {
+    static func summary(_ jobs: [Job], now: Date) -> String {
         let live = jobs.filter(\.isLive)
         let yours = live.filter { $0.status != .off }
         var words: [String] = []
@@ -451,7 +439,6 @@ enum Jobs {
             if attention > 0 { words.append("\(attention) need\(attention == 1 ? "s" : "") attention") }
             if let last = yours.compactMap(\.lastRunAt).max() { words.append("last run " + JobWords.time(last, now: now)) }
         }
-        if demonstrations > 0 { words.append("\(demonstrations) demonstration\(demonstrations == 1 ? "" : "s") to review") }
         return words.joined(separator: " · ")
     }
 

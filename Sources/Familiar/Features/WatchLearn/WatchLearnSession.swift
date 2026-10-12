@@ -3,6 +3,8 @@ import Foundation
 import FamiliarContracts
 
 /// Owns a recording from capture through review. The app decides permissions, navigation, and how events read on screen.
+/// What it keeps is a tool: the steps shown, written into the tools folder for the pen and chat to follow. It never
+/// makes a job.
 @MainActor
 final class WatchLearnSession: ObservableObject {
     enum Phase: Equatable {
@@ -31,7 +33,6 @@ final class WatchLearnSession: ObservableObject {
         var summarize: (Recording, String?, @escaping (String) -> Void) async throws -> PackDraft
         var write: (PackDraft) throws -> [URL]
         var reload: () async throws -> Void
-        var saveSource: (PackDraft) throws -> Void = { _ in }
         var saveMeta: (Recording) throws -> Void = { try $0.saveMeta() }
         var deleteRecording: (Recording) -> Void = { try? FileManager.default.removeItem(at: $0.dir) }
     }
@@ -41,8 +42,6 @@ final class WatchLearnSession: ObservableObject {
     @Published private(set) var pendingDraft: PackDraft?
     @Published private(set) var status = ""
     @Published private(set) var clickCount = 0
-    @Published private(set) var isTeachingSource = false
-    var isTeachingCalendar: Bool { isTeachingSource } // Compatibility with the original calendar entry point.
     var onEvent: ((Event) -> Void)?
 
     var watching: Bool { phase == .recording || phase == .stopping }
@@ -59,14 +58,14 @@ final class WatchLearnSession: ObservableObject {
     private var stopTask: Task<Void, Never>?
     private var summaryTask: Task<Void, Never>?
     private var keepTask: Task<Void, Never>?
-    // Reloading or saving a source can fail after writing succeeded. Retry must not duplicate workflow files.
+    // Reloading can fail after writing succeeded. Retry must not duplicate workflow files.
     private var writtenFiles: [URL]?
 
     init(operations: Operations) { self.operations = operations }
 
     /// The caller handles permission checks before starting, and presents an existing review when this returns false.
     @discardableResult
-    func start(calendar: Bool = false, source: Bool = false) throws -> Bool {
+    func start() throws -> Bool {
         guard phase == .idle, !hasPendingReview, stopTask == nil else { return false }
         generation += 1
         let token = generation
@@ -75,7 +74,6 @@ final class WatchLearnSession: ObservableObject {
             guard let self, self.generation == token else { return }
             self.clickCount = count
         }
-        isTeachingSource = calendar || source
         status = ""
         phase = .recording
         onEvent?(.started)
@@ -118,7 +116,6 @@ final class WatchLearnSession: ObservableObject {
         guard recording.events.contains(where: { $0.kind != "scene" }) else {
             operations.deleteRecording(recording)
             pendingRecording = nil
-            isTeachingSource = false
             phase = .idle
             onEvent?(.emptyRecording)
             return
@@ -171,7 +168,6 @@ final class WatchLearnSession: ObservableObject {
         phase = .summarizing
         status = "Writing it up…"
         let operations = self.operations
-        let summaryPurpose = isTeachingSource ? Self.sourcePurpose(purpose) : purpose
         let task = Task { [weak self] in
             guard self?.generation == token, !Task.isCancelled else { return }
             let started = Date()
@@ -182,7 +178,7 @@ final class WatchLearnSession: ObservableObject {
                 }
             }
             let result: Result<PackDraft, Error>
-            do { result = .success(try await operations.summarize(recording, summaryPurpose, report)) }
+            do { result = .success(try await operations.summarize(recording, purpose, report)) }
             catch { result = .failure(error) }
             guard let self, self.generation == token else { return }
             self.summaryTask = nil
@@ -225,10 +221,6 @@ final class WatchLearnSession: ObservableObject {
 
     func keep() async {
         guard !busy, let draft = pendingDraft, draft.parsed, let recording = pendingRecording else { return }
-        guard !isTeachingSource || draft.calendarSource != nil || draft.readingSource != nil else {
-            onEvent?(.failed(stage: .keep, error: ClaudeError(message: "No reading source was established, so nothing has been saved. Tell me what is missing (the page address, the account, or what to read) and I'll write it again, or discard this draft and teach it again. Ordinary action workflows cannot be run as reading sources.")))
-            return
-        }
         phase = .saving
         status = "Saving…"
         let token = generation
@@ -244,12 +236,10 @@ final class WatchLearnSession: ObservableObject {
                 }
                 try await operations.reload()
                 guard self.generation == token else { return }
-                try operations.saveSource(draft)
                 operations.deleteRecording(recording)
                 self.pendingRecording = nil
                 self.pendingDraft = nil
                 self.writtenFiles = nil
-                self.isTeachingSource = false
                 self.phase = .idle
                 self.status = ""
                 self.keepTask = nil
@@ -296,17 +286,8 @@ final class WatchLearnSession: ObservableObject {
         pendingRecording = nil
         pendingDraft = nil
         writtenFiles = nil
-        isTeachingSource = false
         status = ""
         clickCount = 0
         phase = stopTask == nil ? .idle : .stopping
     }
-
-    static func sourcePurpose(_ purpose: String?) -> String {
-        let intent = "Teach Noteling a source for a reading job, which Run now and Run all reading jobs read. Use reading_source for mail or web information, or calendar_source for a calendar. Learn the demonstrated application, address, account, bounded scope, navigation and completion checks. Keep the source's meaning separate from reading rules in scope. Preserve the user's explicit time range, unread status, exclusions and stopping limit, even when the demonstration shows a broader view. Keep relative rules such as the last 2 days relative to each future run, not fixed to the demonstration date. For mail without explicit rules, use only the demonstrated first visible page; do not infer permission to scan the whole mailbox. Keep anything not shown unknown, and flag any requested filter whose controls were not demonstrated as uncertain. If the recorded URL is stale but a supplied screenshot visibly shows the address, cite that exact screenshot evidence in url_evidence and require review. Demonstrated messages, dates and events are examples, never current results of a future read. Do not turn sending, editing or other action workflows into reading sources."
-        guard let purpose, !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return intent }
-        return intent + "\n\nUser's description: " + purpose
-    }
-
-    static func calendarPurpose(_ purpose: String?) -> String { sourcePurpose(purpose) }
 }

@@ -70,7 +70,7 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    **Esc** or menu bar → **Land Noteling** brings it back early. Starting work brings it back too. Available while idle;
    with macOS Reduce Motion enabled, the fold and gentle flap stay at home.
 6. Claude can call the pack's scripts, `read_file` / `grep` over the docs, and `read_screen` (accessibility text).
-   General chat also knows the saved sources (the jobs taught with Watch Me or created in chat).
+   General chat also knows the saved sources (the reading jobs created in chat, or taught with Watch Me in earlier versions).
    - **Context:** every turn carries a short "Your saved jobs" list: name, kind, address, reading rules, and when each was taught and last run.
    - **Tools** (`SourceConversation`): `get_source` shows one job with its latest findings, `update_source` edits it through the same store and checks as Edit on its page in Jobs, `remove_source` / `restore_source` take it out of future runs and bring it back, `create_source` starts a job that reads through a pack script, with no teaching, and `offer_run_source` adds a Run now tab, which runs the job and opens its page in Jobs.
    - **Rules:** only the person's tap runs a job. Edits wait while a read is running, and they never clear a source's "needs review" flag. Each change leaves a receipt on the pad and an Open Jobs tab.
@@ -153,13 +153,10 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    Preparation uses your configured Claude connection with no tools. **Work in an app** uses existing desktop control
    and approvals. Queue entries survive restarts; interrupted work returns for review rather than replaying actions.
    **Jobs** (see below) lists everything Noteling runs: the saved sources, which read a calendar, inbox or web view
-   (reading jobs), and the team's jobs kept as folders (see Team jobs). **Jobs → Teach a job with Watch Me** teaches a
-   calendar, inbox, or web view from a demonstration.
-   Show the location, account, and information to read; explain what they mean and review the learned description in chat.
-   **Keep it** registers a reading source in Jobs. If no reading source was established, Noteling keeps the review
-   open and explains what is missing. Ordinary Watch Me action workflows remain separate from source collection.
-   Previously saved demonstrations appear under **Saved demonstrations → Review & add** in Jobs so you can confirm their
-   source address and reading scope without recording again. A calendar job reads today with **Run now**; for another
+   (reading jobs), and the team's jobs kept as folders (see Team jobs). Watch Me never makes a job: what it keeps is a
+   tool (the steps shown, in a pack in the tools folder) for the pen and chat to follow. Reading jobs come from the
+   chat's `create_source` through a listed way to read, such as the mail pack; ones taught with Watch Me in earlier
+   versions keep running. A calendar job reads today with **Run now**; for another
    day, choose **Read another day…** on its page, pick a day and hours, and **Read calendar**.
    Each reading job's page has **Edit** (or **Review**) and **Remove…**. Edit its description, location, account and
    reading rules; changes update the same source. Remove excludes it from future batches while keeping past run results.
@@ -204,8 +201,7 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
      something there, and the on/off switch for a team job. Jobs before their start or past their end wait under one
      line, **Upcoming (1) · Ended (2) · Show**. The page also has **Run all reading jobs** with **Stop all**, **Latest
      run** (saying when a job didn't finish) and **Run history**; folders in the jobs folders that can't be a job, and
-     why, and a `watches/` folder left behind (watches no longer run); **Saved demonstrations** to review and add;
-     **Removed jobs** to restore; and **Teach a job with Watch Me**.
+     why, and a `watches/` folder left behind (watches no longer run); and **Removed jobs** to restore.
    - Every job's page starts with the same header (`JobHeader`): its name, what it does and how often, its last run,
      how it stands, its buttons, and **Card**, which opens the card it made: a job's preview card from
      `cards/inbox/job-…/job.json`, resolved or not, and the open cards its `job.py` wrote, or a reading job's open cards (a menu when there are several, those

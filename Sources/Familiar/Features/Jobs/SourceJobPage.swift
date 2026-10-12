@@ -174,7 +174,7 @@ struct SourceJobPage: View {
     private func removeConfirmation(_ job: Job) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("Remove “\(job.name)”?").font(.system(size: 13, weight: .semibold))
-            Text("It stops running. Its saved results and its cards stay, and you can restore it under Removed jobs. Its app and saved demonstration aren't touched.")
+            Text("It stops running. Its saved results and its cards stay, and you can restore it under Removed jobs. Its app, and anything Watch Me learned, aren't touched.")
                 .font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Button("Remove") {

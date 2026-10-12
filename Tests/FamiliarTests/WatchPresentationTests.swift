@@ -12,13 +12,7 @@ struct WatchPresentationTests {
         let workflow = "# Check unread email\n" + String(repeating: "Read a visible message without opening or changing it.\n", count: 2_000) + "END OF COMPLETE WORKFLOW"
         fixture.draft.workflowMarkdown = workflow
         fixture.draft.screensMarkdown = String(repeating: "Inbox details\n", count: 1_000)
-        fixture.draft.readingSource = LearnedReadingSource(kind: .mail, name: "Work inbox",
-            meaning: "My work email", application: "Google Chrome", bundleID: "com.google.Chrome",
-            url: "https://mail.google.com/mail/u/0/#inbox", account: "example@example.test",
-            scope: "Only unread email from the last 2 days.",
-            navigationHints: String(repeating: "Look for the inbox.\n", count: 1_000),
-            completionChecks: "Stop at the saved reading boundary.",
-            uncertainties: ["The unread filter was not demonstrated."], requiresReview: true)
+        fixture.draft.caveats = ["The unread filter was not demonstrated."]
         let (assistant, learning) = fixture.makeAssistant()
         try await recordAndStop(learning)
         await (try #require(learning.summarize(purpose: "check unread email"))).value
@@ -26,7 +20,6 @@ struct WatchPresentationTests {
         let review = try #require(assistant.transcript.last?.text)
         #expect(review.count <= 1_500)
         #expect(review.contains("check unread email"))
-        #expect(review.contains("Only unread email from the last 2 days."))
         #expect(review.contains("The unread filter was not demonstrated."))
         #expect(!review.contains("END OF COMPLETE WORKFLOW"))
         #expect(learning.pendingDraft?.workflowMarkdown == workflow)
@@ -44,11 +37,6 @@ struct WatchPresentationTests {
         fixture.draft.screensMarkdown = String(repeating: "Screen detail\n", count: 1_000) + "SCREENS END"
         fixture.draft.glossaryMarkdown = "A term and its complete definition. GLOSSARY END"
         fixture.draft.caveats = ["First caveat", "LAST CAVEAT"]
-        fixture.draft.readingSource = LearnedReadingSource(kind: .mail, name: "Work mail",
-            meaning: "My incoming work email", bundleID: "com.google.Chrome",
-            url: "https://mail.google.com/mail/u/0/#inbox", scope: "Only unread from the last 2 days",
-            navigationHints: "NAVIGATION END", completionChecks: "COMPLETION END",
-            uncertainties: ["One uncertainty", "LAST UNCERTAINTY"])
         let (assistant, learning) = fixture.makeAssistant()
         var opened: [(String, String)] = []
         assistant.onOpenWatchDraft = { opened.append(($0, $1)) }
@@ -60,11 +48,10 @@ struct WatchPresentationTests {
 
         assistant.askSuggestion(Assistant.fullDraftTab)
         let document = try #require(opened.first?.1)
-        for end in ["WORKFLOW END", "SCREENS END", "GLOSSARY END", "LAST CAVEAT", "NAVIGATION END", "COMPLETION END", "LAST UNCERTAINTY"] {
+        for end in ["WORKFLOW END", "SCREENS END", "GLOSSARY END", "LAST CAVEAT"] {
             #expect(document.contains(end))
         }
         #expect(document.contains("Check recent unread email"))
-        #expect(document.contains("Only unread from the last 2 days"))
         #expect(learning.phase == .review)
         #expect(assistant.transcript.map(\.id) == transcriptIDs)
         #expect(!FileManager.default.fileExists(atPath: fixture.workflowFile.path))
@@ -108,7 +95,6 @@ struct WatchPresentationTests {
         fixture.draft.packName = long
         fixture.draft.workflowTitle = long
         fixture.draft.matchURLs = [long]
-        fixture.draft.readingSource = LearnedReadingSource(kind: .mail, name: long, meaning: "Work mail", bundleID: "com.google.Chrome")
         let (assistant, learning) = fixture.makeAssistant()
         try await recordAndStop(learning)
         await (try #require(learning.summarize(purpose: nil))).value
@@ -131,18 +117,6 @@ struct WatchPresentationTests {
             #expect(summary.components(separatedBy: "\n").count < 30)
             #expect(summary.hasSuffix("Open full draft for complete instructions and any shortened details. To change something, just tell me, and I'll write it again."))
         }
-        check()
-        draft.readingSource = LearnedReadingSource(kind: .mail, name: long, meaning: long, application: long,
-            bundleID: long, url: long, account: long, scope: long, navigationHints: long,
-            completionChecks: long, uncertainties: [long, long], requiresReview: true)
-        check()
-        draft.readingSource?.scope = ""              // nothing to read: the note says it can't run yet
-        draft.readingSource?.requiresReview = false
-        check()
-        draft.readingSource = nil
-        draft.calendarSource = LearnedCalendarSource(name: long, meaning: long, application: long, bundleID: long,
-            url: long, account: long, calendarName: long, timeZoneID: long, navigationHints: long,
-            completionChecks: long, uncertainties: [long, long])
         check()
     }
 
@@ -339,29 +313,25 @@ struct WatchPresentationTests {
 
     @Test
     func discardAfterPartialKeepAcknowledgesTheFilesThatRemainSaved() async throws {
-        for sourceFailure in [false, true] {
-            let fixture = try Fixture()
-            defer { fixture.remove() }
-            fixture.draft.calendarSource = LearnedCalendarSource(name: "Work calendar", meaning: "My work schedule", bundleID: "com.apple.iCal")
-            fixture.sourceFails = sourceFailure
-            fixture.reloadFails = !sourceFailure
-            let (assistant, learning) = fixture.makeAssistant()
-            try await recordAndStop(learning)
-            let summary = try #require(learning.summarize(purpose: "My work calendar"))
-            await summary.value
-            await learning.keep()
-            #expect(learning.phase == .review)
-            #expect(FileManager.default.fileExists(atPath: fixture.workflowFile.path))
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        fixture.reloadFails = true
+        let (assistant, learning) = fixture.makeAssistant()
+        try await recordAndStop(learning)
+        let summary = try #require(learning.summarize(purpose: "My work calendar"))
+        await summary.value
+        await learning.keep()
+        #expect(learning.phase == .review)
+        #expect(FileManager.default.fileExists(atPath: fixture.workflowFile.path))
 
-            assistant.askSuggestion(Assistant.discardTab)
-            let receipt = try #require(assistant.transcript.last?.text)
-            #expect(receipt.contains("already saved and remain on disk"))
-            #expect(receipt.contains(fixture.workflowFile.path))
-            #expect(!receipt.contains("nothing was saved"))
-            #expect(FileManager.default.fileExists(atPath: fixture.workflowFile.path))
-            #expect(!FileManager.default.fileExists(atPath: fixture.recording.dir.path))
-            #expect(!learning.hasPendingReview)
-        }
+        assistant.askSuggestion(Assistant.discardTab)
+        let receipt = try #require(assistant.transcript.last?.text)
+        #expect(receipt.contains("already saved and remain on disk"))
+        #expect(receipt.contains(fixture.workflowFile.path))
+        #expect(!receipt.contains("nothing was saved"))
+        #expect(FileManager.default.fileExists(atPath: fixture.workflowFile.path))
+        #expect(!FileManager.default.fileExists(atPath: fixture.recording.dir.path))
+        #expect(!learning.hasPendingReview)
     }
 
     @Test
@@ -495,7 +465,7 @@ struct WatchPresentationTests {
         }
     }
 
-    private enum Failure: Error { case model, reload, source, metadata }
+    private enum Failure: Error { case model, reload, metadata }
 
     @MainActor
     private final class Fixture {
@@ -509,7 +479,6 @@ struct WatchPresentationTests {
         var stopGate: Gate<Recording>?
         var summaryFails = false
         var reloadFails = false
-        var sourceFails = false
         var metadataFails = false
         var summaryRequests: [(Recording, String?)] = []
         var workflowFile: URL { root.appendingPathComponent("tools/expenses/docs/workflows/submit.md") }
@@ -544,7 +513,6 @@ struct WatchPresentationTests {
                     return [file]
                 },
                 reload: { if self.reloadFails { throw Failure.reload } },
-                saveSource: { _ in if self.sourceFails { throw Failure.source } },
                 saveMeta: { recording in
                     if self.metadataFails { throw Failure.metadata }
                     try recording.saveMeta()

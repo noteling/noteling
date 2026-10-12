@@ -44,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var desktop = DesktopExecutionService(control: control, activities: activities)
     private let execution = ExecutionCoordinator()
     private lazy var recorder = WatchRecorder(config: config, watcher: watcher)
-    private lazy var learning = WatchLearnComposition.make(recorder: recorder, registry: registry, activities: activities, calendarStore: calendarSources, config: { [weak self] in self?.effectiveConfig ?? Config() })
+    private lazy var learning = WatchLearnComposition.make(recorder: recorder, registry: registry, activities: activities, config: { [weak self] in self?.effectiveConfig ?? Config() })
     private var bubbleWasVisibleBeforeControl = false
     private var cancellables = Set<AnyCancellable>()
 
@@ -190,7 +190,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                         activities: activities, config: { [weak self] in self?.effectiveConfig ?? Config() })
         calendarReader = CalendarCollectionRunner(store: calendarSources, desktop: desktop, registry: registry,
                                                   activities: activities, config: { [weak self] in self?.effectiveConfig ?? Config() })
-        calendarSources.refreshSavedWorkflows(root: registry.root)
         taskPanel = BackgroundTaskPanelController(
             store: desktop.tasks, hideFromScreenShare: config.hideFromScreenShare, morning: morning,
             onCancelQueued: { [weak self] id in self?.morningTasks.cancel(id: id) },
@@ -237,11 +236,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         morningPanel.onDiscussCard = { [weak self] card in
             guard let self, self.assistant.discussCard(card) else { return }
             self.openChat()
-        }
-        morningPanel.onTeachCalendar = { [weak self] in
-            guard let self else { return }
-            if !self.panel.isVisible { self.showBubble() }
-            self.assistant.startWatching(source: true)
         }
         morningPanel.handoffDestination = { [weak self] in self?.taskPanel.landingFrame }
         morningPanel.onOpen = { [weak self] in self?.linkedTools.checkSoon() }   // a job pushed a moment ago shows without a restart
