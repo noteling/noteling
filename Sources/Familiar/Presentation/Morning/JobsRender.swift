@@ -5,8 +5,8 @@ import SwiftUI
 /// (a mail job that made cards, a web job whose last run failed, a calendar not run yet, a job that needs review and
 /// one that needs a secret in Settings; a job of yours whose last run failed, a team job that's on and found something
 /// and one that's off), the team jobs before their start and past their end, under their line and shown, with an
-/// ended job's page and its card put away, a team job's page, reading jobs' pages, and a saved demonstration just
-/// deleted, with its Undo. Nothing reads a real source, runs a script or reaches a provider.
+/// ended job's page and its card put away, a team job's page, and reading jobs' pages. Nothing reads a real source,
+/// runs a script or reaches a provider.
 extension MorningRender {
     @MainActor static func renderJobs(fixtures: URL, directory: URL) throws {
         let root = fixtures.appendingPathComponent("jobs")
@@ -114,23 +114,13 @@ extension MorningRender {
         cards.reconcile(jobStore.jobs)
         inbox.scan()
 
-        // Two saved demonstrations in what Watch Me learned on the school site, not jobs yet.
-        let tools = root.appendingPathComponent("tools"), school = tools.appendingPathComponent("school-portal")
-        try FileManager.default.createDirectory(at: school.appendingPathComponent("docs/workflows"), withIntermediateDirectories: true)
-        try "# School portal\nLearned by watching. Recordings: 2.".write(to: school.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
-        try "# Read the lunch menu\nIn Safari, read this week’s menu at https://school.example.test/lunch. A fictional demonstration."
-            .write(to: school.appendingPathComponent("docs/workflows/lunch-menu.md"), atomically: true, encoding: .utf8)
-        try "# Sign the permission slip\nIn Safari, open https://school.example.test/forms and sign the slip. A fictional demonstration."
-            .write(to: school.appendingPathComponent("docs/workflows/permission-slip.md"), atomically: true, encoding: .utf8)
-        sources.refreshSavedWorkflows(root: tools)
-
         let panel = FolderJobsPanel(store: jobStore, runner: jobRunner, notifier: JobNotifier())
         let setup = JobsSetup(missingSecrets: { $0.id == bank.id ? ["BANK_MAIL_PASSWORD"] : [] }, openSettings: {})
         let navigation = MorningNavigation()
         func save(_ name: String, _ route: MorningNavigation.Route, height: CGFloat? = nil) throws {
             navigation.route = route
             try image(MorningFilesView(store: store, navigation: navigation, close: {}, filed: {}, handoff: { _ in },
-                                       calendarSources: sources, calendarRunner: runner, teachCalendar: {}, discussCard: { _ in },
+                                       calendarSources: sources, calendarRunner: runner, discussCard: { _ in },
                                        askAboutCard: { _, _ in }, jobs: setup, folderJobs: panel),
                       size: NSSize(width: MorningPanelController.preferredWidth(for: route),
                                    height: height ?? MorningPanelController.preferredHeight(for: route, isEmpty: false)),
@@ -145,18 +135,9 @@ extension MorningRender {
         let putAway = CardInboxFormat.cardID(FolderJobCards.key(for: autumn))
         if store.cards.contains(where: { $0.id == putAway }) { try save("card-put-away.png", .card(putAway)) }
         try image(JobsPage(morning: store, sources: sources, runner: runner, setup: setup, navigation: navigation,
-                           teach: {}, showingOutside: true, folderJobs: panel)
+                           showingOutside: true, folderJobs: panel)
             .foregroundStyle(Pad.ink).background(Pad.fieldPaper), size: NSSize(width: 650, height: 1_700),
             to: directory.appendingPathComponent("jobs-outside-shown.png"))
-        // Delete on a saved demonstration: it leaves the list, with Undo.
-        if let slip = sources.savedReadingWorkflows.first(where: { $0.relativePath.hasSuffix("permission-slip.md") }) {
-            try sources.deleteDemonstration(path: slip.relativePath)
-            try image(JobsPage(morning: store, sources: sources, runner: runner, setup: setup, navigation: navigation,
-                               teach: {}, deleted: slip, folderJobs: panel)
-                .foregroundStyle(Pad.ink).background(Pad.fieldPaper), size: NSSize(width: 650, height: 1_700),
-                to: directory.appendingPathComponent("jobs-demonstration-deleted.png"))
-            try sources.restoreDemonstration(path: slip.relativePath)
-        }
         try save("job-mail.png", .sourceJob(mail.id))
         try save("job-mail-all.png", .sourceJob(mail.id), height: 1_300)
         try save("job-failed.png", .sourceJob(portal.id))

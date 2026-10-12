@@ -18,7 +18,8 @@ else stays out of your way.
   it on, as them, and only takes their attention when it finds something.
 - **Cards for what needs you.** What a job finds, and what matters in your mail, becomes a card in the Morning folder.
   Decide it, discuss it, or hand it to Noteling.
-- **Show it how.** Use **Watch Me** to show Noteling where to look, and it can check that for you from then on.
+- **Show it how.** Use **Watch Me** to show Noteling how you do something once. It keeps the steps, and follows them
+  when you ask it to do that for you.
 
 ## Get started
 

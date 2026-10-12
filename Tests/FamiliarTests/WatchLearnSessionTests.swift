@@ -50,7 +50,7 @@ struct WatchLearnSessionTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let session = fixture.session()
-        #expect(try session.start(source: true))
+        #expect(try session.start())
         await (try #require(session.stop())).value
         #expect(session.submitDescription("Check my work inbox"))
         fixture.summaryError = Failure.model
@@ -288,7 +288,7 @@ struct WatchLearnSessionTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let session = fixture.session()
-        #expect(try session.start(source: true))
+        #expect(try session.start())
         await (try #require(session.stop())).value
         #expect(session.submitDescription("Check my work inbox"))
         await (try #require(session.submitContext("Only unread email."))).value
@@ -314,7 +314,7 @@ struct WatchLearnSessionTests {
         defer { fixture.remove() }
         let session = fixture.session()
         #expect(session.revise("Only unread") == nil)
-        #expect(try session.start(source: true))
+        #expect(try session.start())
         await (try #require(session.stop())).value
         #expect(session.revise("Only unread") == nil)
         #expect(session.submitDescription("Check my work inbox"))
@@ -329,7 +329,7 @@ struct WatchLearnSessionTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let session = fixture.session()
-        #expect(try session.start(source: true))
+        #expect(try session.start())
         await (try #require(session.stop())).value
         #expect(session.submitDescription("Check my work inbox"))
         fixture.summaryError = Failure.model
@@ -374,58 +374,39 @@ struct WatchLearnSessionTests {
         #expect(fixture.eventNames.suffix(3) == ["keepFailed", "keepFailed", "kept"])
     }
 
+    /// Watch Me keeps a tool and nothing else: the person's own words go to the write-up as they are, the write-up
+    /// is never asked for a source to read, a reply that offers one anyway is kept as steps only, and the review says
+    /// nothing about Jobs.
     @Test
-    func calendarTeachingAddsIntentWithoutChangingTheUsersPurposeAndResetsForOrdinaryWatch() async throws {
+    func watchMeKeepsOnlyATool() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let session = fixture.session()
-        #expect(try session.start(calendar: true))
-        #expect(session.isTeachingCalendar)
-        let stopping = try #require(session.stop())
-        await stopping.value
-        fixture.summaryError = Failure.model
-        let first = try #require(session.summarize(purpose: "This is my work calendar"))
-        await first.value
-        #expect(session.pendingRecording?.meta.purpose == "This is my work calendar")
-        fixture.summaryError = nil
-        let retry = try #require(session.retry())
-        await retry.value
-        #expect(fixture.summaryPurposes.count == 2)
-        #expect(fixture.summaryPurposes[0] == fixture.summaryPurposes[1])
-        #expect(fixture.summaryPurposes[0]?.contains("calendar_source") == true)
-        #expect(fixture.summaryPurposes[0]?.contains("User's description: This is my work calendar") == true)
-        session.discard()
-        #expect(!session.isTeachingCalendar)
+        #expect(try session.start())
+        await (try #require(session.stop())).value
+        await (try #require(session.summarize(purpose: "Check my work inbox"))).value
+        #expect(fixture.summaryPurposes == ["Check my work inbox"])
+        #expect(!Prompt.watchSystem.contains("reading_source") && !Prompt.watchSystem.contains("calendar_source"))
 
-        fixture.recording = try fixture.makeRecording("ordinary")
-        try await recordAndStop(session)
-        let summary = try #require(session.summarize(purpose: "Submit an expense"))
-        await summary.value
-        #expect((fixture.summaryPurposes.last ?? nil) == "Submit an expense")
-        #expect(!session.isTeachingCalendar)
-    }
+        let offered = """
+        ```json
+        {"pack_dir": "gmail", "pack_name": "Gmail", "match_titles": ["Gmail"], "workflow_slug": "check-inbox",
+         "workflow_title": "Check the inbox", "workflow_markdown": "1. Open Primary.",
+         "reading_source": {"kind": "mail", "name": "Inbox", "meaning": "My mail", "url": "https://mail.google.com/mail/u/0/#inbox"}}
+        ```
+        """
+        let draft = WatchSummarizer.parse(offered, recording: fixture.recording)
+        #expect(draft.parsed && draft.workflowTitle == "Check the inbox")
+        let root = fixture.recording.dir.deletingLastPathComponent().appendingPathComponent("tools-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let written = try PackWriter.write(draft, root: root).map(\.lastPathComponent).sorted()
+        #expect(written == ["SKILL.md", "check-inbox.md", "screens.md"])
+        let review = Assistant.draftBody(draft, purpose: "Check my work inbox", root: root)
+            + Assistant.draftDocument(draft, purpose: "Check my work inbox", root: root)
+        #expect(!review.contains("Jobs") && !review.contains("source"))
 
-    @Test
-    func sourceSaveFailurePreservesReviewAndRetryDoesNotDuplicateTheWorkflow() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        fixture.draft.calendarSource = LearnedCalendarSource(name: "Work calendar", meaning: "My work schedule", bundleID: "com.apple.iCal")
-        let session = fixture.session()
-        try await prepareDraft(session)
-        fixture.sourceError = Failure.source
         await session.keep()
-        #expect(session.phase == .review)
-        #expect(session.pendingDraft?.calendarSource == fixture.draft.calendarSource)
-        #expect(session.pendingRecording != nil)
-        #expect(fixture.writeCalls == 1 && fixture.reloadCalls == 1 && fixture.sourceCalls == 1)
-        #expect(fixture.deleted.isEmpty)
-
-        fixture.sourceError = nil
-        await session.keep()
-        #expect(session.phase == .idle && !session.hasPendingReview)
-        #expect(fixture.writeCalls == 1 && fixture.reloadCalls == 2 && fixture.sourceCalls == 2)
-        #expect(fixture.savedSource?.id == fixture.draft.calendarSource?.id)
-        #expect(fixture.deleted.count == 1)
+        #expect(session.phase == .idle && fixture.eventNames.last == "kept")
     }
 
     @Test
@@ -451,7 +432,6 @@ struct WatchLearnSessionTests {
         #expect(session.pendingRecording?.dir == fixture.recording.dir)
         #expect(!fixture.eventNames.contains("kept"))
         #expect(!fixture.eventNames.contains("keepFailed"))
-        #expect(fixture.sourceCalls == 0)
         #expect(FileManager.default.fileExists(atPath: fixture.writtenFile.path))
     }
 
@@ -486,7 +466,7 @@ struct WatchLearnSessionTests {
         #expect(session.pendingDraft?.parsed == true)
     }
 
-    private enum Failure: Error { case model, write, reload, source }
+    private enum Failure: Error { case model, write, reload }
 
     @MainActor
     private final class Gate<Value> {
@@ -526,9 +506,7 @@ struct WatchLearnSessionTests {
         var summaryError: Error?
         var writeError: Error?
         var reloadError: Error?
-        var sourceError: Error?
         var metaError: Error?
-        var savedSource: LearnedCalendarSource?
         var onClick: ((Int) -> Void)?
         var progress: ((String) -> Void)?
         var summaryPurposes: [String?] = []
@@ -537,7 +515,6 @@ struct WatchLearnSessionTests {
         var abandonCalls = 0
         var writeCalls = 0
         var reloadCalls = 0
-        var sourceCalls = 0
         var deleted: [URL] = []
         var events: [WatchLearnSession.Event] = []
         var writtenFile: URL { root.appendingPathComponent("kept-workflow.md") }
@@ -583,11 +560,6 @@ struct WatchLearnSessionTests {
                     self.reloadCalls += 1
                     if let gate = self.reloadGate { try await gate.wait() }
                     if let error = self.reloadError { throw error }
-                },
-                saveSource: { draft in
-                    self.sourceCalls += 1
-                    if let error = self.sourceError { throw error }
-                    self.savedSource = draft.calendarSource
                 },
                 saveMeta: { recording in
                     if let error = self.metaError { throw error }

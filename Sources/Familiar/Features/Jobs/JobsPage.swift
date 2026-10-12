@@ -243,42 +243,34 @@ struct JobRow: View {
 /// your team's. Those that need attention come first, then yours, then your team's, each by name; a row opens the
 /// job's page. Jobs before their start or past their end wait under one line, "Upcoming (1) · Ended (2) · Show",
 /// only to be looked at. Around the list: Run all reading jobs, the latest run and Run history; folders that aren't
-/// jobs, and why; saved demonstrations to review; removed jobs to restore; and how to start a new job.
+/// jobs, and why; removed jobs to restore; and where jobs come from.
 struct JobsPage: View {
     let morning: MorningStore
     let sources: CalendarStore?
     let runner: CalendarCollectionRunner?
     var setup = JobsSetup()
     @ObservedObject var navigation: MorningNavigation
-    var teach: (() -> Void)? = nil
     var now: () -> Date = Date.init
     var folderJobs: FolderJobsPanel? = nil
     @StateObject private var changes: JobsChanges
     @State private var problem: String?
     @State private var feedback: String?
-    /// A saved demonstration being reviewed before it becomes a job.
-    @State private var reviewing: LearnedReadingSource?
-    /// The saved demonstration just deleted, for Undo.
-    @State private var deleted: SavedReadingWorkflow?
     /// The jobs before their start or past their end are shown, under the live jobs.
     @State private var showingOutside = false
 
-    /// `showingOutside` starts with the jobs before their start or past their end shown, and `deleted` with the Undo line
-    /// for a saved demonstration just deleted (renders).
+    /// `showingOutside` starts with the jobs before their start or past their end shown (a render).
     init(morning: MorningStore, sources: CalendarStore?, runner: CalendarCollectionRunner?,
-         setup: JobsSetup = JobsSetup(), navigation: MorningNavigation, teach: (() -> Void)? = nil, now: @escaping () -> Date = Date.init,
-         showingOutside: Bool = false, deleted: SavedReadingWorkflow? = nil, folderJobs: FolderJobsPanel? = nil) {
+         setup: JobsSetup = JobsSetup(), navigation: MorningNavigation, now: @escaping () -> Date = Date.init,
+         showingOutside: Bool = false, folderJobs: FolderJobsPanel? = nil) {
         self.morning = morning
         self.sources = sources
         self.runner = runner
         self.setup = setup
         self.navigation = navigation
-        self.teach = teach
         self.now = now
         self.folderJobs = folderJobs
         _changes = StateObject(wrappedValue: JobsChanges(sources: sources, runner: runner, morning: morning, folderJobs: folderJobs))
         _showingOutside = State(initialValue: showingOutside)
-        _deleted = State(initialValue: deleted)
     }
 
     private var input: Jobs.Input {
@@ -304,19 +296,16 @@ struct JobsPage: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 notices
-                if let reviewing { review(reviewing) } else {
-                    runBar
-                    ForEach(unreadable) { unreadableRow($0) }
-                    list(jobs, team: team)
-                    if jobs.isEmpty && unreadable.isEmpty {
-                        Text(all.isEmpty ? Jobs.empty : Jobs.noneLive + ".").font(.system(size: 14))
-                            .foregroundStyle(all.isEmpty ? Pad.ink : Pad.inkSoft).fixedSize(horizontal: false, vertical: true).padding(.top, 4)
-                    }
-                    outside(Jobs.outside(shown))
-                    demonstrations
-                    removed
-                    footer(empty: all.isEmpty)
+                runBar
+                ForEach(unreadable) { unreadableRow($0) }
+                list(jobs, team: team)
+                if jobs.isEmpty && unreadable.isEmpty {
+                    Text(all.isEmpty ? Jobs.empty : Jobs.noneLive + ".").font(.system(size: 14))
+                        .foregroundStyle(all.isEmpty ? Pad.ink : Pad.inkSoft).fixedSize(horizontal: false, vertical: true).padding(.top, 4)
                 }
+                outside(Jobs.outside(shown))
+                removed
+                footer
             }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
         }
         .task { await folderJobs?.notifier?.refresh() }
@@ -394,15 +383,6 @@ struct JobsPage: View {
                 Button { navigation.removedJob = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("Dismiss")
             }.padding(12).background(Pad.paperTop.opacity(0.5), in: RoundedRectangle(cornerRadius: 7))
         }
-        if let deleted {
-            HStack(alignment: .top, spacing: 10) {
-                Text(Jobs.deletedDemonstration(deleted.name))
-                    .font(.system(size: 12)).foregroundStyle(Pad.penInk).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                Button("Undo") { undoDelete(deleted) }.buttonStyle(MorningActionButton())
-                Button { self.deleted = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("Dismiss")
-            }.padding(12).background(Pad.paperTop.opacity(0.5), in: RoundedRectangle(cornerRadius: 7))
-        }
         if let feedback { Text(feedback).font(.system(size: 12)).foregroundStyle(Pad.penInk) }
         if let runner = folderJobs?.runner, let receipt = runner.receipt { FolderJobReceiptLine(receipt: receipt, dismiss: runner.dismissReceipt) }
     }
@@ -456,72 +436,10 @@ struct JobsPage: View {
         }.padding(11).background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 7))
     }
 
-    /// Saved demonstrations that aren't jobs yet, each with Review & add, and Delete to take it off this list.
-    @ViewBuilder private var demonstrations: some View {
-        if let sources, !Jobs.demonstrations(sources).isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Saved demonstrations").font(.system(size: 13, weight: .semibold)).padding(.top, 6)
-                Text("These aren't jobs yet. Review the page and what to read before adding one.")
-                    .font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
-                ForEach(Jobs.demonstrations(sources)) { workflow in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(workflow.name).font(.system(size: 13, weight: .medium))
-                                Text(workflow.draft.meaning).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
-                            }
-                            Spacer(minLength: 10)
-                            HStack(spacing: 8) {
-                                Button("Review & add") { problem = nil; reviewing = workflow.draft }
-                                    .buttonStyle(MorningActionButton()).disabled(isReading)
-                                Button("Delete") { delete(workflow) }.buttonStyle(MorningActionButton())
-                                    .help(Jobs.deleteDemonstrationHelp).accessibilityLabel("Delete \(workflow.name)")
-                            }
-                        }
-                        Label("Needs review before it can run", systemImage: "exclamationmark.circle")
-                            .font(.system(size: 11)).foregroundStyle(Pad.redInk)
-                        if !workflow.draft.uncertainties.isEmpty {
-                            Text(workflow.draft.uncertainties.joined(separator: " ")).font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
-                        }
-                    }.padding(12).background(Color.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
-                }
-            }
-        }
-    }
-
-    private func review(_ draft: LearnedReadingSource) -> some View {
-        ReadingSourceEditor(source: draft, isRunning: isReading, save: { source in
-            guard let sources, !isReading else { throw CalendarDataError.invalid("Wait for the current reading to finish before saving changes.") }
-            try sources.saveReadingSource(source)
-            reviewing = nil
-            feedback = "“\(source.name)” is a job now. Run now reads it."
-        }, cancel: { reviewing = nil }).id(draft.id)
-    }
-
     @ViewBuilder private var removed: some View {
         if let sources, !sources.removedSources.isEmpty {
             RemovedSourcesList(sources: sources.removedSources, isRunning: isReading, restore: restore)
         }
-    }
-
-    /// Takes a saved demonstration off the list, with Undo; what Watch Me learned stays.
-    func delete(_ workflow: SavedReadingWorkflow) {
-        guard let sources else { return }
-        do {
-            try sources.deleteDemonstration(path: workflow.relativePath)
-            if reviewing?.workflowPath == workflow.relativePath { reviewing = nil }
-            problem = nil
-            feedback = nil
-            deleted = workflow
-        } catch { problem = "Couldn't delete “\(workflow.name)”. \(error.localizedDescription)" }
-    }
-
-    func undoDelete(_ workflow: SavedReadingWorkflow) {
-        guard let sources else { return }
-        do {
-            try sources.restoreDemonstration(path: workflow.relativePath)
-            deleted = nil
-        } catch { problem = "Couldn't bring back “\(workflow.name)”. \(error.localizedDescription)" }
     }
 
     /// Brings a removed job back, with its saved results: Undo after removing it, and Restore under Removed jobs.
@@ -536,14 +454,10 @@ struct JobsPage: View {
         } catch { problem = error.localizedDescription }
     }
 
-    /// How to start a job: teach one that reads with Watch Me; where your team's jobs come from, when none are here; and
-    /// the guides: how jobs work, and how to write them for a team.
-    private func footer(empty: Bool) -> some View {
+    /// Where your team's jobs come from, when none are here; and the guides: how jobs work, and how to write them for a
+    /// team.
+    private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let teach, sources != nil {
-                Button("Teach a job with Watch Me", action: teach)
-                    .buttonStyle(MorningActionButton(primary: empty)).disabled(isReading)
-            }
             if let folderJobs, !folderJobs.store.jobs.contains(where: \.isTeam) && folderJobs.store.teamUnreadable.isEmpty {
                 Text(Jobs.emptyTeam(linked: folderJobs.store.teamDirectory() != nil))
                     .font(.system(size: 11)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
@@ -604,7 +518,7 @@ struct JobsEntry: View {
 
     var body: some View {
         let jobs = Jobs.list(Jobs.Input(sources: sources, morning: morning, setup: setup, now: now(), folderJobs: folderJobs))
-        let summary = Jobs.summary(jobs, demonstrations: sources.map { Jobs.demonstrations($0).count } ?? 0, now: now())
+        let summary = Jobs.summary(jobs, now: now())
         let attention = jobs.contains { $0.needsAttention && $0.status != .off }
         // Saved runs or reading jobs that can't be opened or saved: said on the home, as the sources' box did.
         let stored = sources?.runStore.error ?? sources?.error

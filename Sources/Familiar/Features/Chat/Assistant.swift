@@ -232,8 +232,7 @@ final class Assistant: ObservableObject {
             if s == Self.fullDraftTab, let draft = pendingDraft {
                 onOpenWatchDraft?(Self.reviewExcerpt(draft.parsed ? draft.workflowTitle : "Unparsed Watch Me draft", limit: 100),
                     Self.draftDocument(draft, purpose: learning.pendingRecording?.meta.purpose,
-                                       context: learning.pendingRecording?.meta.context, root: registry.root,
-                                       teachingCalendar: learning.isTeachingSource))
+                                       context: learning.pendingRecording?.meta.context, root: registry.root))
                 return
             }
             if s == Self.keepTab { Task { await learning.keep() }; return }
@@ -269,7 +268,7 @@ final class Assistant: ObservableObject {
     }
 
     /// Permissions and presentation belong to the app; recording/draft lifetime belongs to learning.
-    func startWatching(calendar: Bool = false, source: Bool = false) {
+    func startWatching() {
         guard !busy, !watching, !learning.stopping else { return }
         dismissPick()
         if learning.hasPendingReview {
@@ -291,8 +290,8 @@ final class Assistant: ObservableObject {
             warned = true
         }
         do {
-            guard try learning.start(calendar: calendar, source: source) else { return }
-            shell.expanded = warned || calendar || source
+            guard try learning.start() else { return }
+            shell.expanded = warned
         } catch {
             shell.expanded = true
             transcript.append(ChatMessage(role: .error, text: "Could not start recording: \(error.localizedDescription)"))
@@ -308,9 +307,6 @@ final class Assistant: ObservableObject {
             suggestions = []
             status = ""
             contextLine = recordingLine(0)
-            if learning.isTeachingSource {
-                transcript.append(ChatMessage(role: .assistant, text: "Show me the information you want in your morning read: an inbox, a calendar, or another page. Show its address and account, then the limited view I should read—for example, the first page of Primary in Gmail. For a calendar, show its selection and time zone. Stop watching when you're done, then review and keep it as a job in Jobs. The information shown while teaching is only an example."))
-            }
         case .stopped:
             contextLine = watcher.current?.summaryLine ?? (watcher.isRunning ? "Watching…" : "Watcher off")
         case .purposeRequested(let recording):
@@ -320,8 +316,7 @@ final class Assistant: ObservableObject {
             suggestions = reviewTabs([])
         case .contextRequested:
             shell.expanded = true
-            let example = learning.isTeachingSource ? " For example, ‘Only unread emails from the last 2 days. Skip promotions.’" : " Include anything to skip, exceptions, or where to stop."
-            transcript.append(ChatMessage(role: .assistant, text: "Any rules or limits I should follow?" + example + " Add context below, or choose Skip context."))
+            transcript.append(ChatMessage(role: .assistant, text: "Any rules or limits I should follow? Include anything to skip, exceptions, or where to stop. Add context below, or choose Skip context."))
             suggestions = reviewTabs([])
         case .emptyRecording:
             shell.expanded = true
@@ -334,7 +329,7 @@ final class Assistant: ObservableObject {
             contextMessageID = nil
             transcript.append(ChatMessage(role: .draft, text: draft.parsed ? Self.reviewExcerpt(draft.workflowTitle, limit: 100) : "Could not write this up"))
             transcript.append(ChatMessage(role: .assistant, text: Self.draftBody(draft, purpose: recording.meta.purpose,
-                context: recording.meta.context, root: registry.root, teachingCalendar: learning.isTeachingCalendar)))
+                context: recording.meta.context, root: registry.root)))
             suggestions = reviewTabs([])
         case .kept(let draft, let files):
             let packRoot = registry.root.appendingPathComponent(draft.packDir).path + "/"
@@ -343,7 +338,7 @@ final class Assistant: ObservableObject {
             if let i = transcript.lastIndex(where: { $0.role == .draft }) {
                 transcript[i] = ChatMessage(role: .learned, text: transcript[i].text)
             }
-            transcript.append(ChatMessage(role: .assistant, text: Self.sourceReceipt(draft) + "Kept as \(Self.reviewExcerpt(draft.packName, limit: 80)). I'll use it whenever you're on \(whereText). The recording itself is deleted.\n" + rel.map { "- \($0)" }.joined(separator: "\n")))
+            transcript.append(ChatMessage(role: .assistant, text: "Kept as \(Self.reviewExcerpt(draft.packName, limit: 80)). I'll use it whenever you're on \(whereText), and when you ask me to do it. The recording itself is deleted.\n" + rel.map { "- \($0)" }.joined(separator: "\n")))
             suggestions = []
             status = ""
         case .failed(_, let error):
@@ -360,30 +355,8 @@ final class Assistant: ObservableObject {
         }
     }
 
-    /// A reading source without an account reads the one its taught view shows.
-    static let accountShownWhenRun = "Whichever one it shows when it runs"
-
-    /// The saved address, or the app for a native source.
-    static func location(of source: LearnedReadingSource) -> String {
-        source.url.isEmpty && !source.application.isEmpty ? "The \(source.application) app" : source.url
-    }
-
-    /// What Keep registered as a job, and whether it can run yet.
-    static func sourceReceipt(_ draft: PackDraft) -> String {
-        var s = draft.calendarSource.map { "Calendar source kept: \(reviewExcerpt($0.name, limit: 80)). It's a job in Jobs now. Review any missing details before reading.\n\n" } ?? ""
-        if let source = draft.readingSource {
-            s += "Reading source kept: \(reviewExcerpt(source.name, limit: 80)). It's a job in Jobs now. "
-            if let missing = source.missingSetup {
-                s += "It can't run yet: \(reviewExcerpt(missing, limit: 200)) Tell me here, or add it on its page in Jobs.\n\n"
-            } else {
-                s += source.requiresReview ? "Confirm its address on its page in Jobs before reading; it was learned from screenshot evidence.\n\n" : "Each run reads fresh information within the saved scope.\n\n"
-            }
-        }
-        return s.isEmpty ? "No reading source was registered, so Jobs won't run this workflow.\n\n" : s
-    }
-
     /// Keep generated documents out of the animated chat layout. Only bounded, single-line fields go on the note.
-    static func draftBody(_ d: PackDraft, purpose: String? = nil, context: String? = nil, root: URL, teachingCalendar: Bool = false) -> String {
+    static func draftBody(_ d: PackDraft, purpose: String? = nil, context: String? = nil, root: URL) -> String {
         var lines: [String] = []
         if let purpose, !purpose.isEmpty { lines.append("_You said: “\(reviewExcerpt(purpose, limit: 140))”_") }
         guard d.parsed else {
@@ -392,48 +365,10 @@ final class Assistant: ObservableObject {
         func field(_ label: String, _ value: String, limit: Int = 100) {
             lines.append("**\(label):** \(reviewExcerpt(value.isEmpty ? "Not established" : value, limit: limit))")
         }
-        func uncertainties(_ values: [String]) {
-            guard let first = values.first else { return }
-            field("Still unclear", first, limit: 140)
-            if values.count > 1 { lines.append("\(values.count - 1) more uncertainties in the full draft.") }
-        }
-        func assumptions(_ values: [String]) {
-            guard let first = values.first else { return }
-            field("Assuming", first, limit: 140)
-            if values.count > 1 { lines.append("\(values.count - 1) more in the full draft.") }
-        }
-        if let source = d.readingSource {
-            lines.append("**Reading source to keep**")
-            field("Name", source.name, limit: 70)
-            field("Meaning", source.meaning, limit: 100)
-            field("Account", source.account.isEmpty ? Self.accountShownWhenRun : source.account, limit: 80)
-            field("Location", Self.location(of: source), limit: 100)
-            field("Reading rules", source.scope, limit: 220)
-            assumptions(source.uncertainties)
-            if let missing = source.missingSetup, !source.requiresReview {
-                lines.append("**Before it can run:** \(reviewExcerpt(missing, limit: 200)) Tell me here and I'll write it again, or keep it and add it later on its page in Jobs.")
-            } else {
-                lines.append(source.requiresReview
-                    ? "Keep adds it to Jobs. Confirm its address there before it can run."
-                    : "Keep adds it to Jobs, where Run now and Run all reading jobs read it.")
-            }
-        } else if let source = d.calendarSource {
-            lines.append("**Calendar source to keep**")
-            field("Name", source.name, limit: 70)
-            field("Meaning", source.meaning, limit: 100)
-            field("Account", source.account, limit: 80)
-            field("Calendar", source.calendarName, limit: 80)
-            field("Time zone", source.timeZoneID, limit: 60)
-            uncertainties(source.uncertainties)
-            lines.append("Keep adds it to Jobs, where Run now and Run all reading jobs read it.")
-        } else if teachingCalendar {
-            lines.append("**Reading source not established**\nKeep cannot add this draft to Jobs. Tell me what is missing (the page address, the account, or what to read) and I'll write it again, or discard it and teach it again.")
-        } else {
-            field("Skill", d.packName)
-            field("Description", d.packDescription.isEmpty ? d.workflowTitle : d.packDescription, limit: 180)
-            if let context, !context.isEmpty { field("Your context", context, limit: 180) }
-            lines.append("The workflow instructions are ready to review.")
-        }
+        field("Skill", d.packName)
+        field("Description", d.packDescription.isEmpty ? d.workflowTitle : d.packDescription, limit: 180)
+        if let context, !context.isEmpty { field("Your context", context, limit: 180) }
+        lines.append("The workflow instructions are ready to review.")
         if let caveat = d.caveats.first {
             field("Caution", caveat, limit: 120)
             if d.caveats.count > 1 { lines.append("\(d.caveats.count - 1) more cautions in the full draft.") }
@@ -448,7 +383,7 @@ final class Assistant: ObservableObject {
     }
 
     /// Full review is built only on demand and displayed outside the bubble, without changing the saved draft.
-    static func draftDocument(_ d: PackDraft, purpose: String? = nil, context: String? = nil, root: URL, teachingCalendar: Bool = false) -> String {
+    static func draftDocument(_ d: PackDraft, purpose: String? = nil, context: String? = nil, root: URL) -> String {
         var s = ""
         if let purpose, !purpose.isEmpty { s += "_You said: “\(purpose)”_\n\n" }
         if let context, !context.isEmpty { s += "## Your additional context\n\(context)\n\n" }
@@ -456,35 +391,6 @@ final class Assistant: ObservableObject {
             return s + "I couldn't turn this into a pack entry. Here is what came back:\n\n" + d.raw.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         s += d.workflowMarkdown
-        if let source = d.readingSource {
-            func known(_ value: String) -> String { value.isEmpty ? "Not established" : value }
-            s += "\n\n**Reading source to keep**\n"
-            let fields = [("Name", source.name), ("Kind", source.kind == .mail ? "Mail" : "Web"),
-                          ("Meaning", source.meaning), ("Application", source.application),
-                          ("Application identifier", source.bundleID), ("Location", location(of: source)),
-                          ("Account", source.account.isEmpty ? accountShownWhenRun : source.account),
-                          ("Reading rules", source.scope), ("Navigation", source.navigationHints), ("Completion checks", source.completionChecks)]
-            s += fields.map { "**\($0.0):** \(known($0.1))" }.joined(separator: "\n")
-            s += "\n**Assuming:** " + (source.uncertainties.isEmpty ? "Nothing beyond what's above." : source.uncertainties.joined(separator: "; "))
-            if let missing = source.missingSetup { s += "\n**Before it can run:** \(missing)" }
-            s += source.requiresReview ? "\nKeep adds it to Jobs. Confirm its address there before it can run."
-                : source.missingSetup == nil ? "\nKeep adds it to Jobs, where Run now and Run all reading jobs read it. Each run reads fresh information within this scope."
-                : "\nKeep adds it to Jobs, but it won't run until then."
-            s += "\nThe demonstration is an example, not a collected result or permission to send, edit, or scan the whole account."
-        }
-        if let source = d.calendarSource {
-            func known(_ value: String) -> String { value.isEmpty ? "Not established" : value }
-            s += "\n\n**Calendar source to keep**\n"
-            let fields = [("Name", source.name), ("Meaning", source.meaning), ("Application", source.application),
-                          ("Application identifier", source.bundleID), ("Location", source.url), ("Account", source.account),
-                          ("Calendar", source.calendarName), ("Time zone", source.timeZoneID),
-                          ("Navigation", source.navigationHints), ("Completion checks", source.completionChecks)]
-            s += fields.map { "**\($0.0):** \(known($0.1))" }.joined(separator: "\n")
-            s += "\n**Still unclear:** " + (source.uncertainties.isEmpty ? "No additional uncertainties recorded; review any fields marked Not established." : source.uncertainties.joined(separator: "; "))
-            s += "\nThe demonstrated dates and events are examples. A calendar read will collect fresh results separately."
-        } else if teachingCalendar && d.readingSource == nil {
-            s += "\n\n**Reading source not established**\nKeep cannot add this draft to Jobs. Show the source address, account and the bounded information to read, then discard this draft and teach it again."
-        }
         if !d.screensMarkdown.isEmpty { s += "\n\n## Screens\n" + d.screensMarkdown }
         if !d.glossaryMarkdown.isEmpty { s += "\n\n## Glossary\n" + d.glossaryMarkdown }
         if !d.caveats.isEmpty { s += "\n\n" + d.caveats.map { "_\($0)_" }.joined(separator: "\n") }
@@ -1157,7 +1063,7 @@ final class Assistant: ObservableObject {
                 let router = try ExecutionTools.make(registry: registry, context: ctx, control: nil, background: false,
                                                      packScripts: packScripts, additionalRoutes: sourceRoutes,
                                                      lookAtScreen: capture, readScreen: read)
-                return PreparedExecution(system: Prompt.system, router: router)
+                return PreparedExecution(system: Prompt.system + (pen || config.allowControl ? "" : Prompt.noControl), router: router)
             })
             let onStatus: (String) -> Void = { [weak self] value in
                 guard let self, !self.backgroundTaskRunning else { return }

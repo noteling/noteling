@@ -22,7 +22,6 @@ import QuartzCore
     private let attention: AttentionLedger?
     private var heldOpen: AttentionOpen.Held?
     var onHandoff: ((MorningWorkItem) -> Void)?
-    var onTeachCalendar: (() -> Void)?
     var onDiscussCard: ((MorningCard) -> Void)?
     /// An inbox card's question button: the app asks Noteling about the card in chat.
     var onAskAboutCard: ((MorningCard, String) -> Void)?
@@ -56,7 +55,7 @@ import QuartzCore
                 self?.animateHandoff()
                 self?.onHandoff?(item)
             }, calendarSources: calendarSources, calendarRunner: calendarRunner,
-            teachCalendar: { [weak self] in self?.onTeachCalendar?() }, cardGeneration: cardGeneration,
+            cardGeneration: cardGeneration,
             discussCard: { [weak self] card in self?.onDiscussCard?(card) }, attention: attention,
             askAboutCard: { [weak self] card, question in self?.onAskAboutCard?(card, question) }, jobs: jobs,
             folderJobs: folderJobs

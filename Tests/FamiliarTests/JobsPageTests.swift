@@ -241,7 +241,9 @@ struct JobsPageTests {
         #expect(store.teamRetiredWatches()?.standardizedFileURL.path == team.standardizedFileURL.path)
     }
 
-    @Test func theJobsPageKeepsRemovedJobsSavedDemonstrationsAndTeaching() throws {
+    /// Removed jobs wait under Removed jobs. What Watch Me learned is a tool, never a job: a pack it wrote adds
+    /// nothing to Jobs or to the home's count.
+    @Test func theJobsPageKeepsRemovedJobsAndWhatWatchMeLearnedIsNotAJob() throws {
         let fixture = try JobsFixture()
         defer { fixture.remove() }
         let mail = mail()
@@ -252,66 +254,12 @@ struct JobsPageTests {
         try "# Sample\nLearned by watching.".write(to: pack.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
         try "# Read the class page\nRead the new posts at `school.example.test/news` in the browser."
             .write(to: pack.appendingPathComponent("docs/workflows/class.md"), atomically: true, encoding: .utf8)
-        fixture.sources.refreshSavedWorkflows(root: fixture.root.appendingPathComponent("tools"))
-        #expect(Jobs.demonstrations(fixture.sources).count == 1)
 
         fixture.navigation.route = .jobs
-        var taught = 0
-        let page = try #require(find(JobsPage.self, in: fixture.files(teach: { taught += 1 }).body))
+        let page = try #require(find(JobsPage.self, in: fixture.files().body))
         #expect(find(RemovedSourcesList.self, in: page.body)?.sources.map(\.id) == [mail.id])
-        page.teach?()
-        #expect(taught == 1)
-        #expect(Jobs.summary(Jobs.list(fixture.input()), demonstrations: Jobs.demonstrations(fixture.sources).count, now: now)
-                == "No jobs yet · 1 demonstration to review")
-    }
-
-    @Test func deletingASavedDemonstrationTakesOnlyTheOfferAwayAndWhatWatchMeLearnedStays() async throws {
-        let fixture = try JobsFixture()
-        defer { fixture.remove() }
-        let tools = fixture.root.appendingPathComponent("tools")
-        let pack = tools.appendingPathComponent("sample")
-        try FileManager.default.createDirectory(at: pack.appendingPathComponent("docs/workflows"), withIntermediateDirectories: true)
-        let skill = pack.appendingPathComponent("SKILL.md")
-        let classPage = pack.appendingPathComponent("docs/workflows/class.md")
-        try "---\nname: Sample\ndescription: The school site\nmatch:\n  urls: [school.example.test]\n---\nLearned by watching. Recordings: 2.\n"
-            .write(to: skill, atomically: true, encoding: .utf8)
-        try "# Read the class page\nRead the new posts at `school.example.test/news` in the browser."
-            .write(to: classPage, atomically: true, encoding: .utf8)
-        try "# Read the lunch menu\nRead this week's menu at `school.example.test/lunch`."
-            .write(to: pack.appendingPathComponent("docs/workflows/lunch.md"), atomically: true, encoding: .utf8)
-        fixture.sources.refreshSavedWorkflows(root: tools)
-        #expect(Jobs.demonstrations(fixture.sources).map(\.name) == ["Read the class page", "Read the lunch menu"])
-        let before = try [skill, classPage].map { try Data(contentsOf: $0) }
-
-        // Delete takes it off the list and out of the home's count, and only that.
-        let page = try #require(find(JobsPage.self, in: fixture.files(route: .jobs).body))
-        let gone = try #require(Jobs.demonstrations(fixture.sources).first)
-        page.delete(gone)
-        #expect(Jobs.demonstrations(fixture.sources).map(\.name) == ["Read the lunch menu"])
-        #expect(Jobs.summary(Jobs.list(fixture.input()), demonstrations: Jobs.demonstrations(fixture.sources).count, now: now)
-                == "No jobs yet · 1 demonstration to review")
-        #expect(try [skill, classPage].map { try Data(contentsOf: $0) } == before)
-        let registry = ToolRegistry(root: tools, runner: ScriptRunner(config: Config()))
-        await registry.reload()
-        #expect(registry.packs.first { $0.dirName == "sample" }?.docs.map(\.relPath).contains("sample/docs/workflows/class.md") == true)
-
-        // It stays deleted when Noteling opens again; Undo offers it again.
-        let reopened = CalendarStore(directory: fixture.root.appendingPathComponent("sources"))
-        reopened.refreshSavedWorkflows(root: tools)
-        #expect(reopened.savedReadingWorkflows.map(\.name) == ["Read the lunch menu"])
-        page.undoDelete(gone)
-        #expect(Jobs.demonstrations(fixture.sources).map(\.name) == ["Read the class page", "Read the lunch menu"])
-
-        // Showing Watch Me again saves a new file, which is offered anew.
-        page.delete(gone)
-        try "# Read the class page\nRead the new posts, then the pinned one.".write(to: pack.appendingPathComponent("docs/workflows/class-2.md"), atomically: true, encoding: .utf8)
-        fixture.sources.refreshSavedWorkflows(root: tools)
-        #expect(Jobs.demonstrations(fixture.sources).map(\.relativePath) == ["sample/docs/workflows/class-2.md", "sample/docs/workflows/lunch.md"])
-    }
-
-    @Test func deletingADemonstrationSaysWhatStays() {
-        #expect(Jobs.deletedDemonstration("Read Primary")
-                == "“Read Primary” is off Saved demonstrations. What Watch Me learned stays, so the pen still helps on that page.")
+        #expect(Jobs.list(fixture.input()).isEmpty)
+        #expect(Jobs.summary(Jobs.list(fixture.input()), now: now) == "No jobs yet")
     }
 
     // MARK: each row
@@ -399,7 +347,6 @@ struct JobsPageTests {
                     job("Portal", at: earlier), job("Gifts", .waiting), job("Shoes", .off, kind: .teamJob)]
         #expect(Jobs.summary(five, now: now) == "5 jobs · 2 need attention · last run \(time)")
         #expect(Jobs.summary([job("Mail", .running), job("Sale", attention: true)], now: now) == "2 jobs · 1 running · 1 needs attention")
-        #expect(Jobs.summary([job("Mail")], demonstrations: 2, now: now) == "1 job · 2 demonstrations to review")
         #expect(Jobs.summary([{ var ended = job("Ended"); ended.phase = .ended; return ended }()], now: now) == "No jobs running now")
 
         // The home has the one box, and it opens Jobs; the boxes it replaces are gone.
@@ -730,10 +677,10 @@ private final class JobsFixture {
 
     func input(now: Date = Date()) -> Jobs.Input { Jobs.Input(sources: sources, morning: morning, now: now, folderJobs: panel) }
 
-    func files(route: MorningNavigation.Route? = nil, teach: (() -> Void)? = nil) -> MorningFilesView {
+    func files(route: MorningNavigation.Route? = nil) -> MorningFilesView {
         if let route { navigation.route = route }
         return MorningFilesView(store: morning, navigation: navigation, close: {}, filed: {}, handoff: { _ in },
-                                calendarSources: sources, calendarRunner: runner, teachCalendar: teach, folderJobs: panel)
+                                calendarSources: sources, calendarRunner: runner, folderJobs: panel)
     }
 
     /// A job's folder, yours or your team's, as found at once.

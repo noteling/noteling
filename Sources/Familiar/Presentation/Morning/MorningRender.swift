@@ -46,7 +46,7 @@ enum MorningRender {
         let calendars = CalendarStore(directory: fixtures.appendingPathComponent("calendars"))
         func saveCalendars(_ name: String, selectedID: UUID? = nil) throws {
             try image(CalendarSourcesView(store: calendars, initialSourceID: selectedID,
-                                          teach: {}, collect: { _, _, _, _ in }, stop: {})
+                                          collect: { _, _, _, _ in }, stop: {})
                 .foregroundStyle(Pad.ink).background(Pad.fieldPaper), size: NSSize(width: 650, height: 680),
                 to: directory.appendingPathComponent(name))
         }
@@ -189,15 +189,6 @@ enum MorningRender {
         try image(ReadingSourceEditor(source: recovered, save: { _ in }, cancel: {})
             .padding(23).foregroundStyle(Pad.ink).background(Pad.fieldPaper), size: NSSize(width: 650, height: 1250),
             to: directory.appendingPathComponent("source-recovered-editor.png"))
-        let workflowRoot = fixtures.appendingPathComponent("saved-tools")
-        let workflowPack = workflowRoot.appendingPathComponent("example-mail")
-        let workflowDirectory = workflowPack.appendingPathComponent("docs/workflows")
-        try FileManager.default.createDirectory(at: workflowDirectory, withIntermediateDirectories: true)
-        try "# Example mail\nLearned by watching".write(to: workflowPack.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
-        try "# Read my Primary inbox\nIn Google Chrome, read the Primary inbox at https://mail.google.com/mail/u/0/#inbox. This is a fictional saved demonstration."
-            .write(to: workflowDirectory.appendingPathComponent("primary-inbox.md"), atomically: true, encoding: .utf8)
-        calendars.refreshSavedWorkflows(root: workflowRoot)
-        try saveCalendars("sources-saved-workflow-review.png")
         try calendars.removeSource(id: mailSource.id)
         try calendars.removeSource(id: sharedSource.id)
         try image(RemovedSourcesList(sources: calendars.removedSources, initiallyExpanded: true, restore: { _ in })

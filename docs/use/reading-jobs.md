@@ -1,7 +1,7 @@
 # Jobs that read for you
 
-Besides your team's jobs, Noteling can read your mail, a calendar or a web page for you, and turn what matters into
-cards. You set these up yourself, by showing it or by asking.
+Besides your team's jobs, Noteling can read your mail for you and turn what matters into cards. You set this up
+yourself, by asking.
 
 ## Your mail, without the screen
 
@@ -17,20 +17,9 @@ iCloud, Yahoo, Fastmail and a few others. It only reads: it never marks mail as 
 
 Each read picks up what arrived since the last one, up to the newest 200 messages.
 
-## Show it once, with Watch Me
-
-For anything else, such as a calendar or a page you check every day, show Noteling where to look.
-
-1. In **Jobs**, choose **Teach a job with Watch Me**.
-2. Show the app, account and view you want checked, then choose **Stop Watching**.
-3. Describe it in a few words, such as "Check unread email", with anything to include or skip.
-4. Look over what Noteling learned. If something is off, type what to change, such as "only the last 3 days". Then
-   choose **Keep it**.
-5. To let it look in that app by itself, turn on **Allow Noteling to control the mouse and keyboard when asked** in
-   Settings. Then choose **Run now** on the new job.
-
-A demonstration that isn’t a job yet waits under **Saved demonstrations** in Jobs. **Review & add** makes it a
-job. **Delete** takes it off that list and nothing more: what Watch Me learned stays, so the pen still helps on that page.
+Reading jobs you taught with Watch Me in an earlier version keep running, and show in Jobs with the rest. Watch Me
+now keeps what you show it as steps for the pen and chat to follow ([how](pen-and-chat.md#show-it-how-with-watch-me)),
+not as a job.
 
 **Run all reading jobs** in Jobs reads every one of them in turn and opens **Latest run**, which shows what each found.
 **Run history** has the earlier runs. You can also change a job from chat: "change it to only unread email from today".

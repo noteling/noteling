@@ -5,7 +5,6 @@ struct CalendarSourcesHost: View {
     @ObservedObject var store: CalendarStore
     @ObservedObject var runner: CalendarCollectionRunner
     var initialSourceID: UUID? = nil
-    let teach: () -> Void
     var openRun: (UUID, UUID?) -> Void = { _, _ in }
 
     var body: some View {
@@ -16,7 +15,7 @@ struct CalendarSourcesHost: View {
                             runAll: {
                                 if runner.collectAll() != nil, let id = runner.currentRunID { openRun(id, nil) }
                             },
-                            teach: teach, collect: { source, day, start, end in
+                            collect: { source, day, start, end in
                                 if runner.collect(source: source, day: day, startHour: start, endHour: end) != nil,
                                    let id = runner.currentRunID { openRun(id, source.id) }
                             }, collectReading: { source in
@@ -151,7 +150,6 @@ struct CalendarSourcesView: View {
     var isBatchRunning = false
     var initialSourceID: UUID? = nil
     var runAll: () -> Void = {}
-    let teach: () -> Void
     let collect: (LearnedCalendarSource, Date, Int, Int) -> Void
     var collectReading: (LearnedReadingSource) -> Void = { _ in }
     let stop: () -> Void
@@ -174,9 +172,6 @@ struct CalendarSourcesView: View {
     }
     private var selected: LearnedCalendarSource? { store.sources.first { $0.id == resolvedID } }
     private var selectedReading: LearnedReadingSource? { store.readingSources.first { $0.id == resolvedID } }
-    private var savedWorkflows: [SavedReadingWorkflow] {
-        store.savedReadingWorkflows.filter { workflow in !store.readingSources.contains { $0.id == workflow.draft.id } }
-    }
 
     var body: some View {
         ScrollViewReader { reader in
@@ -236,7 +231,6 @@ struct CalendarSourcesView: View {
                     if !store.removedSources.isEmpty {
                         RemovedSourcesList(sources: store.removedSources, isRunning: isRunning, restore: restoreSource)
                     }
-                    if !savedWorkflows.isEmpty { savedWorkflowList }
                     Divider()
                     if let selected {
                         sourceControls(selected).id("selected-source")
@@ -315,14 +309,8 @@ struct CalendarSourcesView: View {
     private var introduction: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Sources Noteling understands.").font(HandFont.font(size: 24))
-            Text("Show Noteling a calendar, inbox, or web page. Explain what it means, which information to collect, and how to recognize when the reading is complete.")
+            Text("Each source says what it means, which information to collect, and how to recognize when the reading is complete.")
                 .font(.system(size: 13)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
-            Button("Teach a source with Watch Me", action: teach)
-                .buttonStyle(MorningActionButton(primary: sourceCount == 0)).disabled(isRunning)
-            if sourceCount == 0 {
-                Text("Review and keep what Noteling learned in chat. Your source will appear here afterward.")
-                    .font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
-            }
         }
     }
 
@@ -334,33 +322,6 @@ struct CalendarSourcesView: View {
             ForEach(store.sources) { Text("\($0.name) · Calendar").tag($0.id) }
             ForEach(store.readingSources) { Text("\($0.name) · \($0.kind == .mail ? "Mail" : "Web")").tag($0.id) }
         }.disabled(isRunning)
-    }
-
-    private var savedWorkflowList: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Saved reading workflows").font(.system(size: 13, weight: .semibold))
-            Text("These demonstrations are not in your source list yet. Review the page and reading scope before adding one.")
-                .font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
-            ForEach(savedWorkflows) { workflow in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(workflow.name).font(.system(size: 13, weight: .medium))
-                            Text(workflow.draft.meaning).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
-                        }
-                        Spacer(minLength: 10)
-                        Button("Review & add") { readingDraft = workflow.draft; localError = nil }
-                            .buttonStyle(MorningActionButton()).disabled(isRunning)
-                    }
-                    Label("Needs review before reading", systemImage: "exclamationmark.circle")
-                        .font(.system(size: 11)).foregroundStyle(Pad.redInk)
-                    if !workflow.draft.uncertainties.isEmpty {
-                        Text(workflow.draft.uncertainties.joined(separator: " "))
-                            .font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
-                    }
-                }.padding(12).background(Color.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
-            }
-        }
     }
 
     private func readingSourceControls(_ source: LearnedReadingSource) -> some View {

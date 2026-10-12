@@ -140,51 +140,6 @@ struct SourceManagementTests {
         }
     }
 
-    @Test func removedWorkflowsNeverReappearAndTheirOriginalFilesStayUntouched() throws {
-        let fixture = Fixture()
-        defer { fixture.remove() }
-        let workflow = try fixture.writeWorkflow(name: "Read Primary", file: "inbox.md")
-        let original = try Data(contentsOf: workflow)
-        fixture.store.refreshSavedWorkflows(root: fixture.tools)
-        var source = try #require(fixture.store.savedReadingWorkflows.first?.draft)
-        source.requiresReview = false
-        source.id = UUID() // New Watch Me registrations use an unrelated UUID but retain their actual workflow path.
-        try fixture.store.saveReadingSource(source)
-        #expect(fixture.store.savedReadingWorkflows.isEmpty)
-        try fixture.store.removeSource(id: source.id)
-        #expect(fixture.store.savedReadingWorkflows.isEmpty)
-        let reopened = CalendarStore(directory: fixture.directory)
-        reopened.refreshSavedWorkflows(root: fixture.tools)
-        #expect(reopened.savedReadingWorkflows.isEmpty)
-        #expect(reopened.removedSources.first?.reading == source)
-        #expect(try Data(contentsOf: workflow) == original)
-        try reopened.restoreSource(id: source.id)
-        #expect(reopened.savedReadingWorkflows.isEmpty)
-        #expect(try Data(contentsOf: workflow) == original)
-    }
-
-    @Test func recoveredIdentityAndCalendarWorkflowPathAlsoSuppressRemovedSuggestions() throws {
-        let fixture = Fixture()
-        defer { fixture.remove() }
-        _ = try fixture.writeWorkflow(name: "Read Primary", file: "inbox.md")
-        _ = try fixture.writeWorkflow(name: "Read calendar", file: "calendar.md")
-        fixture.store.refreshSavedWorkflows(root: fixture.tools)
-        var recovered = try #require(fixture.store.savedReadingWorkflows.first { $0.relativePath.hasSuffix("inbox.md") }?.draft)
-        recovered.requiresReview = false
-        recovered.workflowPath = "" // An older imported profile may have only its stable recovered UUID.
-        try fixture.store.saveReadingSource(recovered)
-        var calendar = fixture.calendar()
-        calendar.workflowPath = "sample/docs/workflows/calendar.md"
-        try fixture.store.saveSource(calendar)
-        #expect(fixture.store.savedReadingWorkflows.isEmpty)
-        try fixture.store.removeSource(id: recovered.id)
-        try fixture.store.removeSource(id: calendar.id)
-        let reopened = CalendarStore(directory: fixture.directory)
-        reopened.refreshSavedWorkflows(root: fixture.tools)
-        #expect(reopened.savedReadingWorkflows.isEmpty)
-        #expect(reopened.removedSources.count == 2)
-    }
-
     @Test func legacyWorkspacesMigrateAllObservationsBeforeRemovingEmbeddedResults() throws {
         for version in [1, 2] {
             let fixture = Fixture()
@@ -243,7 +198,6 @@ struct SourceManagementTests {
         var directory: URL { root.appendingPathComponent("sources") }
         var file: URL { directory.appendingPathComponent("workspace.json") }
         var backup: URL { directory.appendingPathComponent("workspace-backup.json") }
-        var tools: URL { root.appendingPathComponent("tools") }
         lazy var store = CalendarStore(directory: directory)
         func remove() { try? FileManager.default.removeItem(at: root) }
         func calendar(name: String = "Work") -> LearnedCalendarSource {
@@ -273,16 +227,6 @@ struct SourceManagementTests {
         func unblockWrites() throws {
             try FileManager.default.removeItem(at: file)
             try FileManager.default.moveItem(at: backup, to: file)
-        }
-        func writeWorkflow(name: String, file: String) throws -> URL {
-            let pack = tools.appendingPathComponent("sample")
-            let directory = pack.appendingPathComponent("docs/workflows")
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try "# Sample\nLearned by watching.".write(to: pack.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
-            let target = directory.appendingPathComponent(file)
-            try "# \(name)\nRead the Primary inbox in Google Chrome at `mail.google.com/mail/u/0/#inbox`."
-                .write(to: target, atomically: true, encoding: .utf8)
-            return target
         }
     }
 }

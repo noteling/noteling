@@ -6,42 +6,10 @@ import FamiliarRuntime
 
 @Suite @MainActor
 struct ReadingCollectionRunnerTests {
-    @Test func taughtGmailSourceKeptFromWatchMeIsCollectedByRunAll() async throws {
+    @Test func aSavedGmailSourceIsCollectedByRunAll() async throws {
         let fixture = Fixture()
         defer { fixture.remove() }
-        let recordingDirectory = fixture.directory.appendingPathComponent("recording")
-        try FileManager.default.createDirectory(at: recordingDirectory, withIntermediateDirectories: true)
-        let source = fixture.mail
-        let recording = Recording(dir: recordingDirectory,
-            events: [WatchEvent(index: 0, t: 0, kind: "scene", app: "Google Chrome", title: "Inbox - Gmail", url: source.url),
-                     WatchEvent(index: 1, t: 1, kind: "click", app: "Google Chrome", title: "Inbox - Gmail", url: source.url, label: "Primary")],
-            meta: WatchMeta(startedAt: "2026-09-28", hosts: ["mail.google.com"], titles: ["Inbox - Gmail"],
-                            apps: ["Google Chrome"], bundles: ["com.google.Chrome"]))
-        let json: [String: Any] = [
-            "pack_dir": "gmail", "pack_name": "Gmail", "match_titles": ["Gmail"],
-            "workflow_slug": "check-inbox", "workflow_title": "Check the Gmail inbox",
-            "workflow_markdown": "Read Primary. Teaching example subject: OLD DEMONSTRATED EMAIL.",
-            "reading_source": ["kind": "mail", "name": source.name, "meaning": source.meaning,
-                "application": source.application, "bundle_id": source.bundleID, "url": source.url,
-                "account": source.account, "scope": source.scope, "navigation_hints": source.navigationHints,
-                "completion_checks": source.completionChecks, "uncertainties": []]
-        ]
-        let reply = String(decoding: try JSONSerialization.data(withJSONObject: json), as: UTF8.self)
-        let learning = WatchLearnSession(operations: .init(start: { _ in }, stop: { recording }, abandon: {},
-            summarize: { actual, _, _ in WatchSummarizer.parse(reply, recording: actual) },
-            write: { try PackWriter.write($0, root: fixture.registry.root) }, reload: {},
-            saveSource: { draft in try fixture.store.saveReadingSource(try #require(draft.readingSource)) }, saveMeta: { _ in }))
-        #expect(try learning.start(source: true))
-        let stopped = try #require(learning.stop())
-        await stopped.value
-        let summarized = try #require(learning.summarize(purpose: "This Gmail Primary inbox is my incoming work mail"))
-        await summarized.value
-        #expect(learning.phase == .review)
-        #expect(learning.pendingDraft?.readingSource != nil)
-        #expect(fixture.store.readingSources.isEmpty)
-        await learning.keep()
-        #expect(learning.phase == .idle)
-        #expect(!FileManager.default.fileExists(atPath: recordingDirectory.path))
+        try fixture.store.saveReadingSource(fixture.mail)
         let kept = try #require(fixture.store.readingSources.first)
         #expect(fixture.store.sources.isEmpty)
         var providerCalls = 0
@@ -49,7 +17,6 @@ struct ReadingCollectionRunnerTests {
             providerCalls += 1
             #expect(system.contains("not an action script"))
             #expect(system.contains("Do not open mail rows"))
-            #expect(!Self.text(messages).contains("OLD DEMONSTRATED EMAIL"))
             #expect(Self.text(messages).contains(kept.meaning))
             #expect(tools.contains { $0["name"] as? String == "submit_reading_collection" })
             #expect(!tools.contains { $0["name"] as? String == "submit_calendar_collection" })

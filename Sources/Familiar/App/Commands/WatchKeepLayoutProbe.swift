@@ -31,27 +31,17 @@ enum WatchKeepLayoutProbe {
         let recording = Recording(dir: recordingDirectory,
             events: [WatchEvent(index: 0, t: 0, kind: "click", label: "Inbox")],
             meta: WatchMeta(startedAt: "2026-09-28", clicks: 3))
-        let source = LearnedReadingSource(kind: .mail, name: "Example Gmail inbox",
-            meaning: "My work inbox and the messages I should review this morning.", application: "Google Chrome",
-            bundleID: "com.google.Chrome", url: "https://mail.google.com/mail/u/0/#inbox", account: "example@example.test",
-            scope: "Read only the first visible page of Primary. Collect visible senders, subjects, dates and snippets; do not open or change messages.",
-            navigationHints: "Confirm the account and selected Inbox, then read each visible row in Primary.",
-            completionChecks: "Every row on the first visible page is checked, with uncertain or inaccessible information reported explicitly.",
-            uncertainties: ["The source address was seen in a screenshot rather than the event log. Confirm it before a later read.",
-                            "The recording did not establish whether the same account is selected in another browser window."],
-            requiresReview: true)
         let steps = (1...800).map { "\($0). Read the visible inbox row, preserving the sender, subject, date and snippet. Record any uncertainty without opening the message or changing its read status." }
         let notes = (1...6).map { "- Note \($0): Confirm the account and selected Inbox before recording current messages. Keep the same first-page boundary and report any information that cannot be verified." }
         let draft = PackDraft(packDir: "example-mail", packName: "Example Gmail", matchTitles: ["Gmail"],
             workflowSlug: "read-inbox", workflowTitle: "Check the Gmail inbox", workflowMarkdown: "# Read the inbox\n" + steps.joined(separator: "\n") + "\n\n## Notes\n" + notes.joined(separator: "\n") + "\nEND OF COMPLETE WORKFLOW",
             screensMarkdown: "# Inbox\n" + Array(repeating: "Confirm Primary is selected and the expected account is visible. Read only the sender, subject, snippet and visible date for each message.", count: 10).joined(separator: "\n"),
-            caveats: ["The demonstration is an example. Collect current observations during a later read."], confidence: 0.9, parsed: true,
-            readingSource: source)
+            caveats: ["The demonstration is an example. Collect current observations during a later read."], confidence: 0.9, parsed: true)
         var config = Config()
         config.apiKey = "layout-fixture-no-network"
         config.screenshotMode = "never"
         let registry = ToolRegistry(root: root.appendingPathComponent("tools"), runner: ScriptRunner(config: config))
-        let reviewCharacters = Assistant.draftBody(draft, purpose: "check unread email", root: registry.root, teachingCalendar: true).count
+        let reviewCharacters = Assistant.draftBody(draft, purpose: "check unread email", root: registry.root).count
         let userContext = "Read only the first visible page. Do not open messages or change their read status."
         var summaryCalls = 0
         let learning = WatchLearnSession(operations: .init(start: { _ in }, stop: { recording }, abandon: {},
@@ -89,7 +79,7 @@ enum WatchKeepLayoutProbe {
         flushUI(for: 0.5)
         shell.expanded = true
         window.setFrame(NSRect(origin: NSPoint(x: -10000, y: -10000), size: shell.cardSize), display: true)
-        try ensure(try learning.start(source: true))
+        try ensure(try learning.start())
         await (try require(learning.stop())).value
         // A person can only submit the description after its prompt has appeared.
         try await Task.sleep(for: .milliseconds(1700))

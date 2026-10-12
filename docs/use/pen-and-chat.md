@@ -36,6 +36,19 @@ Mouse and keyboard control is off until you turn it on, in Settings or with the 
 on and you ask Noteling to do something, the task window shows its progress and any approval it needs, and **Stop**
 ends it at any time.
 
+## Show it how, with Watch Me
+
+Show Noteling how you do something once, and it keeps the steps:
+
+1. Choose **Watch Me** in the menu bar, or the eye on the chat pad. Do the task, then choose **Stop Watching**
+   (or press ⌃⌥Space).
+2. Name it in a few words, such as "Submit an expense", with anything to skip or watch out for.
+3. Look over the steps it wrote. To change something, just type it. Then choose **Keep it**.
+
+From then on, the pen and chat use those steps in that app or on that page. Ask "submit an expense for me", and with
+control on, Noteling does it by following your steps. What Watch Me keeps is a tool in your tools folder, not a job: it
+never runs by itself.
+
 ## Sticky notes
 
 While the pen is up, **right-click** a control to stick a note on it: a tip for the next time you're on that page. Notes
