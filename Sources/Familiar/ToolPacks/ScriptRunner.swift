@@ -11,6 +11,8 @@ struct ScriptRunnerError: LocalizedError {
     let message: String
     /// The script ran past its time limit and was stopped.
     var timedOut = false
+    /// What the script's own error said ("RuntimeError: Sign in first"), without its traceback; nil when it didn't raise.
+    var raised: String? = nil
     var errorDescription: String? { message }
 }
 
@@ -133,7 +135,7 @@ final class ScriptRunner {
         }
         if let err = json["error"] as? String {
             let tb = json["traceback"] as? String ?? ""
-            throw ScriptRunnerError(message: "\(tool.fileName) failed: \(err)\n\(tb.suffix(800))")
+            throw ScriptRunnerError(message: "\(tool.fileName) failed: \(err)\n\(tb.suffix(800))", raised: err)
         }
         return json
     }

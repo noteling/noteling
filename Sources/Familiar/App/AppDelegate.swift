@@ -68,6 +68,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         runner = ScriptRunner(config: config)
         registry = ToolRegistry(root: config.resolvedToolsDir, runner: runner)
         registry.linkedRoot = LinkedTools.root(for: config)   // the team's tools, once Settings links a repository
+        registry.secretScripts = { [weak self] in self.map { Set($0.effectiveConfig.secretScripts.values) } ?? [] }
+        ScriptedSecrets.shared.runner = runner   // a gateway's token is made with the Mac's proxy and certificates too
         linkedTools.onToolsChanged = { [weak self] in await self?.linkedToolsChanged() }
         // A tools folder of one's own gives its notes up once; one outside Noteling's folder may be shared, so its
         // notes are copied and the file stays for the others.
@@ -256,6 +258,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             linkedTools.start()   // checks the linked repository now, then every 10 minutes
             Secrets.migrateKeychainToFile(keys: (config.connectionMode == "api" ? ["ANTHROPIC_API_KEY"] : []) + registry.packs.flatMap(\.requires))
             if !assistant.hasConnection { assistant.reconfigure(effectiveConfig) }   // pick up a migrated key
+            ScriptedSecrets.shared.warm(effectiveConfig)   // a gateway token's script runs now, not on the first question
             morningTasks.start()
             cardGeneration.start()
             folderJobs?.start()   // only once the packs are loaded, so a job.py can import what they hold
@@ -742,6 +745,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         notesStore.reload()
         assistant.notesHere = registry.notes(for: watcher.current)
         assistant.reconfigure(effectiveConfig)
+        ScriptedSecrets.shared.warm(effectiveConfig)
         morningTasks?.wake()
         cardGeneration?.start()
         folderJobs?.toolsChanged()   // the team's jobs as the new copy has them, now rather than at the next tick
@@ -749,6 +753,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openSettings() {
         origami.cancel()
+        ScriptedSecrets.shared.warm(effectiveConfig)   // so Settings says whether a gateway token's script works
         settings.model.importSetup = { [weak self] in self?.chooseSetupFile() }
         settings.show(config: config, packs: registry.packs, jobs: folderJobs?.store.jobs ?? [], linkedTools: linkedTools, onSave: { [weak self] in
             guard let self else { return }

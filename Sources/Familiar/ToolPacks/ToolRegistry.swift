@@ -79,6 +79,9 @@ final class ToolRegistry {
     /// The team's tools: a copy of the linked repository, replaced whole on each update, so never written to. A pack
     /// of your own with the same folder name is used instead of the linked one.
     var linkedRoot: URL?
+    /// The scripts that make secrets (`secretScripts`), as `pack/script`: never tools, briefs or a job's sources, so a
+    /// token never reaches Claude or a conversation.
+    var secretScripts: () -> Set<String> = { [] }
     let runner: ScriptRunner
     private(set) var packs: [ToolPack] = []
     private(set) var lastError: String?
@@ -251,8 +254,13 @@ final class ToolRegistry {
             return []
         }
         var out: [ScriptTool] = []
+        let withheld = secretScripts()
         for f in files {
             let stem = f.deletingPathExtension().lastPathComponent
+            if withheld.contains("\(pack.dirName)/\(stem)") {
+                Log.info("tools: \(pack.dirName)/scripts/\(f.lastPathComponent) makes a secret, so it isn't a tool")
+                continue
+            }
             let id = Self.toolName("\(pack.dirName)__\(stem)")
             do {
                 let s = try await runner.introspect(f)

@@ -110,9 +110,30 @@ final class SettingsModel: ObservableObject {
     /// Your Anthropic key isn't sent to a gateway your team's tools set, so its field goes while one is.
     var showsAPIKey: Bool { connectionMode == "api" && !teamSets(.gateway) }
 
-    /// The secrets the team's headers name. ANTHROPIC_API_KEY is the API key field's, while that shows.
+    /// The secrets the team's headers name, but not those a script makes. ANTHROPIC_API_KEY is the API key field's,
+    /// while that shows.
     var teamSecretNames: [String] {
-        GatewayHeaders.secretNames(teamClaude?.headers ?? [:]).filter { $0 != "ANTHROPIC_API_KEY" || !showsAPIKey }
+        let scripted = scriptedSecrets
+        return GatewayHeaders.secretNames(teamClaude?.headers ?? [:]).filter { ($0 != "ANTHROPIC_API_KEY" || !showsAPIKey) && scripted[$0] == nil }
+    }
+
+    /// The secrets in effect that a script makes (`secretScripts`) for a header, by name → `pack/script`.
+    var scriptedSecrets: [String: String] {
+        let effective = loadedConfig.applying(team)
+        let used = ConversationBackend.scriptedSecrets(effective)
+        return effective.secretScripts.filter { used.contains($0.key) }
+    }
+
+    /// Why each one's script last failed, as `ScriptedSecrets` has it now.
+    @Published private(set) var scriptFailures: [String: String] = [:]
+    private var watchingScriptFailures = false
+
+    /// One line for each secret a script makes: where it comes from, or why its script last failed.
+    var secretScriptLines: [(text: String, failed: Bool)] {
+        scriptedSecrets.sorted { $0.key < $1.key }.map { name, script in
+            if let failure = scriptFailures[name] { return ("\(name): \(failure).", true) }
+            return ("\(name) comes from \(script), run when a request needs it.", false)
+        }
     }
 
     /// Shows what the team's tools set, now or after an update while Settings is open. Fields the team stops
@@ -201,6 +222,10 @@ final class SettingsModel: ObservableObject {
         packSecrets = []
         applyTeam(team)
         message = ""
+        if !watchingScriptFailures {
+            watchingScriptFailures = true
+            ScriptedSecrets.shared.$failures.assign(to: &$scriptFailures)
+        }
     }
 
     func checkConnection() async {
@@ -301,6 +326,9 @@ struct SettingsView: View {
                             Text(note).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                         }
                     }
+                }
+                ForEach(model.secretScriptLines, id: \.text) { line in
+                    Text(line.text).font(.caption).foregroundStyle(line.failed ? .orange : .secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Picker("Connection", selection: $model.connectionMode) {
                     Text("API key").tag("api")

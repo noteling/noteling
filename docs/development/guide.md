@@ -417,7 +417,7 @@ pack) is read at launch and after each new copy (`Sources/Familiar/Configuration
             "headers": {"X-Consumer-Id": "abc", "X-Api-Key": "$GATEWAY_KEY"},
             "model": "claude-opus-5", "effort": "medium"}}
 ```
-- **Keys.** Only `claude.baseURL`, `claude.headers`, `claude.model` and `claude.effort`. Anything else is ignored, and
+- **Keys.** Only `claude.baseURL`, `claude.headers`, `claude.secretScripts`, `claude.model` and `claude.effort`. Anything else is ignored, and
   Settings lists it. A field left out, `null` or empty stays each person's own. `baseURL` starts with `https://`
   (`http://` only for localhost) and has no `?` or `#`. Noteling adds `/v1/messages` to it, as Anthropic's SDKs do, so
   leave `/v1` off (Settings warns about it). `effort` is `low`, `medium`, `high`, `xhigh` or `max`. `model` applies to the
@@ -435,6 +435,14 @@ pack) is read at launch and after each new copy (`Sources/Familiar/Configuration
   digits and `_`, like pack secrets, and `$NOTELING_TOOLS_REPO_TOKEN` is never sent. Settings shows a field for each name
   under Tool packs ("used by your team's Claude settings"). While one is missing there is no connection, and chat says
   which. The same works in your own `apiHeaders`. Log lines name headers, never their values.
+- **Scripted secrets.** `claude.secretScripts` (or your own `apiSecretScripts`) maps a secret to `pack/script`, for a
+  gateway token a sign-in tool renews every few hours (`Sources/Familiar/ToolPacks/SecretScripts.swift`). A client
+  whose headers name one gets `refreshHeaders`, which `ClaudeClient` calls before every request and again, once, after
+  a 401 or 403. `ScriptedSecrets` runs the script (your own pack wins, 15-second limit, the pack's `requires`), keeps
+  the value in memory for its `ttl` (60 seconds by default, an hour at most), shares one run between requests that ask
+  at once, and falls back to a saved secret of that name. It runs once at launch and when Settings opens, so a failing
+  script shows in Settings' Claude section before anyone asks. The script is withheld from the tools
+  (`ToolRegistry.secretScripts`). Invalid entries are notes; `NOTELING_TOOLS_REPO_TOKEN` can't be scripted.
 - **Safety.** A file that isn't valid JSON, or has a value of the wrong type or an unknown effort, changes nothing:
   Settings shows the plain reason, and the last file that could be used stays in effect, across restarts too (kept
   owner-only in `~/.noteling/team-settings.json`, for the same repository; unlinking deletes it). The file can't set

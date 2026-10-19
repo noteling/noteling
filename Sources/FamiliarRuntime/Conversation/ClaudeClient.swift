@@ -9,6 +9,10 @@ package final class ClaudeClient: ConversationClient, ModelSwitchable, StreamsTe
     package var maxTokens: Int
     package var baseURL: URL
     package var extraHeaders: [String: String]
+    /// Headers made right before each request, for a value that changes while the client lives, such as a gateway's
+    /// short-lived token. They are sent over `extraHeaders`. `fresh` asks for them again, after the gateway turned the
+    /// last ones down (401 or 403): once per request. A throw ends the turn with its message.
+    package var refreshHeaders: ((_ fresh: Bool) async throws -> [String: String])?
     package var maxToolRounds = 8
     /// Server-side refusal fallbacks (the `fallbacks` field and its beta header) exist only on Anthropic's own API.
     /// Gateways and cloud platforms reject them, so they are sent only to api.anthropic.com.
@@ -236,10 +240,12 @@ package final class ClaudeClient: ConversationClient, ModelSwitchable, StreamsTe
         req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         if fallbacksApply { req.setValue("server-side-fallback-2026-07-01", forHTTPHeaderField: "anthropic-beta") }
         for (k, v) in extraHeaders { req.setValue(v, forHTTPHeaderField: k) }
+        if let refreshHeaders { for (k, v) in try await refreshHeaders(false) { req.setValue(v, forHTTPHeaderField: k) } }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let host = baseURL.host ?? baseURL.absoluteString
         var attempt = 0
+        var refreshed = false
         while true {
             attempt += 1
             let started = Date()
@@ -259,6 +265,13 @@ package final class ClaudeClient: ConversationClient, ModelSwitchable, StreamsTe
                                                         timeout: session.configuration.timeoutIntervalForRequest))
             }
             if let reply { return reply }
+            if [401, 403].contains(http.statusCode), let refreshHeaders, !refreshed {
+                // A token kept a little too long: make it again, and send once more.
+                refreshed = true
+                logger("request to \(host): HTTP \(http.statusCode) (attempt \(attempt)); making its headers again")
+                for (k, v) in try await refreshHeaders(true) { req.setValue(v, forHTTPHeaderField: k) }
+                continue
+            }
             let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
             let msg = (json["error"] as? [String: Any])?["message"] as? String ?? String(data: data, encoding: .utf8) ?? "unknown"
             if Self.retryableStatuses.contains(http.statusCode), attempt <= retryDelays.count {

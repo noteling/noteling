@@ -65,10 +65,52 @@ A `noteling.json` at the top of your repository sets how every linked Mac reache
   is sent as written. `Host`, `Content-Length`, `Content-Type`, `Connection`, `Transfer-Encoding` and
   `anthropic-version` can't be set.
 - `model` and `effort` (`low`, `medium`, `high`, `xhigh` or `max`) are optional.
+- If the gateway's token expires within hours (a sign-in tool keeps it renewed on disk), let a script make it instead
+  of having everyone paste it again. See the next section.
 - While linked, these win over the person's own Claude settings. The top of Settings' **Claude** section says where
   questions, screenshots and the text Noteling reads go, and the fields you set are greyed out. Nothing personal (their
   own key or headers) is sent to your gateway unless a header asks for it by name. Unlinking your tools gives them their
   own settings back.
+
+### A token that keeps changing: secretScripts
+
+`secretScripts` names the pack script that makes a secret. Noteling runs it right before a request needs the secret,
+so nobody types a token that expires the same day:
+
+```json
+{"claude": {"baseURL": "https://llm-gateway.example.com",
+            "headers": {"Authorization": "$GATEWAY_TOKEN"},
+            "secretScripts": {"GATEWAY_TOKEN": "gateway-auth/token"}}}
+```
+
+`gateway-auth/token` is `gateway-auth/scripts/token.py` in your repository. Its `run()` takes no arguments and returns
+the header's whole value as text (`"Bearer eyJ…"`, since only a value that is exactly `$NAME` is filled in), or
+`{"value": "Bearer eyJ…", "ttl": 600}` to say how many seconds Noteling may keep it.
+
+```python
+import pathlib
+
+def run():
+    """Reads the token our sign-in tool keeps renewed."""
+    path = pathlib.Path.home() / ".gateway" / "token"
+    if not path.exists():
+        raise RuntimeError("Sign in first: run gateway-login")
+    return {"value": "Bearer " + path.read_text().strip(), "ttl": 300}
+```
+
+- Noteling keeps the value for 60 seconds unless `ttl` says otherwise, an hour at most, and only in memory: never on
+  disk or in the log. If the gateway turns a request down (401 or 403), it runs the script again and sends once more.
+- The script runs like the pack's other scripts, with the secrets its pack `requires`, and stops after 15 seconds. It
+  is never offered to Claude as a tool.
+- When it fails, a saved secret of the same name is used if there is one. Without one, the question ends with what the
+  script said ("Sign in first: run gateway-login"). Settings' **Claude** section shows the same line, and asks for no
+  value for a secret that has a script.
+- A person can name their own in config.json as `apiSecretScripts`. The team's entry wins for the same name.
+- `NOTELING_TOOLS_REPO_TOKEN` can't come from a script, and a setup file never carries one: the script lives in your
+  repository.
+
+To try it in Terminal, `/Applications/Noteling.app/Contents/MacOS/Noteling --ask "hello"` makes the token the way chat
+does, and prints what went wrong if it can't.
 
 ## Behind a proxy
 
