@@ -4,7 +4,7 @@ import Foundation
 /// now only `claude`, the connection to Claude, such as a company gateway:
 ///
 ///     {"claude": {"baseURL": "https://llm-gateway.example.com", "headers": {"X-Consumer-Id": "abc", "X-Api-Key": "$GATEWAY_KEY"},
-///                 "model": "claude-opus-5", "effort": "medium"}}
+///                 "secretScripts": {"GATEWAY_KEY": "gateway-auth/token"}, "model": "claude-opus-5", "effort": "medium"}}
 ///
 /// The name is reserved at the repository's root. While the tools are linked, what the file sets wins over each
 /// person's own settings (`Config.applying`), and is never written into their config.json.
@@ -15,11 +15,13 @@ struct TeamSettings: Equatable {
     /// What the team sets for the connection to Claude. A field it leaves out (nil) stays each person's own.
     struct Claude: Codable, Equatable {
         var baseURL: String?
-        var headers: [String: String]?   // values as written: `$NAME` is a secret, read when the client is built
+        var headers: [String: String]?   // values as written: `$NAME` is a secret, read when the client is built or, scripted, per request
         var model: String?
         var effort: String?
+        /// Secrets a pack script makes when a request needs them, by name: `GATEWAY_KEY` → `gateway-auth/token` (`SecretScripts`).
+        var secretScripts: [String: String]?
 
-        var isEmpty: Bool { baseURL == nil && headers == nil && model == nil && effort == nil }
+        var isEmpty: Bool { baseURL == nil && headers == nil && model == nil && effort == nil && secretScripts == nil }
         /// The gateway's host, as Settings and the log name it.
         var host: String? { baseURL.flatMap { URLComponents(string: $0)?.host } }
     }
@@ -41,7 +43,7 @@ struct TeamSettings: Equatable {
         settings.ignored = top.keys.filter { $0 != "claude" }.sorted()
         guard let raw = top["claude"], !(raw is NSNull) else { return settings }
         guard let claude = raw as? [String: Any] else { throw TeamSettingsError("claude must be an object, { … }.") }
-        let known = ["baseURL", "headers", "model", "effort"]
+        let known = ["baseURL", "headers", "model", "effort", "secretScripts"]
         settings.ignored += claude.keys.filter { !known.contains($0) }.sorted().map { "claude.\($0)" }
 
         func text(_ key: String) throws -> String? {
@@ -86,6 +88,20 @@ struct TeamSettings: Equatable {
                 kept[name] = value
             }
             settings.claude.headers = kept
+        }
+        if let raw = claude["secretScripts"], !(raw is NSNull) {
+            guard let entries = raw as? [String: Any] else {
+                throw TeamSettingsError("claude.secretScripts must be an object of secret names and scripts, { \"GATEWAY_KEY\": \"gateway-auth/token\" }.")
+            }
+            let checked = SecretScripts.check(entries)
+            settings.notes += checked.notes
+            if let headers = settings.claude.headers {
+                let named = Set(GatewayHeaders.secretNames(headers))
+                for name in checked.kept.keys.sorted() where !named.contains(name) {
+                    settings.notes.append("\(name) has a script, but no header in claude.headers is $\(name), so it isn't used.")
+                }
+            }
+            settings.claude.secretScripts = checked.kept.isEmpty ? nil : checked.kept
         }
         return settings
     }
@@ -243,6 +259,7 @@ enum TeamSettingsFile {
             var set: [String] = []
             if let host = claude.host { set.append("Claude through \(host)") }
             if let headers = claude.headers { set.append(GatewayHeaders.describe(headers)) }
+            if let scripts = claude.secretScripts { set.append("secret scripts for " + scripts.keys.sorted().joined(separator: ", ")) }
             if let model = claude.model { set.append("model \(model)") }
             if let effort = claude.effort { set.append("effort \(effort)") }
             parts.append(set.joined(separator: ", ") + (state.fromEarlierFile ? " (from the last file that could be used)" : ""))

@@ -21,8 +21,12 @@ func runHeadlessAsk() async {
         print(ConversationBackend.setupMessage(config: config)); exit(1)
     }
     let runner = ScriptRunner(config: config)
+    runner.extraEnv = config.env
+    runner.networkEnv = await ScriptNetwork.current()   // the Mac's proxy and certificates, as in the app
+    ScriptedSecrets.shared.runner = runner   // a gateway token's script, made before each request as in the app
     let registry = ToolRegistry(root: config.resolvedToolsDir, runner: runner)
     registry.linkedRoot = LinkedTools.root(for: config)
+    registry.secretScripts = { Set(config.secretScripts.values) }
     await registry.reload()
     let title = args.firstIndex(of: "--title").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } ?? (url.contains("4310") ? "Waxwing" : "New Report - Concur")
     var ctx = ScreenContext(appName: "Google Chrome", bundleID: "com.google.Chrome", windowTitle: title, url: url, focused: nil, timestamp: Date())

@@ -357,6 +357,78 @@ struct ClaudeClientTests {
         #expect(NSArray(array: messages).isEqual(to: original))
     }
 
+    // MARK: headers made per request (a gateway's short-lived token)
+
+    /// Counts what the client asks of its header source, as a gateway token's script would see it.
+    private final class HeaderSource: @unchecked Sendable {
+        var made = 0
+        var freshAsks = 0
+        var fails: String?
+
+        func headers(fresh: Bool) throws -> [String: String] {
+            if let fails { throw ClaudeError(message: fails) }
+            made += 1
+            if fresh { freshAsks += 1 }
+            return ["Authorization": "Bearer tok-\(made)"]
+        }
+    }
+
+    @Test
+    func headersMadePerRequestAreSentEachTimeAndMadeAgainAfterTheGatewayTurnsThemDown() async throws {
+        let success = try HTTPFixture.Response(json: ["stop_reason": "end_turn", "content": [["type": "text", "text": "Ready."]]])
+        let expired = try HTTPFixture.Response(json: ["error": ["type": "authentication_error", "message": "Token expired."]], status: 401)
+        let fixture = HTTPFixture(responses: [success, expired, success])
+        defer { fixture.close() }
+        let client = ClaudeClient(options: ClaudeAPIOptions(apiKey: "", model: "fixture-model", effort: "medium", maxTokens: 1024, baseURL: fixture.baseURL,
+                                                            headers: ["X-Consumer-Id": "abc"]), session: fixture.session)
+        let source = HeaderSource()
+        client.refreshHeaders = { fresh in try source.headers(fresh: fresh) }
+
+        for _ in 0..<2 {
+            var messages: [[String: Any]] = [["role": "user", "content": "Hello"]]
+            let reply = try await client.converse(system: "Fixture prompt", tools: [], messages: &messages,
+                                                  executor: { _, _, _ in Issue.record("Unexpected tool call"); return .text("unexpected") },
+                                                  onStatus: { _ in })
+            #expect(reply.text == "Ready.")
+        }
+        // Each request gets the headers as they are now; the one turned down is sent once more with new ones.
+        #expect(fixture.requests.map { $0.request.value(forHTTPHeaderField: "Authorization") } == ["Bearer tok-1", "Bearer tok-2", "Bearer tok-3"])
+        #expect(fixture.requests.allSatisfy { $0.request.value(forHTTPHeaderField: "X-Consumer-Id") == "abc" })
+        #expect(source.freshAsks == 1)
+    }
+
+    @Test
+    func headersMadeAgainAreTriedOnceAndAFailureToMakeThemEndsTheTurn() async throws {
+        let expired = try HTTPFixture.Response(json: ["error": ["type": "authentication_error", "message": "Token expired."]], status: 401)
+        let fixture = HTTPFixture(responses: [expired, expired])
+        defer { fixture.close() }
+        let client = ClaudeClient(options: options(baseURL: fixture.baseURL), session: fixture.session)
+        let source = HeaderSource()
+        client.refreshHeaders = { fresh in try source.headers(fresh: fresh) }
+        var messages: [[String: Any]] = [["role": "user", "content": "Hello"]]
+        do {
+            _ = try await client.converse(system: "Fixture prompt", tools: [], messages: &messages,
+                                           executor: { _, _, _ in Issue.record("Unexpected tool call"); return .text("unexpected") },
+                                           onStatus: { _ in })
+            Issue.record("Expected an API error")
+        } catch let error as ClaudeError {
+            #expect(error.message == "API error 401: Token expired. (tried 2 times)")
+        }
+        #expect(fixture.requests.count == 2 && source.freshAsks == 1)
+
+        // Headers that can't be made send nothing, and say why.
+        source.fails = "GATEWAY_TOKEN comes from the script gateway-auth/token, and it failed: Sign in first."
+        do {
+            _ = try await client.converse(system: "Fixture prompt", tools: [], messages: &messages,
+                                           executor: { _, _, _ in Issue.record("Unexpected tool call"); return .text("unexpected") },
+                                           onStatus: { _ in })
+            Issue.record("Expected the header source's error")
+        } catch let error as ClaudeError {
+            #expect(error.message == source.fails)
+        }
+        #expect(fixture.requests.count == 2)
+    }
+
     // MARK: network failures (the bug: a fresh install showed only "The network connection was lost.")
 
     @Test

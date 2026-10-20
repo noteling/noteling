@@ -7,6 +7,7 @@ struct Config: Codable {
     var apiKey: String = ""
     var apiBaseURL: String = ""              // e.g. a corporate gateway; empty = api.anthropic.com
     var apiHeaders: [String: String] = [:]   // extra headers for the gateway
+    var apiSecretScripts: [String: String] = [:]   // secrets a pack script makes, e.g. "GATEWAY_TOKEN": "gateway-auth/token" (`SecretScripts`)
     var model: String = "claude-opus-5"
     var effort: String = "medium"
     var maxTokens: Int = 4096
@@ -91,6 +92,12 @@ struct Config: Codable {
         return nil
     }
 
+    /// The secrets a script makes, by name → `pack/script`: the team's, then your own for the names the team leaves out.
+    /// Your own entries that can't be used are left out.
+    var secretScripts: [String: String] {
+        SecretScripts.valid(apiSecretScripts).merging(teamClaude?.secretScripts ?? [:]) { _, team in team }
+    }
+
     var resolvedToolsDir: URL {
         toolsDir.isEmpty ? Config.dir.appendingPathComponent("tools") : URL(fileURLWithPath: (toolsDir as NSString).expandingTildeInPath)
     }
@@ -110,6 +117,7 @@ struct Config: Codable {
         apiKey = try c.decodeIfPresent(String.self, forKey: .apiKey) ?? d.apiKey
         apiBaseURL = try c.decodeIfPresent(String.self, forKey: .apiBaseURL) ?? d.apiBaseURL
         apiHeaders = try c.decodeIfPresent([String: String].self, forKey: .apiHeaders) ?? d.apiHeaders
+        apiSecretScripts = (try? c.decodeIfPresent([String: String].self, forKey: .apiSecretScripts)) ?? d.apiSecretScripts
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? d.model
         effort = try c.decodeIfPresent(String.self, forKey: .effort) ?? d.effort
         maxTokens = try c.decodeIfPresent(Int.self, forKey: .maxTokens) ?? d.maxTokens
