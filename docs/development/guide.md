@@ -128,6 +128,26 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    existing files (new workflows get `-2`, `-3`; screens are added only when new); **Discard** throws the draft away. Either
    way the recording folder is deleted, as it is when you clear the pad or quit; anything left behind by a crash is swept
    after 7 days. The pen and control are off while it watches.
+   Each click also keeps what finds its control again later: the control around what was clicked (the text inside a
+   button stands for the button), its Accessibility role, the page's own id for it when that id is steady, and its frame
+   as fractions of the window. The write-up returns a `path` (the clicks that make up the task, in order, with a line to
+   say at each), and **Keep it** writes it as `paths/<task>.json` beside `docs/workflows/<task>.md`.
+9. **Show me the way** (`Features/ShowMe`): the chat's `show_me` tool lights up a kept path, or one or two controls on the
+   screen now, on the person's own screen, and they do the clicks. "Paths you can show" lists the active packs' paths in
+   the prompt. The tool starts from the furthest step already on the page and returns at once; `ShowTour` then looks for
+   each step (`ShowFinder`: the page's id, then role and name, then the name without its numbers, then part of it; a
+   control without a name by where it was), rings it (`ShowOverlay`: the dim with a cutout below the pad, the breathing ring
+   and the purple arrow above everything, and the step's sticky note, the only part that takes clicks), follows it as the
+   page moves, scrolls one that is out of view into it, and moves on when the person clicks inside it. A step is looked
+   for 10 s once the page can be read, then the note offers **Look again**. Esc or the note's × stops it. The pad keeps a
+   list of the steps (`ChatMessage.Role.tour`) with Stop and Show again.
+   Chromium browsers build a page's Accessibility tree only once an assistive app says one is listening
+   (`AXEnhancedUserInterface`, as VoiceOver does); until then a page reads as an empty group. `BrowserAccessibility`
+   turns it on while a tour or a Watch Me recording needs it and back off 8 s after, unless the browser had it on
+   already. A page that can't be read yet doesn't count against a step's 10 s (up to 45 s).
+   From the command line: `--show-me <path.json | pack/slug>` shows a path, `--find-step "label"` looks for one control in
+   the window in front, `--record-clicks <seconds>` records clicks as Watch Me does, and `--ask "…" <url> --show
+   [--tools-root <dir>] [--show-path pack/slug]` lets a headless question show the way (the last without asking Claude).
    What is never written down: anything typed in a password field or a field named like one (password, PIN, OTP, token, key…),
    anything typed in a terminal (Terminal, iTerm2, Warp, kitty, Alacritty, WezTerm, Ghostty…), anything typed outside a form
    field (editors, chat composers), and anything typed when Accessibility cannot say which field has focus — the log then
@@ -136,7 +156,7 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    Headless: `--record-synthetic <dir>` (a fake recording from the current screen) and
    `--summarize-recording <dir> ["purpose"] [--tools-root <dir>] [--keep] [--claude-cli]` (prints the draft JSON; keeps into a temp folder by default).
 
-9. **Morning Files**: a small folder in the upper-left opens categorized folders and a spread of files. Choose any file
+10. **Morning Files**: a small folder in the upper-left opens categorized folders and a spread of files. Choose any file
    to see its three parts: what it is, what it means for you, and one to three options, best first (hover an option for its
    exact instruction). **Show original** shows what Noteling read. **Ignore** files it away, **I'll do it**
    keeps it yours, and handing it to Noteling saves the action before the file flies to the background task screen.

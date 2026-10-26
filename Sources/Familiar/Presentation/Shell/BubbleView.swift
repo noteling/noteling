@@ -290,7 +290,8 @@ struct BubbleView: View {
                                        suggestions: n.id == tabsOn ? state.suggestions : [], ledger: ledger,
                                        peek: latest ? peekMood : nil, animated: padAnimated,
                                        awaitingQuestion: n.id == state.pendingPickID,
-                                       onSuggest: { state.askSuggestion($0) }, onDismiss: { state.dismissPick() })
+                                       onSuggest: { state.askSuggestion($0) }, onDismiss: { state.dismissPick() },
+                                       onTour: { state.tourAction($0, again: $1) })
                             .id(n.id)
                     }
                     if state.chatPresentationBusy, notes.last?.hasAnswer == true || notes.isEmpty {

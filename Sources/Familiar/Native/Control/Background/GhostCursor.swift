@@ -67,7 +67,7 @@ enum GhostCursorArt {
     }
 
     /// The art's footprint relative to the tip, shadow and badge included, so a host can size and anchor it.
-    fileprivate static func extent(height: CGFloat) -> CGRect {
+    static func extent(height: CGFloat) -> CGRect {
         let badge = CGRect(origin: badgeOrigin(height: height), size: CGSize(width: badgeSize, height: badgeSize))
         return path(height: height).boundingBox.insetBy(dx: -4, dy: -4).union(badge.insetBy(dx: -2, dy: -2))
     }

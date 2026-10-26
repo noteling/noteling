@@ -223,6 +223,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         assistant.onOpenSettings = { [weak self] in self?.openSettings() }
         assistant.sourceConversation = sourceConversation
+        let showMe = ShowMeConversation(registry: registry)
+        showMe.hideFromScreenShare = { [weak self] in self?.config.hideFromScreenShare ?? false }
+        assistant.showMe = showMe
         assistant.onOpenJobs = { [weak self] in self?.morningPanel.showJobs(trigger: .chat) }
         assistant.onRunSource = { [weak self] id in self?.runSavedSource(id) }
         setupFolderJobs()   // before the panel, which shows them among the jobs
@@ -556,6 +559,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Quitting mid-recording leaves nothing behind: the unfinished recording and any draft still under review go.
     func applicationWillTerminate(_ notification: Notification) {
         MainThreadDiagnostics.shared.stop()
+        assistant?.showMe?.stop()
+        BrowserAccessibility.settle()
         cardGeneration?.stop()
         origami.cancel()
         calendarReader?.shutdown()

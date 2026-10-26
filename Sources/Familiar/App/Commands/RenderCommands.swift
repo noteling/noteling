@@ -190,6 +190,21 @@ func runRenderCard() {
     render(BubblePanel.defaultExpandedSize, dark: false, "pad-400.png")
     render(BubblePanel.largeExpandedSize, dark: false, "pad-560.png")
     render(BubblePanel.defaultExpandedSize, dark: true, "pad-400-dark.png")
+    if args.contains("--tour") {   // showing the way: the step list under the answer, partway, then done
+        let steps = ["Open Account and access", "Scroll to Your agent tokens", "Click Create agent token"]
+        let asked = ChatMessage(role: .user, text: "idk where to find the agent tokens")
+        let answer = ChatMessage(role: .assistant, text: "Follow the ring on your screen: it starts at **Account and access**, top right.")
+        var tour = ChatMessage(role: .tour, text: "Create an agent token",
+                               tour: TourProgress(title: "Create an agent token", steps: steps, current: 1, state: .showing))
+        state.transcript = [asked, answer, tour]; state.suggestions = []; state.status = ""
+        render(BubblePanel.defaultExpandedSize, dark: false, "pad-400-tour.png")
+        tour.tour = TourProgress(title: "Create an agent token", steps: steps, current: 3, state: .done)
+        state.transcript = [asked, answer, tour]
+        render(BubblePanel.defaultExpandedSize, dark: false, "pad-400-tour-done.png")
+        tour.tour = TourProgress(title: "Create an agent token", steps: steps, current: 1, state: .lost)
+        state.transcript = [asked, answer, tour]
+        render(BubblePanel.defaultExpandedSize, dark: true, "pad-400-tour-lost-dark.png")
+    }
     if args.contains("--states") {   // extra checks: the empty pad, and a pick being written up
         let full = state.transcript, sugg = state.suggestions
         state.transcript = []; state.suggestions = []; state.status = ""

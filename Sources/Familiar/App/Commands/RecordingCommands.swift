@@ -55,3 +55,33 @@ func runSummarizeRecording() async {
         }
     } catch { print("FAILED: \(error.localizedDescription)"); exit(1) }
 }
+
+/// `Noteling --record-clicks <seconds>`: Watch Me's recorder on the real screen for that long, without the pad: every
+/// click a person (or a script) makes is recorded as Watch Me records it. Prints the recording's folder and its clicks,
+/// for `--summarize-recording`. Needs Accessibility and Screen Recording, like Watch Me.
+@MainActor
+func runRecordClicks() {
+    let args = CommandLine.arguments
+    guard let i = args.firstIndex(of: "--record-clicks"), i + 1 < args.count, let seconds = Double(args[i + 1]) else {
+        print("usage: --record-clicks <seconds>"); exit(2)
+    }
+    _ = NSApplication.shared
+    NSApp.setActivationPolicy(.accessory)
+    let config = Config.load()
+    let watcher = ContextWatcher()
+    watcher.start(interval: 1)
+    let recorder = WatchRecorder(config: config, watcher: watcher)
+    do { try recorder.start() } catch { print("FAILED: \(error.localizedDescription)"); exit(1) }
+    print("recording for \(Int(seconds)) s"); fflush(stdout)
+    DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+        Task { @MainActor in
+            let rec = await recorder.stop(purpose: nil)
+            print("recorded into \(rec.dir.path)")
+            for e in rec.events where e.kind == "click" {
+                print("  " + WatchSummarizer.line(e) + "  [\(e.axRole ?? "-") id=\(e.domID ?? "-") rect=\(e.rect.map { "\($0)" } ?? "-")]")
+            }
+            exit(0)
+        }
+    }
+    NSApp.run()
+}

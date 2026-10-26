@@ -17,6 +17,8 @@ struct PackDraft {
     var glossaryMarkdown = ""
     var caveats: [String] = []
     var confidence = 0.0
+    /// The clicks the write-up picked as the way through, with what to say at each, to show the next person.
+    var path: ShowPath?
     var raw = ""
     var parsed = false
     var json: [String: Any] = [:]
@@ -220,6 +222,11 @@ enum WatchSummarizer {
         d.screensMarkdown = str("screens_markdown")
         d.glossaryMarkdown = str("glossary_markdown")
         d.confidence = (obj["confidence"] as? NSNumber)?.doubleValue ?? 0
+        let picks = (obj["path"] as? [[String: Any]] ?? []).compactMap { pick -> (event: Int, say: String)? in
+            guard let event = (pick["event"] as? NSNumber)?.intValue else { return nil }
+            return (event, pick["say"] as? String ?? "")
+        }
+        d.path = ShowPath.from(recording: recording, picks: picks, title: d.workflowTitle, recorded: String(recording.meta.startedAt.prefix(10)))
         return d
     }
 
@@ -303,6 +310,11 @@ enum PackWriter {
         let body = "_Recorded by watching on \(when); \(caveats)_\n\n# \(d.workflowTitle)\n\n" + d.workflowMarkdown.trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
         try body.write(to: wf, atomically: true, encoding: .utf8)
         written.append(wf)
+        // The way through, under the same name as its how-to, so the chat can show it to the next person.
+        if var path = d.path {
+            path.recorded = path.recorded ?? when
+            written.append(try ShowPathStore.write(path, slug: wf.deletingPathExtension().lastPathComponent, packDir: packDir))
+        }
 
         let glossary = d.glossaryMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
         if !glossary.isEmpty {

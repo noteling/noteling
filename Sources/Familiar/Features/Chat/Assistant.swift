@@ -6,7 +6,7 @@ import Foundation
 import SwiftUI
 
 struct ChatMessage: Identifiable {
-    enum Role { case user, wand, assistant, error, draft, learned, note, receipt, check, glance }   // draft/learned: a note Noteling starts itself (a watched workflow's title), before and after Keep; note: a sticky note someone left on the control; receipt: the last frame of a background job
+    enum Role { case user, wand, assistant, error, draft, learned, note, receipt, check, glance, tour }   // draft/learned: a note Noteling starts itself (a watched workflow's title), before and after Keep; note: a sticky note someone left on the control; receipt: the last frame of a background job
     let id = UUID()
     let role: Role
     var text: String               // an answer's grows while it is written
@@ -17,6 +17,7 @@ struct ChatMessage: Identifiable {
     var seen: SeenScreen? = nil    // user/wand: what Claude was shown from the screen for this question
     var asked: String? = nil       // wand: what the person asked about the pick, by a tap or in their own words
     var glance: PageGlance? = nil  // glance: the page brief's own answer, shown on the pick before any model is asked
+    var tour: TourProgress? = nil  // tour: the way being shown on screen (`show_me`), its steps ticked off as they're clicked
 }
 
 @MainActor
@@ -70,6 +71,20 @@ final class Assistant: ObservableObject {
     /// read one's latest result.
     var folderJobs: FolderJobConversation? {
         didSet { folderJobs?.onChange = { [weak self] receipt in self?.jobChanged(receipt) } }
+    }
+    /// Showing the way on screen: the show_me tool, and the list of its steps on the pad.
+    var showMe: ShowMeConversation? {
+        didSet {
+            showMe?.onStart = { [weak self] path, progress in
+                let message = ChatMessage(role: .tour, text: path.title, tour: progress)
+                self?.transcript.append(message)
+                return message.id
+            }
+            showMe?.onProgress = { [weak self] id, progress in
+                guard let self, let i = self.transcript.firstIndex(where: { $0.id == id }) else { return }
+                self.transcript[i].tour = progress
+            }
+        }
     }
     private var pendingSourceTabs: [String] = []   // added to the reply's tabs when the turn ends
     private var offeredRuns: [String: UUID] = [:]  // Run now tab title → job
@@ -171,6 +186,11 @@ final class Assistant: ObservableObject {
 
     func showBackgroundTasks() { desktop?.tasks.show() }
 
+    /// The pad's Stop on a tour that is running, and Show again on one that is over.
+    func tourAction(_ id: UUID, again: Bool) {
+        if again { showMe?.again(id) } else { showMe?.stop() }
+    }
+
     func clearConversation() {
         cardConversation?.clear()
         pendingPick?.ready.cancel()
@@ -189,6 +209,7 @@ final class Assistant: ObservableObject {
         contextMessageID = nil
         pendingSourceTabs = []
         offeredRuns = [:]
+        showMe?.stop()
     }
 
     func startWand() {
@@ -1056,6 +1077,7 @@ final class Assistant: ObservableObject {
                     return await self.readScreen(held: holding, seenOn: chip, ctx: ctx)
                 }
                 let sourceRoutes = (sourceConversation?.routes() ?? []) + (folderJobs?.routes() ?? [])
+                    + (showMe?.routes(context: ctx) ?? [])
                 if controlAllowed, let desktop {
                     return try await desktop.prepare(id: id, registry: registry, context: ctx, background: background,
                                                      title: title, additionalRoutes: sourceRoutes, lookAtScreen: capture, readScreen: read)

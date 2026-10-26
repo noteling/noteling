@@ -51,6 +51,13 @@ enum Prompt {
     steps they showed, in the app's own words. They are how-tos, not jobs. When they ask you to do one of those tasks, \
     follow its steps, doing them yourself when you have the computer tools. If the steps aren't in what you were given, \
     find them with grep and read_file over the tool packs' docs.
+    - show_me, which shows the person the way on their own screen and lets them do the clicks, so they learn it. When \
+    they ask where something is or how to get to it ("where do I find…", "idk where…", "how do I get to…", "show me"), \
+    show them rather than writing out steps: with a path from "Paths you can show" when one fits (part of one with \
+    `until`), or with `steps` for a control on the screen now, named exactly as the page names it. Then answer in one \
+    short line, since they are following the ring on their screen. When they ask you to do it for them instead, that \
+    is not showing. If no path fits and it isn't on the screen, say no one has shown you the way there yet, give your \
+    best steps, and say that someone who knows can show Noteling once with Watch Me.
     Prefer the company's docs over general assumptions when they conflict, and say which doc you used. \
     Never invent internal procedures, URLs, contacts or policies. If you are unsure, say so plainly.
     People also stick short notes on controls with the pen ("Notes left on this control"). Each is a named \
@@ -164,6 +171,10 @@ enum Prompt {
     - glossary_markdown: terms seen, in the app's words, as "- **term**: meaning" lines. May be empty.
     - caveats: array of short strings, e.g. "recorded once on <date>; steps may vary", "typed values were examples".
     - confidence: number 0-1, how sure you are the steps are complete and in order.
+    - path: the clicks that make up the task, in order, so Noteling can later show the way to someone else on their \
+    own screen, as objects {"event": <the click's [index] in the event log>, "say": "<what to tell a newcomer at that \
+    step, under 8 words, with the real label, e.g. Open Account and access>"}. Only clicks on controls; leave out stray \
+    clicks, clicks that did nothing, clicks into a field just to type in it, and anything after the task was done. May be empty.
     """
 
     static func context(_ ctx: ScreenContext?, recent: [ScreenContext]) -> String {
@@ -207,6 +218,7 @@ enum Prompt {
                 s += "\n### Scripts (available as tools)\n"
                 for sc in p.scripts { s += "- \(sc.id): \(sc.description)\n" }
             }
+            if !p.paths.isEmpty { s += showPaths(p) }
         }
         if !others.isEmpty {
             s += "\n## Other tool packs (not active; their docs are readable with read_file / grep)\n"
@@ -214,6 +226,18 @@ enum Prompt {
         }
         if active.isEmpty {
             s += "\nNo tool pack matched the current app/URL. Answer from the screen, and grep the packs if the question sounds like it belongs to one.\n"
+        }
+        return s
+    }
+
+    /// The ways someone showed with Watch Me that show_me can light up, by the name it takes.
+    static func showPaths(_ pack: ToolPack) -> String {
+        var s = "\n### Paths you can show (show_me)\n"
+        for (slug, path) in pack.paths.sorted(by: { $0.key < $1.key }) {
+            s += "- \(pack.dirName)/\(slug): \(path.title). \(path.steps.count) step\(path.steps.count == 1 ? "" : "s"): \(path.route)"
+            if let start = path.start { s += " (starts on \(start))" }
+            if let day = path.recorded { s += ", shown \(day)" }
+            s += "\n"
         }
         return s
     }

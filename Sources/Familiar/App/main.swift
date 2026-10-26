@@ -52,12 +52,23 @@ if CommandLine.arguments.contains("--record-synthetic") {
         do { try MorningRender.render(to: URL(fileURLWithPath: CommandLine.arguments[index + 1])) }
         catch { print("Morning files render failed: \(error)"); exit(1) }
     }
+} else if CommandLine.arguments.contains("--record-clicks") {
+    MainActor.assumeIsolated { runRecordClicks() }
+} else if CommandLine.arguments.contains("--find-step") {
+    MainActor.assumeIsolated { runFindStep() }
+} else if CommandLine.arguments.contains("--show-me") {
+    MainActor.assumeIsolated { runShowMe() }
 } else if CommandLine.arguments.contains("--render-pen") {
     MainActor.assumeIsolated { runRenderPen() }
 } else if CommandLine.arguments.contains("--ask") {
     Task { @MainActor in
         await runHeadlessAsk()
         exit(0)
+    }
+    if CommandLine.arguments.contains("--show") {
+        // A tour hears clicks and Esc through event monitors, which only the app's own event loop feeds.
+        MainActor.assumeIsolated { NSApplication.shared.setActivationPolicy(.accessory) }
+        NSApp.run()
     }
     RunLoop.main.run()
 } else if CommandLine.arguments.contains("--read-page") {
