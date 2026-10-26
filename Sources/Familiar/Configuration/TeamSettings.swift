@@ -27,6 +27,8 @@ struct TeamSettings: Equatable {
     }
 
     var claude = Claude()
+    /// The words the team calls Explain, Teach me and Do it for me by, and how its people put each (`verbs`).
+    var verbs: IntentWords?
     /// Keys Noteling doesn't use ("theme", "claude.timeout"): ignored, and listed in Settings.
     var ignored: [String] = []
     /// What the file asks for that Noteling doesn't do as written, one sentence each, naming headers but never their values.
@@ -40,7 +42,8 @@ struct TeamSettings: Equatable {
         }
         guard let top = object as? [String: Any] else { throw TeamSettingsError("It must be one JSON object, { … }.") }
         var settings = TeamSettings()
-        settings.ignored = top.keys.filter { $0 != "claude" }.sorted()
+        settings.ignored = top.keys.filter { $0 != "claude" && $0 != "verbs" }.sorted()
+        try settings.parseVerbs(top["verbs"])
         guard let raw = top["claude"], !(raw is NSNull) else { return settings }
         guard let claude = raw as? [String: Any] else { throw TeamSettingsError("claude must be an object, { … }.") }
         let known = ["baseURL", "headers", "model", "effort", "secretScripts"]
@@ -104,6 +107,49 @@ struct TeamSettings: Equatable {
             settings.claude.secretScripts = checked.kept.isEmpty ? nil : checked.kept
         }
         return settings
+    }
+
+    /// `verbs`: `{"explain": "Explain", "teach": "Show me how", "act": "Just do it", "examples": {"teach": ["带我走一遍"]}}`.
+    /// A word a team leaves out keeps its English; three different words are needed, since a tab means one thing.
+    private mutating func parseVerbs(_ raw: Any?) throws {
+        guard let raw, !(raw is NSNull) else { return }
+        guard let verbs = raw as? [String: Any] else {
+            throw TeamSettingsError("verbs must be an object, { \"teach\": \"Show me how\", … }.")
+        }
+        let known = Intent.allCases.map(\.rawValue) + ["examples"]
+        ignored += verbs.keys.filter { !known.contains($0) }.sorted().map { "verbs.\($0)" }
+        var words = IntentWords.standard
+        for intent in Intent.allCases {
+            guard let raw = verbs[intent.rawValue], !(raw is NSNull) else { continue }
+            guard let value = (raw as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+                throw TeamSettingsError("verbs.\(intent.rawValue) must be a word or two in quotes, like \"Teach me\".")
+            }
+            guard value.count <= IntentWords.wordLimit else {
+                throw TeamSettingsError("verbs.\(intent.rawValue) is too long for a tab: at most \(IntentWords.wordLimit) characters.")
+            }
+            words.set(intent, value)
+        }
+        guard Set(Intent.allCases.map { IntentWords.norm(words.word($0)) }).count == Intent.allCases.count else {
+            throw TeamSettingsError("verbs must give explain, teach and act three different words.")
+        }
+        if let raw = verbs["examples"], !(raw is NSNull) {
+            guard let examples = raw as? [String: Any] else {
+                throw TeamSettingsError("verbs.examples must be an object of lists, { \"teach\": [\"walk me through\"] }.")
+            }
+            for key in examples.keys.sorted() {
+                guard Intent(rawValue: key) != nil else { ignored.append("verbs.examples.\(key)"); continue }
+                guard let list = examples[key] as? [String] else {
+                    throw TeamSettingsError("verbs.examples.\(key) must be a list of phrases in quotes.")
+                }
+                let kept = list.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                    .map { String($0.prefix(IntentWords.exampleLimit)) }
+                if kept.count > IntentWords.examplesLimit {
+                    notes.append("verbs.examples.\(key) keeps its first \(IntentWords.examplesLimit) phrases.")
+                }
+                words.examples[key] = Array(kept.prefix(IntentWords.examplesLimit))
+            }
+        }
+        self.verbs = words
     }
 
     /// Where JSON stopped making sense, as a line and column (never the text there, which may be a header's value).
@@ -281,8 +327,11 @@ extension Config {
     /// and your own Anthropic key (`ConversationBackend`), stay with your own address. Never saved, so unlinking, or a
     /// team file without them, brings your own values back.
     func applying(_ team: TeamSettings?) -> Config {
-        guard let claude = team?.claude, !claude.isEmpty else { return self }
+        guard let team else { return self }
         var effective = self
+        if let verbs = team.verbs { effective.intentWords = verbs }
+        let claude = team.claude
+        guard !claude.isEmpty else { return effective }
         effective.teamClaude = claude
         if let url = claude.baseURL {
             effective.apiBaseURL = url

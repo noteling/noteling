@@ -86,7 +86,7 @@ func runHeadlessAsk() async {
     if args.contains("--show") {
         let conversation = ShowMeConversation(registry: registry)
         conversation.onStart = { path, progress in
-            print("  [show_me] “\(path.title)”: \(path.route)")
+            print("  [teach_the_way] “\(path.title)”: \(path.route)")
             return UUID()
         }
         var last: TourProgress?
@@ -101,7 +101,7 @@ func runHeadlessAsk() async {
     }
     // --show-path pack/slug: the show_me tool as the chat would call it, without asking Claude (for checking the tour).
     if let showMe, let p = args.firstIndex(of: "--show-path"), p + 1 < args.count {
-        do { print("  [show_me] " + (try await showMe.show(["path": args[p + 1]], bundleID: ctx.bundleID))) }
+        do { print("  [teach_the_way] " + (try await showMe.show(["path": args[p + 1]], bundleID: ctx.bundleID))) }
         catch { print("FAILED: \(error.localizedDescription)"); exit(1) }
         if showMe.tour != nil { await withCheckedContinuation { tourOver = $0 } }
         try? await Task.sleep(nanoseconds: 2_600_000_000)
@@ -124,12 +124,13 @@ func runHeadlessAsk() async {
             let prepared: PreparedExecution
             if controlOn {
                 prepared = try await desktop.prepare(id: id, registry: registry, context: ctx, background: backgroundOn,
-                                                     target: backgroundTarget, lookAtScreen: capture)
+                                                     target: backgroundTarget, systemExtra: Prompt.intents(config.intentWords, pinned: nil),
+                                                     lookAtScreen: capture)
             } else {
                 let router = try ExecutionTools.make(registry: registry, context: ctx, control: nil,
-                                                     background: false, additionalRoutes: showMe?.routes(context: ctx) ?? [],
+                                                     background: false, additionalRoutes: showMe?.routes(context: ctx, words: config.intentWords) ?? [],
                                                      lookAtScreen: capture)
-                prepared = PreparedExecution(system: Prompt.system, router: router)
+                prepared = PreparedExecution(system: Prompt.system + Prompt.intents(config.intentWords, pinned: nil), router: router)
             }
             print("context: \(ctx.summaryLine)\nactive packs: \(packContext.active.map(\.dirName)) tools: \(prepared.router.definitions.count) notes on scene: \(packContext.sceneNotes.count)\n")
             return prepared

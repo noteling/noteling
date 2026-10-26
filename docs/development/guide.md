@@ -141,8 +141,18 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    button stands for the button), its Accessibility role, the page's own id for it when that id is steady, and its frame
    as fractions of the window. The write-up returns a `path` (the clicks that make up the task, in order, with a line to
    say at each), and **Keep it** writes it as `paths/<task>.json` beside `docs/workflows/<task>.md`.
-9. **Show me the way** (`Features/ShowMe`): the chat's `show_me` tool lights up a kept path, or one or two controls on the
-   screen now, on the person's own screen, and they do the clicks. "Paths you can show" lists the active packs' paths in
+9. **Explain, Teach me, Do it for me** (`Features/Chat/Intent.swift`): every message is one of three intents, named by
+   what the person would be unhappy without (understanding, the ability, the result). The intent is never matched on
+   words: the person taps a verb tab under an answer (the model ends a how-to's Suggestions line with the two verbs,
+   and `Assistant.askSuggestion` turns a tab whose text is a verb into a pinned intent), pins a verb on the line over
+   the input (`Assistant.intentOverride`, cleared once sent), or the model judges from the prompt's description of the
+   three (`Prompt.intents(_:pinned:)`), going straight to Teach or Do only when the words leave no doubt and otherwise
+   explaining and offering the tabs, since a wrong Do costs the person and a wrong Teach costs a tap. A pinned intent
+   fixes the tools: Explain has neither control nor the teach tool, Teach has only the teach tool, Do has control (or
+   `Prompt.noControl` when control is off). The words come from `Config.intentWords` (`IntentWords`): English by
+   default, the team's from `noteling.json` `verbs`, with its own examples for the prompt.
+   **Teach me** (`Features/ShowMe`): the chat's `teach_the_way` tool lights up a kept path, or one or two controls on the
+   screen now, on the person's own screen, and they do the clicks. "Ways you can teach" lists the active packs' paths in
    the prompt. The tool starts from the furthest step already on the page and returns at once; `ShowTour` then looks for
    each step (`ShowFinder`: the page's id, then role and name, then the name without its numbers, then part of it; a
    control without a name by where it was), rings it (`ShowOverlay`: the dim with a cutout below the pad, the breathing ring

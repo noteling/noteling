@@ -21,6 +21,22 @@ and follow-ups are tabs under it.
 
 Chat can also look after your jobs and cards: "what did my inbox check find?", "turn on gm", "run pages up now".
 
+## Explain, Teach me, or Do it for me
+
+Whatever you ask, you want one of three things, and Noteling answers differently for each:
+
+- **Explain**: you want to understand. It answers in words. Nobody clicks.
+- **Teach me**: you want to be able to do it yourself next time. It lights up the way on your screen, one control at
+  a time, and you do the clicks.
+- **Do it for me**: you want it done. It does the clicks (see below).
+
+You never have to find the right words. Ask however you like; when the answer is a how-to, two tabs under it offer
+**Teach me** and **Do it for me**, and one tap chooses. To decide before you ask, click a verb on the line over the
+input: the next message runs that way, and the pinned verb clears once it's sent. When what you ask leaves no doubt
+("fill this in for me", "walk me through it"), Noteling goes straight there; when it could be either, it explains
+first and offers the tabs, so nothing gets done on your behalf by guesswork. Your team can rename the three verbs in
+its tools.
+
 ## What it looks at
 
 - **Before you send**, a line over the box says whether your question will look at your screen, such as **Looks at
@@ -55,10 +71,10 @@ From then on, the pen and chat use those steps in that app or on that page. Ask 
 control on, Noteling does it by following your steps. What Watch Me keeps is a tool in your tools folder, not a job: it
 never runs by itself.
 
-## Let it show you the way
+## Teach me
 
-Ask where something is ("idk where to find the agent tokens", "how do I get to the history?") and Noteling shows you on
-your own screen instead of writing out steps:
+Tap **Teach me** under an answer, pin it over the input, or ask to be walked through something, and Noteling teaches
+you the way on your own screen instead of writing out steps:
 
 1. The rest of the screen dims, a purple ring sits on the control to click, Noteling's arrow points at it, and a small
    note beside it says what to do and which step this is.
@@ -68,9 +84,9 @@ your own screen instead of writing out steps:
 
 The steps also show on the chat pad, ticked off as you go, with **Show again** once you're done.
 
-It shows the ways someone showed it with Watch Me: whoever knows the way records it once, and from then on anyone asking
-about that page can be shown. It can also ring a single control that's on your screen now. If no one has shown it the
-way, it says so and gives its best steps in words.
+It teaches the ways someone showed it with Watch Me: whoever knows the way records it once, and from then on anyone
+asking on that page can be taught. It can also ring a single control that's on your screen now. If no one has shown it
+the way, it says so and gives its best steps in words.
 
 ## Sticky notes
 

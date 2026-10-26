@@ -156,7 +156,7 @@ struct ShowMeTests {
         await registry.reload()
         let pack = try #require(await registry.packs.first { $0.dirName == "waxwing" })
         let section = Prompt.toolPacks(active: [pack], global: [], others: [], stuffLimit: 10_000)
-        #expect(section.contains("### Paths you can show (show_me)"))
+        #expect(section.contains("### Ways you can teach (teach_the_way)"))
         #expect(section.contains("- waxwing/see-history: See the history. 2 steps: Waxwing App 24 → History (starts on “Waxwing” at http://127.0.0.1:4310/), shown 2026-10-26"))
         let conversation = await ShowMeConversation(registry: registry)
         #expect(await conversation.path(named: "waxwing/see-history")?.steps.count == 2)
@@ -164,7 +164,7 @@ struct ShowMeTests {
     }
 
     @Test func theChatIsToldToShowRatherThanWriteSteps() {
-        #expect(Prompt.system.contains("show_me"))
+        #expect(Prompt.intents(.standard, pinned: nil).contains("teach_the_way"))
         #expect(Prompt.watchSystem.contains("- path:"))
         #expect(ShowMeConversation.axRole("Button") == "AXButton" && ShowMeConversation.axRole("whatever") == nil)
     }

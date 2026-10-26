@@ -190,6 +190,12 @@ func runRenderCard() {
     render(BubblePanel.defaultExpandedSize, dark: false, "pad-400.png")
     render(BubblePanel.largeExpandedSize, dark: false, "pad-560.png")
     render(BubblePanel.defaultExpandedSize, dark: true, "pad-400-dark.png")
+    if args.contains("--verbs") {   // a verb pinned over the input for the next message, at both widths
+        state.intentOverride = .teach
+        render(BubblePanel.defaultExpandedSize, dark: false, "pad-400-pinned.png")
+        render(BubblePanel.largeExpandedSize, dark: true, "pad-560-pinned-dark.png")
+        state.intentOverride = nil
+    }
     if args.contains("--tour") {   // showing the way: the step list under the answer, partway, then done
         let steps = ["Open Account and access", "Scroll to Your agent tokens", "Click Create agent token"]
         let asked = ChatMessage(role: .user, text: "idk where to find the agent tokens")

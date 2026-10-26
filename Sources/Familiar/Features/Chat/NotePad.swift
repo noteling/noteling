@@ -375,10 +375,10 @@ struct TourListView: View {
 
     private var heading: String {
         switch progress.state {
-        case .done: return "Shown: \(progress.title)"
-        case .stopped: return "Stopped showing \(progress.title)"
+        case .done: return "Taught: \(progress.title)"
+        case .stopped: return "Stopped teaching \(progress.title)"
         case .lost: return "Lost the way to \(progress.title)"
-        default: return "Showing you on screen · \(progress.count)"
+        default: return "Teaching you the way · \(progress.count)"
         }
     }
 

@@ -35,6 +35,7 @@ final class DesktopExecutionService {
     func prepare(id: UUID, registry: ToolRegistry, context: ScreenContext?, background: Bool,
                  target: TargetWindow? = nil,
                  title: String = "Background task",
+                 systemExtra: String = "",
                  resolveFrontmost: Bool = true,
                  policy: ExecutionTools.Policy = .standard,
                  additionalRoutes: [ToolRoute] = [],
@@ -76,7 +77,7 @@ final class DesktopExecutionService {
         }
         // Smooth: the background lane finishes the job without stopping for a yes (Settings: ask first, off).
         let smooth = background && !control.asksFirst && policy == .standard
-        return PreparedExecution(system: Prompt.system + Prompt.control(smooth: smooth) + (background ? Prompt.background(smooth: smooth) + laneNote : ""),
+        return PreparedExecution(system: Prompt.system + systemExtra + Prompt.control(smooth: smooth) + (background ? Prompt.background(smooth: smooth) + laneNote : ""),
                                  router: router, maxToolRounds: 40, shouldStop: { [weak control] in control?.stopped ?? true })
     }
 

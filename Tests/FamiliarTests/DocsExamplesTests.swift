@@ -105,6 +105,11 @@ struct DocsExamplesTests {
                     let team = try TeamSettings.parse(data)
                     #expect(team.ignored.isEmpty && team.claude.baseURL != nil, "\(place)")
                     checked["noteling.json", default: 0] += 1
+                } else if keys.contains("verbs") {
+                    // The team's words for Explain, Teach me and Do it for me, with its examples: read whole, nothing ignored.
+                    let team = try TeamSettings.parse(data)
+                    #expect(team.ignored.isEmpty && team.notes.isEmpty && team.verbs != nil, "\(place)")
+                    checked["noteling.json", default: 0] += 1
                 } else if keys.contains("glance") {
                     #expect(PageGlance.parse(block) != nil, "\(place)")
                     checked["glance", default: 0] += 1
