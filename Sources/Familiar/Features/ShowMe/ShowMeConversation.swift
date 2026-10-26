@@ -2,7 +2,7 @@ import AppKit
 import FamiliarContracts
 import FamiliarRuntime
 
-/// "Where do I find…" in chat: the show_me tool, the paths the packs keep, and the one way shown on screen at a time.
+/// "Teach me" in chat: the teach_the_way tool, the paths the packs keep, and the one way taught on screen at a time.
 /// The chat names a kept path (or one control on the screen now); this shows it, and keeps the pad's list of the steps
 /// up to date as the person clicks through.
 @MainActor
@@ -21,18 +21,20 @@ final class ShowMeConversation {
         self.registry = registry
     }
 
-    static let toolName = "show_me"
+    static let toolName = "teach_the_way"
 
-    static let definition: [String: Any] = [
+    /// The tool, in the team's word for teaching so the model ties it to the tab the person tapped.
+    static func definition(_ words: IntentWords) -> [String: Any] { [
         "name": toolName,
         "description": """
-        Show the person the way on their own screen: everything else dims, a ring sits on the control to click, \
+        Teach the person the way on their own screen: everything else dims, a ring sits on the control to click, \
         Noteling's arrow points at it, and a card says what to do; when they click it, the next step lights up. They \
-        do every click themselves, so next time they know the way; it never clicks for them. Use it when they ask where \
-        something is or how to get to it ("where do I find…", "idk where…", "how do I get to…", "show me"). Give \
-        `path` for a way someone showed Noteling (listed under "Paths you can show"), or `steps` for one or two \
-        controls on the screen now, named exactly as the page names them. It starts from the furthest step already \
-        on screen. Returns at once, saying which step is ringed; the tour then runs on its own.
+        do every click themselves, so next time they know the way; it never clicks for them, so it is never the way \
+        to do a task for them. Use it when they want the ability (they chose "\(words.teach)", or asked where \
+        something is or how to get to it). Give `path` for a way someone showed Noteling (listed under "Ways you can \
+        teach"), or `steps` for one or two controls on the screen now, named exactly as the page names them. It \
+        starts from the furthest step already on screen. Returns at once, saying which step is ringed; the tour \
+        then runs on its own.
         """,
         "input_schema": [
             "type": "object", "additionalProperties": false,
@@ -48,10 +50,10 @@ final class ShowMeConversation {
                 "title": ["type": "string", "description": "With steps: what they are looking for, a few words"],
             ],
         ] as [String: Any],
-    ]
+    ] }
 
-    func routes(context ctx: ScreenContext?) -> [ToolRoute] {
-        [ToolRoute(match: .tool(name: Self.toolName), definition: Self.definition) { [weak self] _, input, _ in
+    func routes(context ctx: ScreenContext?, words: IntentWords = .standard) -> [ToolRoute] {
+        [ToolRoute(match: .tool(name: Self.toolName), definition: Self.definition(words)) { [weak self] _, input, _ in
             guard let self else { return .text("unavailable", isError: true) }
             do { return .text(try await self.show(input, bundleID: ctx?.bundleID)) }
             catch { return .text(error.localizedDescription, isError: true) }
@@ -69,7 +71,7 @@ final class ShowMeConversation {
         var path: ShowPath
         if let name = input["path"] as? String, !name.isEmpty {
             guard let kept = self.path(named: name) else {
-                throw ClaudeError(message: "No path “\(name)”. Use one listed under “Paths you can show”, or steps for controls on the screen now.")
+                throw ClaudeError(message: "No path “\(name)”. Use one listed under “Ways you can teach”, or steps for controls on the screen now.")
             }
             path = kept
         } else if let given = input["steps"] as? [[String: Any]], !given.isEmpty {
@@ -88,7 +90,7 @@ final class ShowMeConversation {
         // Someone partway along starts where they are: the furthest step whose control shows now.
         let (from, readable) = await furthestOnScreen(path, bundleID: bundleID)
         start(from.map { path.slice(from: $0 + 1, until: nil) } ?? path, bundleID: bundleID)
-        var reply = "Showing “\(path.title)” now: \(path.steps.count) step\(path.steps.count == 1 ? "" : "s"), \(path.route)."
+        var reply = "Teaching “\(path.title)” now: \(path.steps.count) step\(path.steps.count == 1 ? "" : "s"), \(path.route)."
         if let from {
             reply += from == 0 ? " Step 1 is ringed on their screen." : " They are already partway: step \(from + 1) of \(path.steps.count) is ringed."
         } else if !readable {

@@ -50,6 +50,9 @@ struct Config: Codable {
     var noteAuthor: String = ""               // name written on the notes you leave with the pen; empty = your macOS full name
     /// What the team's tools set for Claude, on the configuration in effect only (`applying`); never read or written.
     var teamClaude: TeamSettings.Claude? = nil
+    /// The words for Explain, Teach me and Do it for me, the team's when its tools set them (`verbs`); on the
+    /// configuration in effect only, never written.
+    var intentWords = IntentWords.standard
 
     /// `$NOTELING_HOME`, else `$FAMILIAR_HOME` (the earlier name), else `~/.noteling`.
     static var dir: URL {

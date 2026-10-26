@@ -505,7 +505,7 @@ struct ShowCardView: View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 6) {
                 Image(systemName: "hand.point.up.left.fill").font(.system(size: 10.5, weight: .semibold))
-                Text(p.state == .done ? "YOU'RE THERE" : "SHOWING YOU · \(p.count)")
+                Text(p.state == .done ? "YOU'RE THERE" : "STEP \(p.count.uppercased())")
                     .font(.system(size: 10, weight: .bold)).tracking(0.7)
                 Spacer(minLength: 4)
                 if !p.isOver {

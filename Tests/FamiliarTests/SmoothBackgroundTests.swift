@@ -54,11 +54,11 @@ import Testing
 
     @Test func theModelIsToldToFinishRatherThanAsk() {
         let careful = Prompt.control(smooth: false), smooth = Prompt.control(smooth: true)
-        #expect(careful == Prompt.control && careful.contains("without asking first: stop"))
+        #expect(careful.contains("without asking first: stop") && careful.hasPrefix("\nControlling the computer."))
         #expect(!smooth.contains("without asking first: stop") && smooth.contains("including its final Send, Submit or Save"))
         #expect(smooth.contains("never pay, buy or delete anything they didn't ask for"))
         let lane = Prompt.background(smooth: true)
-        #expect(Prompt.background(smooth: false) == Prompt.background)
+        #expect(Prompt.background(smooth: false).contains("pauses for the user's explicit approval") && !Prompt.background(smooth: false).contains("Working smoothly."))
         #expect(!lane.contains("pauses for the user's explicit approval") && !lane.contains("request fresh send"))
         #expect(lane.contains("pressed without stopping for approval") && lane.contains("Working smoothly."))
         #expect(lane.contains("Never press ⌘Q"))   // what it never does stays

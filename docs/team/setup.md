@@ -112,6 +112,23 @@ def run():
 To try it in Terminal, `/Applications/Noteling.app/Contents/MacOS/Noteling --ask "hello"` makes the token the way chat
 does, and prints what went wrong if it can't.
 
+## The words your people use: verbs
+
+Every message asks for one of three things: to understand (**Explain**), to be able to do it next time (**Teach me**),
+or to have it done (**Do it for me**). Those are the tabs under a how-to answer and the verbs on the line over the chat
+input. If your people say it differently, in their jargon or their language, `verbs` renames the three and gives
+Noteling examples of how they put each one:
+
+```json
+{"verbs": {"teach": "Show me how", "act": "Just do it",
+           "examples": {"teach": ["walk me through it", "带我走一遍"], "act": ["sort it out", "帮我搞定"]}}}
+```
+
+A word you leave out keeps its English. The three must differ, since a tab means one thing, and each is at most 24
+characters so it fits on a tab. Examples (up to 8 per verb) only illustrate the verb for the model; nothing matches on
+them, and people are never required to use them. The words apply on every linked Mac and are never written into
+anyone's own settings.
+
 ## Behind a proxy
 
 Scripts get the Mac's proxy and trusted certificates as `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` and `SSL_CERT_FILE`,

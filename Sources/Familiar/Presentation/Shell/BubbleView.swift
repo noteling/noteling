@@ -354,16 +354,20 @@ struct BubbleView: View {
         HStack(alignment: .bottom, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 let look = state.lookLine(for: state.question)
-                if let look {
-                    // Whether this question takes the screen, said before it's sent; a click changes it for this one.
-                    Button { state.toggleLook(for: state.question) } label: {
-                        Label(look.text, systemImage: look.looks ? "eye" : "eye.slash")
-                            .font(.system(size: 10.5)).lineLimit(1).truncationMode(.middle)
-                            .foregroundStyle(look.looks ? Pad.penInk : Pad.inkSoft)
+                if look != nil || state.offersIntents {
+                    // The look line and the verbs share a row when the strip is wide enough for both whole; on a narrow
+                    // pad the verbs take a row of their own above it, so neither is squeezed to dots.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) {
+                            if let look { lookButton(look) }
+                            Spacer(minLength: 6)
+                            if state.offersIntents { verbPicker }
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            if state.offersIntents { verbPicker }
+                            if let look { lookButton(look) }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .help(look.looks ? "This question takes your screen when you send it. Click to send only your words."
-                                     : "This question goes without your screen. Click to include it.")
                 }
                 TextField("", text: $state.question, prompt: Text(state.pendingPickID != nil ? "Ask about it, or ⏎ to just explain it…"
                                                                   : look?.looks == true ? "Ask about \(state.inFront.map(Assistant.sceneName) ?? "it")…"
@@ -402,6 +406,48 @@ struct BubbleView: View {
         }
         .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 8)
         .environment(\.colorScheme, .light)   // the strip is paper: light controls on it in both appearances
+    }
+
+    /// Whether this question takes the screen, said before it's sent; a click changes it for this one.
+    private func lookButton(_ look: (looks: Bool, text: String)) -> some View {
+        Button { state.toggleLook(for: state.question) } label: {
+            Label(look.text, systemImage: look.looks ? "eye" : "eye.slash")
+                .font(.system(size: 10.5)).lineLimit(1).truncationMode(.middle)
+                .foregroundStyle(look.looks ? Pad.penInk : Pad.inkSoft)
+        }
+        .buttonStyle(.plain)
+        .help(look.looks ? "This question takes your screen when you send it. Click to send only your words."
+                         : "This question goes without your screen. Click to include it.")
+    }
+
+    /// The three verbs over the input: what the next message wants. The pinned one is inked in; with none pinned,
+    /// Noteling judges from the words and offers the other two as tabs under a how-to.
+    private var verbPicker: some View {
+        HStack(spacing: 2) {
+            ForEach(Intent.allCases, id: \.self) { intent in
+                let pinned = state.intentOverride == intent
+                Button { state.pinIntent(intent) } label: {
+                    Text(state.intentWords.word(intent))
+                        .font(.system(size: 10, weight: pinned ? .semibold : .regular))
+                        .foregroundStyle(pinned ? Pad.paperTop : Pad.inkSoft)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Capsule().fill(pinned ? Pad.penInk : Color.clear))
+                        .lineLimit(1).fixedSize()
+                }
+                .buttonStyle(.plain)
+                .disabled(state.busy)
+                .help(verbHelp(intent, pinned: pinned))
+            }
+        }
+    }
+
+    private func verbHelp(_ intent: Intent, pinned: Bool) -> String {
+        if pinned { return "Pinned for the next message. Click again to let Noteling judge from your words." }
+        switch intent {
+        case .explain: return "The next message only wants an answer in words."
+        case .teach: return "The next message wants to be taught the way on your screen: you do the clicks."
+        case .act: return "The next message wants it done for you."
+        }
     }
 
     @State private var gripStart: CGSize?

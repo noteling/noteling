@@ -32,6 +32,11 @@ final class Assistant: ObservableObject {
     @Published var inFront: ScreenContext?
     /// The person's say on whether the next typed question takes the screen; nil follows the guess. Reset once sent.
     @Published var lookOverride: Bool?
+    /// The verb the person pinned on the line over the input for the next message (Explain, Teach me, Do it for me);
+    /// nil lets the model judge from their words. Cleared once sent.
+    @Published var intentOverride: Intent?
+    /// The words the three verbs go by here: the team's when its tools set them.
+    var intentWords: IntentWords { config.intentWords }
     @Published var suggestions: [String] = []
     var watching: Bool { learning.watching }
     var pendingDraft: PackDraft? { learning.pendingDraft }
@@ -198,6 +203,7 @@ final class Assistant: ObservableObject {
         pendingPickID = nil
         writingID = nil
         lookOverride = nil
+        intentOverride = nil
         captureGeneration += 1
         transcript.removeAll()
         execution.conversation.clear()
@@ -261,6 +267,12 @@ final class Assistant: ObservableObject {
             if s == Self.retryTab { learning.retry(); return }
         }
         if Self.reservedTabs.contains(s) { suggestions = reviewTabs([]); return }   // a stale tab: never a question for Claude
+        if let intent = intentWords.intent(ofTab: s) {   // a verb: the same thing, taken the way they chose
+            intentOverride = intent
+            question = intentWords.word(intent)
+            ask()
+            return
+        }
         question = s
         ask()
     }
@@ -474,7 +486,9 @@ final class Assistant: ObservableObject {
         if briefing { briefs?.prefetch(ctx) }
 
         let evidence = evidence(for: q, ctx: ctx)
-        lookOverride = nil   // the choice was for this question
+        let intent = intentOverride   // a pinned verb, or nil for the model to judge
+        intentOverride = nil
+        lookOverride = nil   // the choices were for this question
         Task {
             var content: [[String: Any]] = []
             var attach = evidence == .screenshot, page = ""
@@ -535,7 +549,7 @@ final class Assistant: ObservableObject {
             let text = context + brief + page + "\n## Question\n\(q)\n"
             content.append(["type": "text", "text": text])
             diagnoseChat(.contextReady)
-            await send(content: content, ctx: ctx, title: q, messageID: m.id, held: held)
+            await send(content: content, ctx: ctx, title: q, messageID: m.id, intent: intent, held: held)
         }
     }
 
@@ -870,6 +884,17 @@ final class Assistant: ObservableObject {
         lookOverride = !line.looks
     }
 
+    /// Whether the line over the input offers the three verbs: not while a card is discussed, or a pick or Watch Me is
+    /// waiting, since those messages aren't a request of their own.
+    var offersIntents: Bool {
+        cardConversation?.card == nil && pendingPickID == nil && !awaitingPurpose && !awaitingContext && pendingDraft == nil
+    }
+
+    /// A click on a verb pins it for the next message; clicking the pinned one lets the model judge again.
+    func pinIntent(_ intent: Intent) {
+        intentOverride = intentOverride == intent ? nil : intent
+    }
+
     /// The window's title in quotes, shortened; the app's name when it has none.
     static func sceneName(_ ctx: ScreenContext) -> String {
         let title = ctx.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1012,9 +1037,11 @@ final class Assistant: ObservableObject {
     /// `held` is the screen as it was when the person asked: the answer's looks use it unless the answer controls the
     /// foreground. `seenOn` is the question whose chip shows what Claude was shown (the typed question by default).
     /// `packScripts: false` leaves the pack's tools out (their brief is already in the request), and `pen` runs the turn
-    /// on the pen's model and effort (`Config.penModel`, `penEffort`).
+    /// on the pen's model and effort (`Config.penModel`, `penEffort`). `intent` is the verb the person pinned for this
+    /// message: it fixes the tools (Explain has neither control nor teaching, Teach only teaching, Do control) and tells
+    /// the model; nil leaves the model to judge from the words, with every tool it may have.
     func send(content: [[String: Any]], ctx: ScreenContext?, title: String, messageID: UUID? = nil, allowsControl: Bool = true,
-              packScripts: Bool = true, pen: Bool = false, held: FrozenScreen? = nil, seenOn: UUID? = nil) async {
+              packScripts: Bool = true, pen: Bool = false, intent: Intent? = nil, held: FrozenScreen? = nil, seenOn: UUID? = nil) async {
         guard let client else {
             transcript.append(ChatMessage(role: .error, text: ConversationBackend.setupMessage(config: config)))
             finishRequest()
@@ -1038,7 +1065,7 @@ final class Assistant: ObservableObject {
             }
         }
         let discussingCard = cardConversation?.card != nil
-        let controlAllowed = allowsControl && config.allowControl && desktop != nil && !watching && !discussingCard
+        let controlAllowed = allowsControl && intent != .explain && intent != .teach && config.allowControl && desktop != nil && !watching && !discussingCard
         // The answer shows on the pad as it is written (when the connection can), at most about twelve times a second.
         // Not yet for a turn that may control the computer: its work moves to the task screen.
         let streams = controlAllowed ? nil : client as? StreamsText
@@ -1076,16 +1103,22 @@ final class Assistant: ObservableObject {
                     guard let self else { return .text("unavailable", isError: true) }
                     return await self.readScreen(held: holding, seenOn: chip, ctx: ctx)
                 }
-                let sourceRoutes = (sourceConversation?.routes() ?? []) + (folderJobs?.routes() ?? [])
-                    + (showMe?.routes(context: ctx) ?? [])
+                let words = intentWords
+                let wanted = Prompt.intents(words, pinned: intent)
+                let teaching = intent == .explain || intent == .act ? [] : (showMe?.routes(context: ctx, words: words) ?? [])
+                let sourceRoutes = (sourceConversation?.routes() ?? []) + (folderJobs?.routes() ?? []) + teaching
                 if controlAllowed, let desktop {
                     return try await desktop.prepare(id: id, registry: registry, context: ctx, background: background,
-                                                     title: title, additionalRoutes: sourceRoutes, lookAtScreen: capture, readScreen: read)
+                                                     title: title, systemExtra: wanted, additionalRoutes: sourceRoutes,
+                                                     lookAtScreen: capture, readScreen: read)
                 }
                 let router = try ExecutionTools.make(registry: registry, context: ctx, control: nil, background: false,
                                                      packScripts: packScripts, additionalRoutes: sourceRoutes,
                                                      lookAtScreen: capture, readScreen: read)
-                return PreparedExecution(system: Prompt.system + (pen || config.allowControl ? "" : Prompt.noControl), router: router)
+                // Control is off: a request to do something is told how to turn it on, unless this turn couldn't do
+                // things anyway (a pen glance, or a pinned Explain or Teach).
+                let noControl = pen || intent == .explain || intent == .teach || config.allowControl ? "" : Prompt.noControl
+                return PreparedExecution(system: Prompt.system + wanted + noControl, router: router)
             })
             let onStatus: (String) -> Void = { [weak self] value in
                 guard let self, !self.backgroundTaskRunning else { return }
