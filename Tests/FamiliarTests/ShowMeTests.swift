@@ -135,6 +135,64 @@ struct ShowMeTests {
         #expect(path.steps[0].say == "Click “Waxwing App 24”")
     }
 
+    @Test func theWayStartsOnTheToolNotOnTheTripThere() throws {
+        var events: [WatchEvent] = []
+        func add(_ label: String, url: String?) {
+            var e = WatchEvent(index: events.count, t: Double(events.count), kind: "click", app: "Google Chrome", title: "t", url: url)
+            e.label = label
+            e.axRole = "AXButton"
+            e.rect = [0.1, 0.1, 0.1, 0.05]
+            events.append(e)
+        }
+        add("Search", url: nil)                                                   // a new tab
+        add("Google Search", url: "https://www.google.com/search?q=waxwing")
+        add("Next", url: "https://accounts.google.com/signin")
+        add("Waxwing App 24", url: "http://127.0.0.1:4310/")
+        add("History", url: "http://127.0.0.1:4310/?collection=a")
+        let recording = Recording(dir: URL(fileURLWithPath: "/tmp/none"), events: events, meta: WatchMeta(startedAt: "2026-10-26T12:00:00Z"))
+        // The write-up picked the trip too; the way still starts on the tool.
+        let picks = [(0, "Click the search box"), (1, "Search for Waxwing"), (2, "Click Next"), (3, "Open Waxwing App"), (4, "Click History")]
+        let path = try #require(ShowPath.from(recording: recording, picks: picks, title: "t", recorded: nil))
+        #expect(path.steps.map(\.label) == ["Waxwing App 24", "History"] && path.start == "“t” at http://127.0.0.1:4310/")
+        #expect(ShowPath.from(recording: recording, picks: [], title: "t", recorded: nil)?.steps.map(\.label) == ["Waxwing App 24", "History"])
+        // A way through the search engine, or through Slack, is still a way: the trip ends where the last step is.
+        let google = ShowStep(say: "a", label: "Tools", url: "https://www.google.com/search?q=x")
+        let onGoogle = ShowPath(title: "t", recorded: nil, steps: [google, ShowStep(say: "b", label: "Any time", url: "https://google.com/search?q=x&tbs=1")])
+        #expect(onGoogle.withoutTheWayThere == onGoogle)
+        let slack = ShowStep(say: "c", label: "Preferences", url: "https://app.slack.com/client/T1")
+        #expect(ShowPath(title: "t", recorded: nil, steps: [google, slack]).withoutTheWayThere.steps == [slack])
+        // Through an app, nothing is a trip; from a new tab into one, the tab is.
+        let finder = ShowStep(say: "d", label: "Applications", app: "Finder")
+        #expect(!finder.isOnTheWayThere && ShowStep(say: "e", label: "Search", app: "Safari").isOnTheWayThere)
+        #expect(ShowStep(say: "f", label: "x", url: "chrome://newtab/").isOnTheWayThere && !ShowStep(say: "g", label: "x", url: "file:///tmp/tool.html").isOnTheWayThere)
+        // A way kept before the trip was left out loses it when read back.
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("show-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let old = ShowPath(title: "old", recorded: nil, steps: [ShowStep(say: "s", label: "Google Search", url: "https://www.google.com/"),
+                                                                 ShowStep(say: "o", label: "Open", url: "https://app.example.com/")])
+        _ = try ShowPathStore.write(old, slug: "old", packDir: dir)
+        #expect(ShowPathStore.load(packDir: dir)["old"]?.steps.map(\.label) == ["Open"])
+    }
+
+    @Test func theTourTakesThePersonToWhereTheWayStarts() throws {
+        let step = ShowStep(say: "Open Waxwing App", label: "Waxwing App 24", app: "Google Chrome", url: "http://127.0.0.1:4310/")
+        let start = try #require(URL(string: "http://127.0.0.1:4310/"))
+        // On a search engine, or in Finder: the page is opened at once.
+        #expect(ShowTour.entry(to: step, from: TourPlace(app: "Google Chrome", isBrowser: true, address: "https://www.google.com/search?q=waxwing"), waited: 0) == .open(start))
+        #expect(ShowTour.entry(to: step, from: TourPlace(app: "Finder", isBrowser: false, address: nil), waited: 0) == .open(start))
+        // On the page, even with another item selected: nothing to open, the control is waited for as usual.
+        #expect(ShowTour.entry(to: step, from: TourPlace(app: "Safari", isBrowser: true, address: "http://127.0.0.1:4310/?collection=a#x"), waited: 9) == nil)
+        // A browser that hasn't said where it is gets a moment, then the page is opened all the same.
+        #expect(ShowTour.entry(to: step, from: TourPlace(app: "Google Chrome", isBrowser: true, address: nil), waited: 1) == nil)
+        #expect(ShowTour.entry(to: step, from: TourPlace(app: "Google Chrome", isBrowser: true, address: nil), waited: ShowTour.entryPatience) == .open(start))
+        // A way through an app brings the app forward.
+        let native = ShowStep(say: "Open General", label: "General", app: "System Settings", title: "General")
+        #expect(ShowTour.entry(to: native, from: TourPlace(app: "Finder", isBrowser: false, address: nil), waited: 0) == .bring("System Settings"))
+        #expect(ShowTour.entry(to: native, from: TourPlace(app: "System Settings", isBrowser: false, address: nil), waited: 0) == nil)
+        #expect(ShowFinder.samePage("HTTPS://WWW.Example.com/a/b/?x=1#y", "http://example.com/a/b") && !ShowFinder.samePage("https://example.com/a", "https://example.com/a/b"))
+        #expect(ShowTour.shortAddress(start) == "127.0.0.1:4310" && ShowTour.shortAddress(URL(string: "https://app.example.com/settings/tokens/")!) == "app.example.com/settings/tokens")
+    }
+
     @Test func keepingAWriteUpKeepsItsWayBesideTheHowTo() async throws {
         let text = """
         ```json

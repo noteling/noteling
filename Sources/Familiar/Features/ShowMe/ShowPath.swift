@@ -18,6 +18,46 @@ struct ShowPath: Codable, Equatable {
         let place = [first.title.map { "“\($0)”" }, first.url.map { PageWalk.safeAddress($0) }].compactMap { $0 }
         return place.isEmpty ? nil : place.joined(separator: " at ")
     }
+
+    /// The way without the trip there. A recording often starts where the person was, on a search engine or a blank
+    /// tab, and the clicks that got them to the tool teach nothing: the tour opens the page the way starts on. So the
+    /// leading steps on the trip go, up to the first on the tool, which is wherever the last step is; never all of them.
+    var withoutTheWayThere: ShowPath {
+        let tool = steps.last?.host
+        guard let first = steps.firstIndex(where: { !$0.isOnTheWayThere || $0.host == tool }), first > 0 else { return self }
+        var path = self
+        path.steps = Array(steps[first...])
+        return path
+    }
+}
+
+extension ShowStep {
+    /// Browsers, by the name a recording gives an app.
+    static let browsers: Set<String> = ["Google Chrome", "Google Chrome Canary", "Safari", "Microsoft Edge", "Arc",
+                                        "Brave Browser", "Firefox", "Vivaldi", "Opera"]
+    /// Where people search from. Google is any google.<country>.
+    static let searchHosts = ["bing.com", "duckduckgo.com", "search.yahoo.com", "ecosia.org", "startpage.com", "search.brave.com",
+                              "yandex.com", "yandex.ru", "baidu.com", "kagi.com", "perplexity.ai"]
+
+    /// The page's host, lowercased and without "www.".
+    var host: String? {
+        guard let url, var host = URLComponents(string: url)?.host?.lowercased() else { return nil }
+        if host.hasPrefix("www.") { host.removeFirst(4) }
+        return host
+    }
+
+    /// A click on the trip to the tool rather than in it: on a search engine, on a sign-in or another page everyone
+    /// passes through, or in a browser showing no web page (a new tab, the browser's own pages).
+    var isOnTheWayThere: Bool {
+        guard let url, let components = URLComponents(string: url), let scheme = components.scheme?.lowercased() else {
+            return app.map { Self.browsers.contains($0) } ?? false
+        }
+        guard ["http", "https", "file"].contains(scheme) else { return true }
+        guard let host else { return true }
+        if host.range(of: #"^google\.[a-z.]+$"#, options: .regularExpression) != nil { return true }
+        if Self.searchHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) }) { return true }
+        return WatchSummarizer.isGenericHost(host)
+    }
 }
 
 struct ShowStep: Codable, Equatable {
@@ -61,7 +101,9 @@ extension ShowPath {
         // A step must be findable again: by its name, by the page's id for it, or by where it was.
         steps = steps.filter { $0.label != nil || $0.domID != nil || $0.rect != nil }
         guard !steps.isEmpty else { return nil }
-        return ShowPath(title: title, recorded: recorded, steps: Array(steps.prefix(Self.maxSteps)))
+        var path = ShowPath(title: title, recorded: recorded, steps: steps).withoutTheWayThere
+        path.steps = Array(path.steps.prefix(Self.maxSteps))
+        return path
     }
 
     static let maxSteps = 12
@@ -103,7 +145,8 @@ enum ShowPathStore {
         var out: [String: ShowPath] = [:]
         for name in names where name.hasSuffix(".json") {
             let url = dir.appendingPathComponent(name)
-            do { out[String(name.dropLast(5))] = try JSONDecoder().decode(ShowPath.self, from: Data(contentsOf: url)) }
+            // A way kept before the trip there was left out still loses it when read back.
+            do { out[String(name.dropLast(5))] = try JSONDecoder().decode(ShowPath.self, from: Data(contentsOf: url)).withoutTheWayThere }
             catch { Log.info("show: cannot read \(url.path): \(error.localizedDescription)") }
         }
         return out

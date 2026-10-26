@@ -18,6 +18,9 @@ struct TourProgress: Equatable {
     /// The step being shown or looked for, from 0; `steps.count` once every step is done.
     var current: Int
     var state: State
+    /// What the tour opened to get the person to where the way starts, as the card says it: the page's address, or
+    /// the app's name. Nil when they were already there.
+    var opened: String? = nil
 
     var isOver: Bool { state == .done || state == .stopped }
     var isLast: Bool { current == steps.count - 1 }
@@ -559,11 +562,13 @@ struct ShowCardView: View {
         case .looking:
             HStack(spacing: 7) {
                 ProgressView().controlSize(.mini)
-                Text("Waiting for it to show…").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
+                Text(p.opened.map { "Taking you to \($0)…" } ?? "Waiting for it to show…")
+                    .font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
             }
         case .lost:
             VStack(alignment: .leading, spacing: 8) {
-                Text("I can't see it on this screen. Is the right page open?")
+                Text(p.opened.map { "I opened \($0), but can't see it there. If it asks you to sign in, do that, then look again." }
+                     ?? "I can't see it on this screen. Is the right page open?")
                     .font(.system(size: 12)).foregroundStyle(Pad.redInk).fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
                     Button("Look again", action: model.onRetry).buttonStyle(CardButtonStyle(filled: true))

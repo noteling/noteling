@@ -82,11 +82,17 @@ you the way on your own screen instead of writing out steps:
    page shows the next control, the ring moves there. A control further down the page is brought into view first.
 3. On the last step, click it or choose **Got it**. **Esc**, or the × on the note, stops at any time.
 
+You don't have to know where the way starts. Ask from wherever you are, a search page, a blank tab, another app: if
+the page the way starts on isn't in front, Noteling opens it for you first, in a new tab of the browser you asked
+from, and the note says where it's taking you. The ring appears once the page shows. That is the one thing it does
+for you: a page is an address, not a lesson. If the page asks you to sign in, do that, then choose **Look again**.
+
 The steps also show on the chat pad, ticked off as you go, with **Show again** once you're done.
 
 It teaches the ways someone showed it with Watch Me: whoever knows the way records it once, and from then on anyone
-asking on that page can be taught. It can also ring a single control that's on your screen now. If no one has shown it
-the way, it says so and gives its best steps in words.
+asking can be taught. Start recording wherever you are: the way begins at your first click on the tool itself, and
+the trip there (a Google search, the address bar, a sign-in page) is left out. It can also ring a single control
+that's on your screen now. If no one has shown it the way, it says so and gives its best steps in words.
 
 ## Sticky notes
 

@@ -140,7 +140,12 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    Each click also keeps what finds its control again later: the control around what was clicked (the text inside a
    button stands for the button), its Accessibility role, the page's own id for it when that id is steady, and its frame
    as fractions of the window. The write-up returns a `path` (the clicks that make up the task, in order, with a line to
-   say at each), and **Keep it** writes it as `paths/<task>.json` beside `docs/workflows/<task>.md`.
+   say at each), and **Keep it** writes it as `paths/<task>.json` beside `docs/workflows/<task>.md`. The way starts at
+   the first click on the tool: leading clicks on the trip there (a search engine, a new tab, a sign-in page;
+   `ShowStep.isOnTheWayThere`) are dropped when the path is kept and again when it is read back
+   (`ShowPath.withoutTheWayThere`), since the tour takes the person to that page itself: when the first step isn't on
+   the screen in front, `ShowTour.entry` opens the page the way starts on in the browser they asked from, or brings the
+   app forward, once, and gives the page a load to show.
 9. **Explain, Teach me, Do it for me** (`Features/Chat/Intent.swift`): every message is one of three intents, named by
    what the person would be unhappy without (understanding, the ability, the result). The intent is never matched on
    words: the person taps a verb tab under an answer (the model ends a how-to's Suggestions line with the two verbs,
