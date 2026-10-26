@@ -153,7 +153,22 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    numbered steps name in bold but it left out, such as the clicks that open a menu (`ShowPath.complete`; the log says
    which). A step of a control's kind never matches plain text or a group by name, and by name alone it is taken only
    on the page it was recorded on (`ShowTour.accepts`, `ShowFinder.onPage`); given up on another page, the card
-   offers **Take me there**.
+   offers **Take me there**. A click that resolves to no control at once (an item that had just appeared in a menu is
+   unknown to Chrome's hit test for a moment) is asked about again 350 ms later while the page is unchanged, and
+   failing that its spot is kept, a rect without a size, found again by the smallest control there; a pick the way
+   can't keep is logged, never dropped in silence. A click on the browser's own toolbar or a bubble of its is kept
+   with no address (`ShowFinder.Control.inPage`), looked for in the window outside the page (`ShowFinder.findInWindow`,
+   `inBrowsersOwnUI`), and there a named step is also its place, since the toolbar is named for its state ("New
+   download available"); a name with a file or an id in it matches by its stable part (`ShowFinder.stablePart`). The
+   recorder keeps Enter, Tab and Escape as `key` events, so the write-up can say what unblocked a control, as an
+   optional `blocked` line on a pick (`ShowStep.blocked`). When taught, a greyed-out control is ringed but a click on
+   it is not the step done; the card shows that line, or says it's grey, until the control comes alive (`AXEnabled`
+   read every 0.3 s). A field step is done when the person leaves the field, presses Enter or Tab, or the page lets
+   them on; and the step after the current one counts as "gone ahead" only when it takes a click and, after first
+   sight, only when it appeared or came alive since while the person clicked or typed (`ShowTour.goneAhead`), so a
+   field before a grey button is never skipped. When a way starts from chat, the pad folds to its note
+   (`Assistant.showMe`'s `onStart` sets `shell.expanded = false`), and when the way is done the folded note hops once
+   (`Assistant.onTourDone`, from `ShowMeConversation.onEnd`).
 9. **Explain, Teach me, Do it for me** (`Features/Chat/Intent.swift`): every message is one of three intents, named by
    what the person would be unhappy without (understanding, the ability, the result). The intent is never matched on
    words: the person taps a verb tab under an answer (the model ends a how-to's Suggestions line with the two verbs,

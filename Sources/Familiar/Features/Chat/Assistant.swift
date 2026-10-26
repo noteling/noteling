@@ -77,20 +77,28 @@ final class Assistant: ObservableObject {
     var folderJobs: FolderJobConversation? {
         didSet { folderJobs?.onChange = { [weak self] receipt in self?.jobChanged(receipt) } }
     }
-    /// Showing the way on screen: the show_me tool, and the list of its steps on the pad.
+    /// Showing the way on screen: the show_me tool, and the list of its steps on the pad. The pad folds to its note
+    /// when a way starts, so the chat isn't in the way of the screen it is taught on; the steps are on the pad when
+    /// it is opened again.
     var showMe: ShowMeConversation? {
         didSet {
             showMe?.onStart = { [weak self] path, progress in
                 let message = ChatMessage(role: .tour, text: path.title, tour: progress)
                 self?.transcript.append(message)
+                self?.shell.expanded = false
                 return message.id
             }
             showMe?.onProgress = { [weak self] id, progress in
                 guard let self, let i = self.transcript.firstIndex(where: { $0.id == id }) else { return }
                 self.transcript[i].tour = progress
             }
+            showMe?.onEnd = { [weak self] progress in
+                if progress.state == .done { self?.onTourDone?() }
+            }
         }
     }
+    /// A way was taught to its end: the app lets the folded note say so.
+    var onTourDone: (() -> Void)?
     private var pendingSourceTabs: [String] = []   // added to the reply's tabs when the turn ends
     private var offeredRuns: [String: UUID] = [:]  // Run now tab title → job
 

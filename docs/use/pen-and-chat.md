@@ -76,10 +76,13 @@ never runs by itself.
 Tap **Teach me** under an answer, pin it over the input, or ask to be walked through something, and Noteling teaches
 you the way on your own screen instead of writing out steps:
 
-1. The rest of the screen dims, a purple ring sits on the control to click, Noteling's arrow points at it, and a small
-   note beside it says what to do and which step this is.
+1. The chat folds to its note, so nothing of Noteling's is in the way. The rest of the screen dims, a purple ring sits
+   on the control to click, Noteling's arrow points at it, and a small note beside it says what to do and which step
+   this is.
 2. **You** click it. Noteling never clicks for you: doing it yourself is how you'll know the way next time. When the next
    page shows the next control, the ring moves there. A control further down the page is brought into view first.
+   When a step is a field, type what it needs and press Enter or Tab, or click on; the ring moves once you've left it.
+   A greyed-out control is ringed too, and the note says what the page still wants before it takes a click.
 3. On the last step, click it or choose **Got it**. **Esc**, or the × on the note, stops at any time.
 
 You don't have to know where the way starts. Ask from wherever you are, a search page, a blank tab, another app: if
@@ -88,12 +91,14 @@ from, and the note says where it's taking you. The ring appears once the page sh
 for you: a page is an address, not a lesson. If the page asks you to sign in, do that, then choose **Look again**. When
 a later step is on a page that isn't open, the note says so and offers **Take me there**.
 
-The steps also show on the chat pad, ticked off as you go, with **Show again** once you're done.
+The steps also show on the chat pad, ticked off as you go, with **Show again** once you're done. When the way is done,
+the folded note hops once; open it and the chat is where you left it.
 
 It teaches the ways someone showed it with Watch Me: whoever knows the way records it once, and from then on anyone
 asking can be taught. Start recording wherever you are: the way begins at your first click on the tool itself, and
-the trip there (a Google search, the address bar, a sign-in page) is left out. It can also ring a single control
-that's on your screen now. If no one has shown it the way, it says so and gives its best steps in words.
+the trip there (a Google search, the address bar, a sign-in page) is left out. A way can leave the page for the
+browser's own buttons, such as its downloads, and go on in another app. It can also ring a single control that's on
+your screen now. If no one has shown it the way, it says so and gives its best steps in words.
 
 ## Sticky notes
 

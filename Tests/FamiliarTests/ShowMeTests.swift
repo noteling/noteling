@@ -1,6 +1,8 @@
 import ApplicationServices
 import Foundation
 import Testing
+import FamiliarContracts
+import FamiliarRuntime
 @testable import Familiar
 
 /// Showing the way: finding a recorded control again on a page, keeping the way from a Watch Me recording, offering it
@@ -94,12 +96,12 @@ struct ShowMeTests {
         #expect(ShowFinder.find(step, in: window, visibleArea: Self.window, windowFrame: Self.window)?.how == .partOfName)
         // A step from a page is looked for on the page only, and an empty page has nothing to find yet.
         let scopes = ShowFinder.scopes(for: step, window: window, page: page, inBrowser: true)
-        #expect(scopes.map(\.role) == ["AXWebArea"])
-        #expect(ShowFinder.find(step, in: scopes[0], visibleArea: Self.window, windowFrame: Self.window) == nil)
+        #expect(scopes.map(\.node.role) == ["AXWebArea"])
+        #expect(ShowFinder.find(step, in: scopes[0].node, visibleArea: Self.window, windowFrame: Self.window) == nil)
         #expect(ShowFinder.scopes(for: step, window: window, page: nil, inBrowser: true).isEmpty)
         // One named for the screen now: the page first, then the rest of the window. In another app, the window.
-        #expect(ShowFinder.scopes(for: ShowStep(say: "", label: "SEARCH"), window: window, page: page, inBrowser: true).map(\.role) == ["AXWebArea", "AXWindow"])
-        #expect(ShowFinder.scopes(for: step, window: window, page: nil, inBrowser: false).map(\.role) == ["AXWindow"])
+        #expect(ShowFinder.scopes(for: ShowStep(say: "", label: "SEARCH"), window: window, page: page, inBrowser: true).map(\.node.role) == ["AXWebArea", "AXWindow"])
+        #expect(ShowFinder.scopes(for: step, window: window, page: nil, inBrowser: false).map(\.node.role) == ["AXWindow"])
         // A control that stays out of view after being asked in is looked for again.
         let t = Date()
         #expect(!ShowTour.staysOutOfView(since: nil, now: t) && !ShowTour.staysOutOfView(since: t, now: t.addingTimeInterval(3)))
@@ -329,6 +331,37 @@ struct ShowMeTests {
         #expect(await conversation.path(named: "waxwing/nothing") == nil)
     }
 
+    @Test @MainActor func theChatFoldsToItsNoteWhenAWayIsTaught() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("fold-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        var config = Config()
+        config.apiKey = "fixture-no-network"
+        let registry = ToolRegistry(root: root, runner: ScriptRunner(config: config))
+        let learning = WatchLearnSession(operations: .init(
+            start: { _ in }, stop: { Recording(dir: root, events: [], meta: WatchMeta(startedAt: "test", clicks: 0)) }, abandon: {},
+            summarize: { _, _, _ in throw ClaudeError(message: "Not recording") }, write: { _ in [] }, reload: {}
+        ))
+        let shell = ShellState()
+        let assistant = Assistant(config: config, watcher: ContextWatcher(), registry: registry, shell: shell, learning: learning)
+        let showMe = ShowMeConversation(registry: registry)
+        assistant.showMe = showMe
+        var hops = 0
+        assistant.onTourDone = { hops += 1 }
+        // The chat is open; a way starts: its list goes on the pad and the pad folds to its note.
+        shell.expanded = true
+        let path = ShowPath(title: "See the history", recorded: nil, steps: [ShowStep(say: "Click History", role: "AXLink", label: "History")])
+        var progress = TourProgress(title: path.title, steps: ["Click History"], current: 0, state: .looking)
+        let message = try #require(showMe.onStart?(path, progress))
+        #expect(!shell.expanded && assistant.transcript.last?.id == message && assistant.transcript.last?.role == .tour)
+        // Stopped: nothing; done: the note hops once.
+        progress.state = .stopped
+        showMe.onEnd?(progress)
+        #expect(hops == 0)
+        progress.current = 1; progress.state = .done
+        showMe.onEnd?(progress)
+        #expect(hops == 1)
+    }
+
     @Test func theChatIsToldToShowRatherThanWriteSteps() {
         #expect(Prompt.intents(.standard, pinned: nil).contains("teach_the_way"))
         #expect(Prompt.watchSystem.contains("- path:"))
@@ -358,5 +391,133 @@ struct ShowMeTests {
         #expect(p.count == "1 of 2" && !p.isLast && p.step == "a")
         p.current = 2; p.state = .done
         #expect(p.count == "2 of 2" && p.isOver && p.step == nil)
+    }
+
+    // MARK: - The second day of use (#60, #61, #62, #63)
+
+    @Test func aClickThatResolvedToNothingKeepsTheSpot() throws {
+        // A click at (300, 600) in AppKit coordinates, in a 1200×900 window at the origin: a quarter across, a third
+        // down from the top, and no size.
+        let spot = WatchRecorder.spot(NSPoint(x: 300, y: 600), in: NSRect(x: 0, y: 0, width: 1_200, height: 900))
+        #expect(spot == [0.25, 0.3333, 0, 0])
+        // Found again by the smallest control that holds the spot, never by the page around it.
+        let item = FakeNode("AXMenuItem", ["AXTitle": "Search by Id"], frame: CGRect(x: 20, y: 290, width: 300, height: 32))
+        let list = FakeNode("AXGroup", [:], frame: CGRect(x: 0, y: 80, width: 300, height: 820), [item])
+        let root = FakeNode("AXGroup", ["AXDOMIdentifier": "app"], frame: Self.window, [list])
+        let page = FakeNode("AXWindow", [:], frame: Self.window, [FakeNode("AXWebArea", [:], frame: Self.window, [root])])
+        let step = ShowStep(say: "Click Search by Id", rect: spot)
+        let found = try #require(ShowFinder.find(step, in: page, visibleArea: Self.window, windowFrame: Self.window))
+        #expect(found.how == .place && found.frame?.minY == 290)
+        let bare = FakeNode("AXWindow", [:], frame: Self.window, [FakeNode("AXWebArea", [:], frame: Self.window, [FakeNode("AXGroup", [:], frame: Self.window)])])
+        #expect(ShowFinder.find(step, in: bare, visibleArea: Self.window, windowFrame: Self.window) == nil)
+        // A step with only a spot is still a step: the way keeps it.
+        var e = WatchEvent(index: 1, t: 1, kind: "click", app: "Google Chrome", title: "t", url: "https://app.example.com/")
+        e.rect = spot
+        var unfindable = WatchEvent(index: 2, t: 2, kind: "click", app: "Google Chrome", title: "t", url: "https://app.example.com/")
+        unfindable.label = ""
+        let recording = Recording(dir: URL(fileURLWithPath: "/tmp/none"), events: [e, unfindable], meta: WatchMeta(startedAt: "2026-10-26T12:00:00Z"))
+        let path = try #require(ShowPath.from(recording: recording, picks: [(1, "Click Search by Id"), (2, "Click nothing")], title: "t", recorded: nil))
+        #expect(path.steps.map(\.say) == ["Click Search by Id"] && path.steps[0].rect == spot)
+    }
+
+    @Test func aStepInTheBrowsersOwnWindowIsLookedForOutsideThePage() throws {
+        // Chrome's toolbar beside a page that has a "Downloads" link of its own.
+        let icon = FakeNode("AXButton", ["AXDescription": "Downloads"], frame: CGRect(x: 1_100, y: 40, width: 30, height: 30))
+        let toolbar = FakeNode("AXToolbar", [:], frame: CGRect(x: 0, y: 0, width: 1_200, height: 80), [icon])
+        let link = FakeNode("AXLink", ["AXTitle": "Downloads"], frame: CGRect(x: 100, y: 300, width: 100, height: 20))
+        let page = FakeNode("AXWebArea", ["AXURL": "https://app.example.com/"], frame: CGRect(x: 0, y: 80, width: 1_200, height: 820), [link])
+        let window = FakeNode("AXWindow", [:], frame: Self.window, [toolbar, page])
+        // Recorded with no address and the browser as its app: looked for in the browser's part of the window first,
+        // and what shows of it is the window, not the page.
+        let step = ShowStep(say: "Open downloads", role: "AXButton", label: "Downloads", app: "Google Chrome")
+        #expect(ShowFinder.inBrowsersOwnUI(step) && !ShowFinder.inBrowsersOwnUI(ShowStep(say: "", label: "Downloads", app: "Google Chrome", url: "https://app.example.com/")))
+        #expect(ShowFinder.scopes(for: step, window: window, page: page, inBrowser: true).map(\.node.role) == ["AXWindow", "AXWebArea"])
+        let found = try #require(ShowFinder.findInWindow(step, window: window, page: page, inBrowser: true))
+        #expect(found.how == .kindAndName && found.frame?.minY == 40 && found.area == Self.window)
+        // On the page, what shows is the page's area.
+        let onPage = try #require(ShowFinder.findInWindow(ShowStep(say: "", role: "AXLink", label: "Downloads", url: "https://app.example.com/"), window: window, page: page, inBrowser: true))
+        #expect(onPage.frame?.minY == 300 && onPage.area == CGRect(x: 0, y: 80, width: 1_200, height: 820))
+        // The toolbar's button is named for its state; recorded as "New download available", it is found where it was.
+        let renamed = ShowStep(say: "Open downloads", role: "AXButton", label: "New download available", app: "Google Chrome", rect: [0.9167, 0.0444, 0.025, 0.0333])
+        let byPlace = try #require(ShowFinder.findInWindow(renamed, window: window, page: page, inBrowser: true))
+        #expect(byPlace.how == .place && byPlace.frame?.minY == 40)
+        // A step on a page is never its place alone (a heading "Search" is not the "SEARCH" button).
+        let pageStep = ShowStep(say: "", role: "AXLink", label: "Nowhere", url: "https://app.example.com/", rect: [0.083, 0.333, 0.083, 0.022])
+        #expect(ShowFinder.findInWindow(pageStep, window: window, page: page, inBrowser: true) == nil)
+        // A name with a file in it is the same control with today's file in it.
+        #expect(ShowFinder.stablePart("Show Price-Changes-8f3a-1793038791953.xlsx in Finder") == "Show in Finder")
+        #expect(ShowFinder.stablePart("Open report-2026-10-26.pdf") == nil && ShowFinder.stablePart("Q3 2026 report") == nil && ShowFinder.stablePart("Show in Finder") == nil)
+        let bubble = FakeNode("AXWindow", [:], frame: Self.window, [
+            FakeNode("AXButton", ["AXTitle": "Show Price-Changes-9b1c-1793125191953.xlsx in Finder"], frame: CGRect(x: 10, y: 10, width: 300, height: 24)),
+        ])
+        let later = ShowStep(say: "Show it in Finder", role: "AXButton", label: "Show Price-Changes-8f3a-1793038791953.xlsx in Finder", app: "Google Chrome")
+        #expect(ShowFinder.find(later, in: bubble, visibleArea: Self.window, windowFrame: Self.window)?.how == .nameButNumbers)
+        // The trip to the tool is still dropped when the way ends in the browser's own window or another app.
+        let way = ShowPath(title: "t", recorded: nil, steps: [
+            ShowStep(say: "Search", role: "AXButton", label: "Google Search", app: "Google Chrome", url: "https://www.google.com/"),
+            ShowStep(say: "Download", role: "AXButton", label: "Download", app: "Google Chrome", url: "https://app.example.com/items"),
+            ShowStep(say: "Open downloads", role: "AXButton", label: "Downloads", app: "Google Chrome"),
+            ShowStep(say: "Open the file", role: "AXTextField", label: "Price changes", app: "Finder", title: "Downloads"),
+        ])
+        #expect(way.withoutTheWayThere.steps.map(\.say) == ["Download", "Open downloads", "Open the file"])
+    }
+
+    @Test func theTourHoldsAFieldStepWhileTheNextButtonIsGrey() {
+        // The next step's button is on the page from the start, grey: no evidence of going ahead, however long.
+        #expect(!ShowTour.goneAhead(nextEnabled: false, seen: nil, acted: true))
+        #expect(!ShowTour.goneAhead(nextEnabled: false, seen: (found: true, enabled: false), acted: true))
+        // It came alive after the person typed and pressed Enter: they're past the field.
+        #expect(ShowTour.goneAhead(nextEnabled: true, seen: (found: true, enabled: false), acted: true))
+        #expect(!ShowTour.goneAhead(nextEnabled: true, seen: (found: true, enabled: false), acted: false))
+        // It was there and live from the start: the person is on the field, not past it.
+        #expect(!ShowTour.goneAhead(nextEnabled: true, seen: (found: true, enabled: true), acted: true))
+        // It appeared since (the page after the click), or is live at first sight: they went ahead.
+        #expect(ShowTour.goneAhead(nextEnabled: true, seen: (found: false, enabled: false), acted: true))
+        #expect(ShowTour.goneAhead(nextEnabled: true, seen: nil, acted: false))
+        // A field is a step to leave, not to click.
+        #expect(ShowStep(say: "", role: "AXTextField").isField && !ShowStep(say: "", role: "AXButton").isField && !ShowStep(say: "").isField)
+        var p = TourProgress(title: "t", steps: ["Type the item number, then press Enter", "Click Next"], current: 0, state: .showing)
+        #expect(p.instruction == "Click it when you're ready.")
+        p.inField = true
+        #expect(p.instruction == "Type what it needs, then press Enter or Tab.")
+    }
+
+    @Test func aGreyedOutControlIsRingedButNotDoneOnAClick() throws {
+        let grey = FakeNode("AXButton", ["AXTitle": "Next: Products", "AXEnabled": false], frame: CGRect(x: 600, y: 400, width: 120, height: 32))
+        let live = FakeNode("AXButton", ["AXTitle": "Back", "AXEnabled": true], frame: CGRect(x: 400, y: 400, width: 80, height: 32))
+        let unsaid = FakeNode("AXButton", ["AXTitle": "Help"], frame: CGRect(x: 800, y: 400, width: 80, height: 32))
+        let page = FakeNode("AXWindow", [:], frame: Self.window, [grey, live, unsaid])
+        func find(_ label: String) -> ShowFinder.Found<FakeNode>? {
+            ShowFinder.find(ShowStep(say: "", role: "AXButton", label: label), in: page, visibleArea: Self.window)
+        }
+        #expect(find("Next: Products")?.enabled == false && find("Back")?.enabled == true && find("Help")?.enabled == true)
+        // The card says it's grey, in the way's words when it has them.
+        var p = TourProgress(title: "t", steps: ["Click Next"], current: 0, state: .showing, disabled: true)
+        #expect(p.instruction == "It's greyed out: something on the page still needs finishing.")
+        p.hint = "Press Enter so the item number becomes a chip"
+        #expect(p.instruction == "Press Enter so the item number becomes a chip")
+        // The keys that commit input are recorded, with the field's name and nothing typed.
+        let enter = try #require(WatchRecorder.keyEvent(code: 36, field: .text(label: "Item number")))
+        #expect(enter.kind == "key" && enter.text == "Enter" && enter.label == "Item number" && enter.role == "text field")
+        #expect(WatchRecorder.keyEvent(code: 76, field: nil)?.text == "Enter" && WatchRecorder.keyEvent(code: 48, field: nil)?.text == "Tab")
+        let escape = try #require(WatchRecorder.keyEvent(code: 53, field: .hidden(why: "password field")))
+        #expect(escape.text == "Escape" && escape.label == nil && escape.role == "password field")
+        #expect(WatchRecorder.keyEvent(code: 0, field: nil) == nil)
+        #expect(WatchSummarizer.line(enter).hasSuffix("pressed Enter in Item number"))
+        #expect(Prompt.watchSystem.contains("\"blocked\"") && Prompt.watchSystem.contains("Enter, Tab, Escape"))
+        // The write-up's hint for a grey control rides along with its step, and a way kept without one reads the same.
+        let text = """
+        ```json
+        {"pack_dir": "waxwing", "pack_name": "Waxwing", "match_urls": ["127.0.0.1:4310"], "workflow_slug": "see-history",
+         "workflow_title": "See the history", "workflow_markdown": "1. Open Waxwing App.\\n2. Click History.",
+         "path": [{"event": 1, "say": "Open Waxwing App"}, {"event": 4, "say": "Click History", "blocked": "Press Enter so the item number becomes a chip"}]}
+        ```
+        """
+        let path = try #require(WatchSummarizer.parse(text, recording: Self.recording()).path)
+        #expect(path.steps.map(\.blocked) == [nil, "Press Enter so the item number becomes a chip"])
+        let data = try JSONEncoder().encode(path)
+        #expect(try JSONDecoder().decode(ShowPath.self, from: data) == path)
+        let old = try JSONDecoder().decode(ShowStep.self, from: Data(#"{"say": "Click History", "role": "AXLink", "label": "History"}"#.utf8))
+        #expect(old.blocked == nil && old.label == "History")
     }
 }

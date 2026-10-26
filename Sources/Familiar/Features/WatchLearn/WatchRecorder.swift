@@ -7,7 +7,7 @@ import QuartzCore
 struct WatchEvent: Codable {
     var index: Int
     var t: Double            // seconds since the recording started
-    var kind: String         // click | scene | typed | note
+    var kind: String         // click | scene | typed | key | note
     var app: String?
     var title: String?
     var url: String?
@@ -245,7 +245,13 @@ final class WatchRecorder {
             meta.clicks += 1
             let clickIndex = append(click) ?? 0
             await captureCrop(session: s, eventIndex: clickIndex, at: mouse)
-            if i == 1 { append(WatchEvent(index: 0, t: elapsed, kind: "typed", app: ctx?.appName, title: ctx?.windowTitle, url: ctx?.url, role: "text field", label: "Synthetic field", text: "hello from the synthetic recorder")) }
+            if i == 1 {
+                append(WatchEvent(index: 0, t: elapsed, kind: "typed", app: ctx?.appName, title: ctx?.windowTitle, url: ctx?.url, role: "text field", label: "Synthetic field", text: "hello from the synthetic recorder"))
+                if var key = Self.keyEvent(code: 36, field: .text(label: "Synthetic field")) {
+                    key.t = elapsed; key.app = ctx?.appName; key.title = ctx?.windowTitle; key.url = ctx?.url
+                    append(key)
+                }
+            }
             if i < 2 { try? await Task.sleep(nanoseconds: 1_000_000_000) }
         }
         return endSession(purpose: nil)
@@ -415,15 +421,9 @@ final class WatchRecorder {
         }
         // The text inside a button stands for the button: the control a person would say they clicked, and what the
         // way shown later looks for.
-        if let control = ShowFinder.control(at: p) {
-            if e.label?.isEmpty != false || control.role != target.element?.role {
-                e.role = Self.prettyRole(control.role)
-                if let name = control.name, !Self.looksSecret(name) { e.label = name }
-            }
-            e.axRole = control.role
-            e.domID = ShowFinder.isControlID(control.domID) ? control.domID : nil
-            if let window = target.windowFrame { e.rect = NoteAnchor.fractions(of: control.frame, in: window) }
-        }
+        let bundle = target.ownerBundleID ?? ctx?.bundleID
+        let control = ShowFinder.control(at: p)
+        if let control { Self.keep(control, in: &e, hit: target.element, bundle: bundle, window: target.windowFrame) }
         guard let index = append(e) else { return }
         meta.clicks += 1
         let n = meta.clicks
@@ -432,11 +432,51 @@ final class WatchRecorder {
         let wantFull = lastFullScene.map { l in ctx.map { !$0.sameScene(as: l) } ?? false } ?? true || n % 8 == 0
         if wantFull { lastFullScene = ctx }
         let s = session
+        let page = (url: ctx?.url, title: ctx?.windowTitle)
         enqueue { [weak self] in
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard let self, self.session == s else { return }
+            if control == nil { self.lookAgain(at: p, for: index, hit: target, bundle: bundle, page: page) }
             await self.captureCrop(session: s, eventIndex: index, at: p, alsoFull: wantFull)
         }
+    }
+
+    /// What a click's control adds to its event: the role and name a person would use, the page's own id for it and
+    /// where it was in its window; and, in a browser, that a click on the browser's own toolbar or a bubble of its was
+    /// not on the page (no address), so the way looks for it there.
+    private static func keep(_ control: ShowFinder.Control, in e: inout WatchEvent, hit: AXElementInfo?, bundle: String?, window: NSRect?) {
+        if e.label?.isEmpty != false || control.role != hit?.role {
+            e.role = prettyRole(control.role)
+            if let name = control.name, !looksSecret(name) { e.label = name }
+        }
+        e.axRole = control.role
+        e.domID = ShowFinder.isControlID(control.domID) ? control.domID : nil
+        if let window { e.rect = NoteAnchor.fractions(of: control.frame, in: window) }
+        if !control.inPage, ContextWatcher.browserBundles.contains(bundle ?? "") { e.url = nil }
+    }
+
+    /// A second look for the control under a click that resolved to none at once. An item that had just appeared (a
+    /// menu's, after the click that opened it) is unknown to the browser's hit test for a moment and known the next
+    /// time it is asked, so the click is asked about again once the tree has caught up, provided the page is still the
+    /// one clicked on: a click that went somewhere has nothing left under it. If there is still none, the spot is kept
+    /// (a rect without a size), so the step can be found by the control there next time, and the log says so. A
+    /// picked click is never dropped in silence.
+    private func lookAgain(at p: NSPoint, for index: Int, hit: ScreenHit, bundle: String?, page: (url: String?, title: String?)) {
+        guard isRecording else { return }
+        let ctx = currentContext()
+        guard ctx?.url == page.url, ctx?.windowTitle == page.title else { return }
+        if let control = ShowFinder.control(at: p) {
+            update(session: session, index) { Self.keep(control, in: &$0, hit: hit.element, bundle: bundle, window: hit.windowFrame) }
+            Log.info("watch: click \(index) resolved on a second look: \(Self.prettyRole(control.role)) “\(control.name ?? "")”")
+        } else if let window = hit.windowFrame {
+            update(session: session, index) { $0.rect = Self.spot(p, in: window) }
+            Log.info("watch: click \(index) resolved to nothing at (\(Int(p.x)), \(Int(p.y))); kept the spot")
+        }
+    }
+
+    /// Where a click was, as fractions of its window and with no size: see `ShowStep.rect`.
+    nonisolated static func spot(_ p: NSPoint, in window: NSRect) -> [Double] {
+        NoteAnchor.fractions(of: NSRect(origin: p, size: .zero), in: window)
     }
 
     private func pollScene() {
@@ -511,8 +551,15 @@ final class WatchRecorder {
         let flags = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if flags.contains(.command) || flags.contains(.control) { return }   // shortcuts are not text
         switch Int(e.keyCode) {
-        case 36, 76, 48: flushTyping(); return            // Return, keypad Enter, Tab: focus may move
-        case 53: return                                  // Esc
+        case 36, 76, 48, 53:                             // Return, keypad Enter, Tab, Esc: what was typed is committed or left
+            let field = typing?.field ?? focusedCache?.field
+            flushTyping()
+            if var key = Self.keyEvent(code: Int(e.keyCode), field: field) {
+                let ctx = currentContext()
+                key.t = elapsed; key.app = ctx?.appName; key.title = ctx?.windowTitle; key.url = ctx?.url
+                append(key)
+            }
+            return
         case 51:                                         // Backspace
             if var t = typing { t.text = String(t.text.dropLast()); typing = t }
             return
@@ -529,6 +576,27 @@ final class WatchRecorder {
         focusedCache = (Date(), field)
         if typing == nil { typing = (field, "") }
         if var t = typing, case .text = t.field, t.text.count < Self.maxTypedChars { t.text += chars; typing = t }
+    }
+
+    /// The keys that commit or leave what was typed, as an event of their own, so a write-up can tell "typed 123,
+    /// pressed Enter" from "typed 123, clicked elsewhere" and say which unblocks the next control: Return and keypad
+    /// Enter, Tab, Escape. Nothing typed is in it, only the key and the field's name when the field is one whose text
+    /// is recorded.
+    nonisolated static func keyEvent(code: Int, field: Field?) -> WatchEvent? {
+        let name: String
+        switch code {
+        case 36, 76: name = "Enter"
+        case 48: name = "Tab"
+        case 53: name = "Escape"
+        default: return nil
+        }
+        var e = WatchEvent(index: 0, t: 0, kind: "key", text: name)
+        switch field {
+        case .text(let label): e.role = "text field"; e.label = label
+        case .hidden(let why): e.role = why
+        case nil: break
+        }
+        return e
     }
 
     private func flushTyping() {
