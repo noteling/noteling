@@ -166,7 +166,9 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    read every 0.3 s). A field step is done when the person leaves the field, presses Enter or Tab, or the page lets
    them on; and the step after the current one counts as "gone ahead" only when it takes a click and, after first
    sight, only when it appeared or came alive since while the person clicked or typed (`ShowTour.goneAhead`), so a
-   field before a grey button is never skipped.
+   field before a grey button is never skipped. When a way starts from chat, the pad folds to its note
+   (`Assistant.showMe`'s `onStart` sets `shell.expanded = false`), and when the way is done the folded note hops once
+   (`Assistant.onTourDone`, from `ShowMeConversation.onEnd`).
 9. **Explain, Teach me, Do it for me** (`Features/Chat/Intent.swift`): every message is one of three intents, named by
    what the person would be unhappy without (understanding, the ability, the result). The intent is never matched on
    words: the person taps a verb tab under an answer (the model ends a how-to's Suggestions line with the two verbs,

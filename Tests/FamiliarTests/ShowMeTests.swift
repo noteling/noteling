@@ -1,6 +1,8 @@
 import ApplicationServices
 import Foundation
 import Testing
+import FamiliarContracts
+import FamiliarRuntime
 @testable import Familiar
 
 /// Showing the way: finding a recorded control again on a page, keeping the way from a Watch Me recording, offering it
@@ -327,6 +329,37 @@ struct ShowMeTests {
         let conversation = await ShowMeConversation(registry: registry)
         #expect(await conversation.path(named: "waxwing/see-history")?.steps.count == 2)
         #expect(await conversation.path(named: "waxwing/nothing") == nil)
+    }
+
+    @Test @MainActor func theChatFoldsToItsNoteWhenAWayIsTaught() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("fold-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        var config = Config()
+        config.apiKey = "fixture-no-network"
+        let registry = ToolRegistry(root: root, runner: ScriptRunner(config: config))
+        let learning = WatchLearnSession(operations: .init(
+            start: { _ in }, stop: { Recording(dir: root, events: [], meta: WatchMeta(startedAt: "test", clicks: 0)) }, abandon: {},
+            summarize: { _, _, _ in throw ClaudeError(message: "Not recording") }, write: { _ in [] }, reload: {}
+        ))
+        let shell = ShellState()
+        let assistant = Assistant(config: config, watcher: ContextWatcher(), registry: registry, shell: shell, learning: learning)
+        let showMe = ShowMeConversation(registry: registry)
+        assistant.showMe = showMe
+        var hops = 0
+        assistant.onTourDone = { hops += 1 }
+        // The chat is open; a way starts: its list goes on the pad and the pad folds to its note.
+        shell.expanded = true
+        let path = ShowPath(title: "See the history", recorded: nil, steps: [ShowStep(say: "Click History", role: "AXLink", label: "History")])
+        var progress = TourProgress(title: path.title, steps: ["Click History"], current: 0, state: .looking)
+        let message = try #require(showMe.onStart?(path, progress))
+        #expect(!shell.expanded && assistant.transcript.last?.id == message && assistant.transcript.last?.role == .tour)
+        // Stopped: nothing; done: the note hops once.
+        progress.state = .stopped
+        showMe.onEnd?(progress)
+        #expect(hops == 0)
+        progress.current = 1; progress.state = .done
+        showMe.onEnd?(progress)
+        #expect(hops == 1)
     }
 
     @Test func theChatIsToldToShowRatherThanWriteSteps() {

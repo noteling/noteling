@@ -13,6 +13,8 @@ final class ShowMeConversation {
     var onStart: ((ShowPath, TourProgress) -> UUID)?
     /// The tour moved on, ended or was stopped: the pad's list follows.
     var onProgress: ((UUID, TourProgress) -> Void)?
+    /// The tour is over, done or stopped: once, after the list's last update.
+    var onEnd: ((TourProgress) -> Void)?
     private(set) var tour: ShowTour?
     /// Each list on the pad and the path it shows, for "Show again".
     private var shown: [UUID: (path: ShowPath, bundleID: String?)] = [:]
@@ -123,6 +125,7 @@ final class ShowMeConversation {
             guard let self else { return }
             if let message { self.onProgress?(message, progress) }
             if self.tour === tour { self.tour = nil }
+            self.onEnd?(progress)
         }
         self.tour = tour
         tour.start()

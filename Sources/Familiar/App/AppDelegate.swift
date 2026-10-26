@@ -227,6 +227,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let showMe = ShowMeConversation(registry: registry)
         showMe.hideFromScreenShare = { [weak self] in self?.config.hideFromScreenShare ?? false }
         assistant.showMe = showMe
+        // The way is done: the note, folded for the lesson, hops once to say the chat is there when wanted.
+        assistant.onTourDone = { [weak self] in
+            guard let self, self.panel.isVisible, !self.shell.expanded, !self.origami.isFlying else { return }
+            self.hop()
+        }
         assistant.onOpenJobs = { [weak self] in self?.morningPanel.showJobs(trigger: .chat) }
         assistant.onRunSource = { [weak self] id in self?.runSavedSource(id) }
         setupFolderJobs()   // before the panel, which shows them among the jobs
