@@ -34,6 +34,7 @@ struct Config: Codable {
     var controlInBackground: Bool = true     // do things in the window you asked from, keeping your mouse and keyboard yours
     var backgroundVirtualDisplay: Bool = false // opt in to moving the task window onto a separate display while it runs
     var backgroundPreciseClicks: Bool = false // experimental: click exact spots in a background window through a private macOS path
+    var backgroundAsksFirst: Bool = false    // stop for a yes before sending, submitting, deleting or paying, and before borrowing the mouse
     var backgroundHintsShown: Int = 0        // the "working behind you" callout shows on the first background jobs
     var env: [String: String] = [:]          // non-secret variables handed to every script (secrets go to the Keychain)
     var bubbleX: Double? = nil               // remembered bubble position (bottom-left, screen points)
@@ -144,6 +145,7 @@ struct Config: Codable {
         controlInBackground = try c.decodeIfPresent(Bool.self, forKey: .controlInBackground) ?? d.controlInBackground
         backgroundVirtualDisplay = try c.decodeIfPresent(Bool.self, forKey: .backgroundVirtualDisplay) ?? d.backgroundVirtualDisplay
         backgroundPreciseClicks = try c.decodeIfPresent(Bool.self, forKey: .backgroundPreciseClicks) ?? d.backgroundPreciseClicks
+        backgroundAsksFirst = try c.decodeIfPresent(Bool.self, forKey: .backgroundAsksFirst) ?? d.backgroundAsksFirst
         backgroundHintsShown = try c.decodeIfPresent(Int.self, forKey: .backgroundHintsShown) ?? d.backgroundHintsShown
         env = try c.decodeIfPresent([String: String].self, forKey: .env) ?? d.env
         bubbleX = try c.decodeIfPresent(Double.self, forKey: .bubbleX)

@@ -92,8 +92,17 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    scrolling or moving the cursor takes control back.
    The hand icon on the pad, next to the
    eye, turns background mode off; then it takes the mouse as before (the shimmer border, a caption per step, moving the
-   mouse or pressing Esc stops it). Background Send / Submit / Delete / Pay button presses pause for a one-action approval
-   on the task screen; a changed window or control invalidates that approval. A pack can list more
+   mouse or pressing Esc stops it). **Smooth by default** (`backgroundAsksFirst` off, Settings → "Ask before sending,
+   deleting or paying in the background"): the background lane finishes the job without stopping for a yes. Guarded
+   presses and `send_message` go ahead (the draft and recipient are still checked) and the caption says what was pressed;
+   `ask_for_the_mouse` is granted on its own, at once on a separate task display, else once the person's hands have been
+   still for 1.5 s (`ComputerController.waitForPause`, up to 20 s, then it asks); the prompt's control and background
+   rules swap their ask-first lines for "finish what they asked, never beyond it" (`Prompt.control(smooth:)`,
+   `Prompt.background(smooth:)`). The person clicking in the target window or switching to its app no longer ends the
+   job: `ConflictMonitor` yields, pausing actions until they have left it alone for 2.5 s and marking the view stale,
+   and an action waits up to 30 s for a pause instead of failing after 5. Never done either way: password fields, ⌘Q /
+   ⌘W, window controls. With the setting on, Background Send / Submit / Delete / Pay button presses pause for a
+   one-action approval on the task screen; a changed window or control invalidates that approval. A pack can list more
    controls to confirm under `irreversible:` in its SKILL.md. `find_on_screen` gives it labelled controls via Accessibility;
    in the background it presses them by id with `click_element`.
    Chat composers that send with Return can use `send_message`: the task screen shows the recipient, observed

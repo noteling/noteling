@@ -74,7 +74,9 @@ final class DesktopExecutionService {
         } else if background, target == nil {
             laneNote = "\n\nThis is a queued task. No window has been selected. Call target_window to list windows and explicitly choose the application/window required by the accepted task. Never infer the task target from the person's current foreground window. If the intended target is ambiguous, stop and explain what is missing."
         }
-        return PreparedExecution(system: Prompt.system + Prompt.control + (background ? Prompt.background + laneNote : ""),
+        // Smooth: the background lane finishes the job without stopping for a yes (Settings: ask first, off).
+        let smooth = background && !control.asksFirst && policy == .standard
+        return PreparedExecution(system: Prompt.system + Prompt.control(smooth: smooth) + (background ? Prompt.background(smooth: smooth) + laneNote : ""),
                                  router: router, maxToolRounds: 40, shouldStop: { [weak control] in control?.stopped ?? true })
     }
 

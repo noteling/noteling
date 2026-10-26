@@ -34,6 +34,7 @@ final class SettingsModel: ObservableObject {
     @Published var controlInBackground = true
     @Published var backgroundVirtualDisplay = false
     @Published var backgroundPreciseClicks = false
+    @Published var backgroundAsksFirst = false
     @Published var mascotStyle = "innocent"
     @Published var packSecrets: [PackSecret] = []
     @Published var toolsRepo = ""
@@ -198,6 +199,7 @@ final class SettingsModel: ObservableObject {
         controlInBackground = config.controlInBackground
         backgroundVirtualDisplay = config.backgroundVirtualDisplay
         backgroundPreciseClicks = config.backgroundPreciseClicks
+        backgroundAsksFirst = config.backgroundAsksFirst
         mascotStyle = config.mascotStyle
         toolsDir = config.resolvedToolsDir.path
         toolsRepo = config.toolsRepo
@@ -266,6 +268,7 @@ final class SettingsModel: ObservableObject {
         c.controlInBackground = controlInBackground
         c.backgroundVirtualDisplay = backgroundVirtualDisplay
         c.backgroundPreciseClicks = backgroundPreciseClicks
+        c.backgroundAsksFirst = backgroundAsksFirst
         c.mascotStyle = mascotStyle
         c.toolsRepo = RepoAddress.cleaned(toolsRepo)   // the plain address: credentials pasted into it are never kept
         return c
@@ -420,6 +423,10 @@ struct SettingsView: View {
                 Toggle("Allow Noteling to control the mouse and keyboard when asked", isOn: $model.allowControl)
                 Toggle("Do things in the window you asked from, keeping your mouse and keyboard", isOn: $model.controlInBackground)
                     .disabled(!model.allowControl)
+                Toggle("Ask before sending, deleting or paying in the background", isOn: $model.backgroundAsksFirst)
+                    .disabled(!model.allowControl || !model.controlInBackground)
+                Text("Off, Noteling finishes the job without stopping to ask, and says what it pressed. It still never types into password fields, quits apps or closes windows.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("Use a separate display for background tasks (experimental)", isOn: $model.backgroundVirtualDisplay)
                     .disabled(!model.allowControl || !model.controlInBackground)
                 Text("Moves the task window off your screen while Noteling works. Returns it when the task ends.")

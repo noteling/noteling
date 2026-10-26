@@ -82,7 +82,24 @@ enum Prompt {
     it themselves. Don't keep looking at the screen to try.
     """
 
-    /// Appended to the system prompt only when the user has enabled computer control in Settings.
+    /// Appended to the system prompt only when the user has enabled computer control in Settings. `smooth` when the
+    /// background lane doesn't ask first (Settings: "Ask before sending, deleting or paying" off): the person traded
+    /// control for convenience, so the job is finished without stopping for a yes.
+    static func control(smooth: Bool) -> String {
+        guard smooth else { return control }
+        return control.replacingOccurrences(of: askFirstRule, with: smoothRule)
+    }
+
+    private static let askFirstRule = """
+    - Never click Send, Submit, Delete, Pay, or close or overwrite unsaved work without asking first: stop, explain, and \
+    offer the choice in the Suggestions line.
+    """
+    private static let smoothRule = """
+    - Finish the whole task they asked for, including its final Send, Submit or Save, without asking first: they chose \
+    not to be asked. Don't go beyond it: never pay, buy or delete anything they didn't ask for, and never close or \
+    overwrite unsaved work. Say plainly what you pressed.
+    """
+
     static let control = """
 
     Controlling the computer. When the user asks you to do something for them ("do it", "type it for me", "fill this \
@@ -102,6 +119,46 @@ enum Prompt {
     """
 
     /// Appended after `control` when the job runs in the background lane (the user keeps the mouse and keyboard).
+    /// `smooth`: no approvals and no asking for the mouse, so the rules about waiting for them give way.
+    static func background(smooth: Bool) -> String {
+        guard smooth else { return background }
+        return background
+            .replacingOccurrences(of: guardedRule, with: smoothGuardedRule)
+            .replacingOccurrences(of: sendRule, with: smoothSendRule)
+            + smoothBackground
+    }
+
+    private static let guardedRule = """
+    - The background task screen handles progress and approvals separately from chat. For a labelled button that \
+    sends, submits, pays, deletes, signs, approves or publishes, use find_on_screen then click_element. The guarded \
+    action pauses for the user's explicit approval in the task screen before pressing it. Do not substitute a chat \
+    question or a Suggestions line for that approval. If approval is declined, times out, or is unavailable, leave \
+    the action undone and report that. Never bypass an action's guard with coordinates, keys or a script.
+    """
+    private static let smoothGuardedRule = """
+    - For a labelled button that sends, submits, signs, approves or publishes, use find_on_screen then click_element: \
+    it is pressed without stopping for approval, because the person chose not to be asked. Don't ask in chat either. \
+    Press it when it is part of what they asked, and say that you did.
+    """
+    private static let sendRule = """
+    send_message shows the recipient, observed window/composer context and full draft on the task screen, then \
+    rechecks the readable draft and target before pressing Return once. It refuses unreadable or changed composers. \
+    If input permission expires while waiting for approval, obtain input permission again and request fresh send \
+    approval.
+    """
+    private static let smoothSendRule = """
+    send_message rechecks the readable draft and target, then presses Return once, without an approval step. It \
+    refuses unreadable or changed composers.
+    """
+    private static let smoothBackground = """
+
+    Working smoothly. The person traded control for convenience: carry the task through to the end without asking \
+    for confirmation or for the mouse; ask_for_the_mouse is granted on its own as soon as they pause. If they use the \
+    window or switch to its app meanwhile, Noteling steps aside until they pause and the next result says so: look \
+    again and carry on rather than stopping. Stop only when the task is done, when something they didn't ask for \
+    would happen, or when you truly can't go on, and then say exactly what is left.
+    """
+
     static let background = """
 
     Background lane. You are working in the window the user was in when they asked, through Accessibility and events \

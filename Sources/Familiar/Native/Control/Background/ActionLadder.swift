@@ -23,6 +23,8 @@ final class ActionLadder {
     var warningNoteLabels: [String] = []         // sticky warnings anchored on controls in this scene
     var pressRefusal: ((IrreversibleGuard.ElementInfo) -> String?)?
     var requestApproval: ((String) async -> BackgroundActionApproval.Decision)?
+    /// Off: a guarded press is done without its approval, through borrowed input too (`ComputerController.asksFirst`).
+    var asksFirst = true
     var viewportDirty = false                    // the human scrolled or resized since the model last looked
     private(set) var lastRaw: RawCapture?
     private var shotFrameSize: CGSize?
@@ -78,7 +80,9 @@ final class ActionLadder {
                                                       declared: declaredIrreversible, warningNoteLabels: warningNoteLabels) {
                 case .safe: break
                 case .confirm(let label):
-                    return .text("No input borrowed: “\(label)” needs its guarded action approval. Use find_on_screen and click_element; permission to borrow input does not approve this action.")
+                    if asksFirst {
+                        return .text("No input borrowed: “\(label)” needs its guarded action approval. Use find_on_screen and click_element; permission to borrow input does not approve this action.")
+                    }
                 case .forbidden(let why): return .text("Not done: \(why).", isError: true)
                 }
             }
@@ -609,7 +613,10 @@ final class ActionLadder {
     /// Waits for the human's input to settle before posting to the target's process.
     private func clear() async -> Bool {
         guard let monitor else { return true }
-        return await monitor.waitUntilClear(timeout: 5)
+        // The person's own input comes first; a wait of a few seconds is quieter than a failure the model must retry.
+        if await monitor.waitUntilClear(timeout: 1) { return true }
+        caption("Waiting for you to pause…")
+        return await monitor.waitUntilClear(timeout: 30)
     }
     private var busyResult: ToolResult { .text("Not done: the user is typing or holding the mouse right now. Wait a moment and try again.") }
 

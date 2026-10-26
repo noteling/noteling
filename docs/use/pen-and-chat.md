@@ -33,8 +33,14 @@ Chat can also look after your jobs and cards: "what did my inbox check find?", "
 ## Letting it do things
 
 Mouse and keyboard control is off until you turn it on, in Settings or with the hand button on the chat pad. When it's
-on and you ask Noteling to do something, the task window shows its progress and any approval it needs, and **Stop**
-ends it at any time.
+on and you ask Noteling to do something, the task window shows its progress, and **Stop** ends it at any time.
+
+In the background, it works in the window you asked from while you carry on, and it sees the job through without
+stopping to ask: it presses the final Send or Submit when that's part of what you asked, and says what it pressed. When
+something needs the real mouse, it borrows it the moment you pause. If you click in its window or switch to it, it
+steps aside until you pause, then looks again and carries on. It never types into password fields, quits apps or
+closes windows. To be asked before anything is sent, submitted, deleted or paid, turn on **Ask before sending,
+deleting or paying in the background** in Settings.
 
 ## Show it how, with Watch Me
 
