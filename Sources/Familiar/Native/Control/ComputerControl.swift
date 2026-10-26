@@ -49,6 +49,10 @@ final class ComputerController {
     var ghostEnabled = true                  // the purple cursor overlay in the background lane (off headless)
     var hideFromScreenShare = false
     var preciseClicks = false                // Config.backgroundPreciseClicks; the SkyLight rung still needs its self-test
+    /// Config.backgroundAsksFirst. Off (the app's default), the background lane finishes the job without stopping for a
+    /// yes: guarded presses and sends go ahead and say so, and the mouse is borrowed as soon as the person pauses.
+    /// On here so a controller built directly keeps the careful behaviour.
+    var asksFirst = true
     var virtualDisplayEnabled = false       // Opt-in placement; input still uses the existing background ladder.
     var onCaption: ((String) -> Void)?
     var onBegin: (() -> Void)?
@@ -188,8 +192,14 @@ final class ComputerController {
         l.declaredIrreversible = declaredIrreversible
         l.warningNoteLabels = warningNoteLabels
         l.pressRefusal = pressRefusal
+        l.asksFirst = asksFirst
         l.requestApproval = { [weak self, weak l] label in
             guard let self, let l, self.active, !self.stopped, self.ladder === l else { return .cancelled }
+            if !self.asksFirst {
+                self.caption("Pressing “\(label)”")
+                Log.info("control: pressed guarded “\(label)” without asking (smooth)")
+                return .approved
+            }
             return await self.actionApproval.request(label: label, on: self.peek)
         }
         if ghostEnabled {
@@ -246,6 +256,9 @@ final class ComputerController {
                                 expectingActivation: { [weak self] in self?.expectingActivation ?? false },
                                 onStop: { [weak self] r in self?.stop(reason: r) },
                                 onDirty: { [weak self] in self?.ladder?.viewportDirty = true },
+                                // The view is marked stale (onDirty), so the next action by position asks for a
+                                // fresh look; a notice here would come back as an error and end the model's batch.
+                                onYield: { [weak self] _ in self?.caption("You're in \(target.appName) — I'll carry on when you pause") },
                                 onAbortRecord: { [weak self] in if let t = self?.ladder?.target { SkyLightClick.shared.abortRecord(target: t) } })
         m.install()
         conflict = m
@@ -444,10 +457,25 @@ final class ComputerController {
         let requestWindow = ladder?.target.cgWindowID
         peek.borrowKeepsWindowOffscreen = virtualWorkspace != nil
         let reason = (input["reason"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // Smooth: no question. On its separate display the window is borrowed at once; on the person's own screen,
+        // as soon as they pause, so the loan doesn't land in the middle of their own clicking or typing.
+        let unasked: Bool
+        if asksFirst {
+            unasked = false
+        } else if virtualWorkspace != nil {
+            unasked = true
+        } else {
+            caption("Borrowing the mouse when you pause…")
+            unasked = await Self.waitForPause(seconds: Self.pauseBeforeBorrowing, upTo: 20) { [weak self] in
+                guard let self else { return true }
+                return !self.active || self.stopped || Task.isCancelled
+            }
+        }
+        if unasked { Log.info("control: borrowing input without asking (smooth)") }
         peek.phase = .asking(reason.isEmpty ? "for something only the real mouse can do" : reason)
-        caption("Asking for the mouse")
+        if !unasked { caption("Asking for the mouse") }
         let requestID = UUID()
-        let allowed = await withTaskCancellationHandler {
+        let allowed = unasked ? true : await withTaskCancellationHandler {
             await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
                 if Task.isCancelled { c.resume(returning: false); return }
                 handoff = c
@@ -476,6 +504,21 @@ final class ComputerController {
             return .text("The user approved brief mouse and keyboard borrowing for this task window on its separate display. The window stays off their screen, and coordinates remain pixels of the WINDOW capture. Take a fresh computer screenshot first. Each click, type or key action borrows input locally and restores the user's focus and pointer before returning; you do not hold their input while thinking, observing or waiting. Do not activate apps or move windows yourself. This experimental path supports short clicks, single-line typing, editing keys and scrolling. For a chat composer that sends with Return, call send_message with the exact typed draft and recipient; it asks for separate one-send approval before pressing Return once. Raw Return, form submission, drags and held inputs are not covered by this input permission. Action approvals still apply. Call give_the_mouse_back when this permission is no longer needed.")
         }
         return .text("The user handed you the mouse. Take a screenshot first: coordinates are now pixels of the whole display. Do the foreground part in one go, then call give_the_mouse_back.")
+    }
+
+    /// How long the person's hands must have been still before a loan of the real mouse starts on its own.
+    static let pauseBeforeBorrowing: TimeInterval = 1.5
+
+    /// Waits until no mouse or key input has come for `seconds`, for at most `upTo`; true once it has.
+    static func waitForPause(seconds: TimeInterval, upTo limit: TimeInterval, cancelled: () -> Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(limit)
+        while Date() < deadline {
+            if cancelled() { return false }
+            let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+            if idle >= seconds { return true }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+        return false
     }
 
     func giveMouseBack() -> ToolResult {
@@ -907,8 +950,15 @@ final class ComputerController {
         }
         messageSendPending = true
         defer { messageSendPending = false }
-        let decision = await actionApproval.request(label: "Send message to \(recipient)", on: peek,
+        let decision: BackgroundActionApproval.Decision
+        if asksFirst {
+            decision = await actionApproval.request(label: "Send message to \(recipient)", on: peek,
                                                     message: message, context: "\(ladder.target.appName) · \(draft.displayContext)")
+        } else {
+            caption("Sending to \(recipient)")
+            Log.info("control: sending a message without asking (smooth)")
+            decision = .approved
+        }
         guard active, !stopped, !Task.isCancelled, self.ladder === ladder else {
             return .text("Stopped before sending. No Return was pressed.", isError: true)
         }

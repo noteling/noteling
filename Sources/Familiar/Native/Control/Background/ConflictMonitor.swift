@@ -63,13 +63,20 @@ import AppKit
     private let expectingActivation: () -> Bool
     private let onStop: (String) -> Void
     private let onDirty: () -> Void
+    /// The person used the target window or switched to its app: Noteling steps aside until they pause instead of
+    /// ending the job. Told why, once per spell.
+    private let onYield: ((String) -> Void)?
+    /// How long the person must leave the target alone after using it before Noteling carries on.
+    static let yieldSeconds: TimeInterval = 2.5
+    private var yieldedUntil: Date?
     private let onAbortRecord: () -> Void
     private var monitor: Any?
     private var activation: NSObjectProtocol?
     private var stopped = false
 
     init(target: TargetWindow, recordOutstanding: @escaping () -> Bool, expectingActivation: @escaping () -> Bool,
-         onStop: @escaping (String) -> Void, onDirty: @escaping () -> Void, onAbortRecord: @escaping () -> Void) {
+         onStop: @escaping (String) -> Void, onDirty: @escaping () -> Void, onYield: ((String) -> Void)? = nil,
+         onAbortRecord: @escaping () -> Void) {
         targetPID = target.pid
         targetWindowID = target.cgWindowID
         appName = target.appName
@@ -78,6 +85,7 @@ import AppKit
         self.expectingActivation = expectingActivation
         self.onStop = onStop
         self.onDirty = onDirty
+        self.onYield = onYield
         self.onAbortRecord = onAbortRecord
     }
 
@@ -137,7 +145,7 @@ import AppKit
         return mouseButtonHeld
     }
 
-    private func handle(_ e: Input) {
+    func handle(_ e: Input) {
         guard !stopped else { return }
         if !e.isOurs {
             if e.kind == .mouseDown { mouseButtonHeld = true }
@@ -150,10 +158,28 @@ import AppKit
         case .ignore:
             break
         case .stop(let reason):
-            stopped = true
-            Log.info("conflict: stop (\(reason))")
-            onStop(reason)
-        case .pause(let seconds):
+            guard let onYield else {
+                stopped = true
+                Log.info("conflict: stop (\(reason))")
+                onStop(reason)
+                return
+            }
+            // Step aside rather than end: wait until they leave the window alone, and look again before acting.
+            let until = Date().addingTimeInterval(Self.yieldSeconds)
+            let fresh = yieldedUntil.map { $0 < Date() } ?? true
+            yieldedUntil = until
+            if pausedUntil.map({ $0 < until }) ?? true { pausedUntil = until }
+            onDirty()
+            if fresh {
+                Log.info("conflict: yield (\(reason))")
+                onYield(reason)
+            }
+        case .pause(var seconds):
+            // Typing into the window Noteling works in: wait for a real pause, not the gap between two keys.
+            if let yieldedUntil, yieldedUntil.addingTimeInterval(10) > Date(),
+               NSWorkspace.shared.frontmostApplication?.processIdentifier == targetPID {
+                seconds = max(seconds, Self.yieldSeconds)
+            }
             let until = Date().addingTimeInterval(seconds)
             if pausedUntil.map({ $0 < until }) ?? true { pausedUntil = until }
             // A human keystroke while the activation record is up would land in the target: drop the record first.

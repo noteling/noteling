@@ -143,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         control.hideFromScreenShare = config.hideFromScreenShare
         control.preciseClicks = config.backgroundPreciseClicks
         control.virtualDisplayEnabled = config.backgroundVirtualDisplay
+        control.asksFirst = config.backgroundAsksFirst
         control.onCaption = { [weak self] c in
             guard let self else { return }
             guard self.control.lane != .background else { return }
@@ -776,6 +777,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.control.hideFromScreenShare = self.config.hideFromScreenShare
             self.control.preciseClicks = self.config.backgroundPreciseClicks
             self.control.virtualDisplayEnabled = self.config.backgroundVirtualDisplay
+            self.control.asksFirst = self.config.backgroundAsksFirst
             self.wand.hideFromScreenShare = self.config.hideFromScreenShare
             self.morningPanel.setLauncherShown(self.config.showMorningFolder, notify: false)
             if self.config.notesShortcut { self.notesShortcut.start() } else { self.notesShortcut.stop() }
