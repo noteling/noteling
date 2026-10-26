@@ -160,8 +160,10 @@ final class ShowMeConversation {
                 for index in steps.indices.reversed() {
                     guard let f = ShowFinder.findOnScreen(steps[index], app: target.app, window: target.window) else { continue }
                     // A later step proves the person is partway only as itself, on the page it was recorded on: the
-                    // first page may well have a "Create" or "Next" of its own.
-                    let sure = index == 0 ? f.how > .partOfName
+                    // first page may well have a "Create" or "Next" of its own. The first step, by name alone, only on
+                    // its own page too.
+                    let sure = index == 0
+                        ? f.how >= .kindAndName || (f.how > .partOfName && ShowFinder.onPage(steps[index], window: target.window))
                         : f.how >= .kindAndName && ShowFinder.samePlace(steps[index], app: target.app, window: target.window)
                     if sure { return (index, true) }
                 }

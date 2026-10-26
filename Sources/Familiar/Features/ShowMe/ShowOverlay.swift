@@ -21,6 +21,8 @@ struct TourProgress: Equatable {
     /// What the tour opened to get the person to where the way starts, as the card says it: the page's address, or
     /// the app's name. Nil when they were already there.
     var opened: String? = nil
+    /// Where a step given up on is, when the page in front isn't it: its address, for the card's "Take me there".
+    var elsewhere: String? = nil
 
     var isOver: Bool { state == .done || state == .stopped }
     var isLast: Bool { current == steps.count - 1 }
@@ -489,6 +491,7 @@ final class ShowCardModel: ObservableObject {
     var onStop: () -> Void = {}
     var onRetry: () -> Void = {}
     var onGotIt: () -> Void = {}
+    var onGo: () -> Void = {}
 }
 
 /// Takes the first click even though Noteling isn't the active app, so the card's buttons work on the first try.
@@ -545,6 +548,12 @@ struct ShowCardView: View {
         }
     }
 
+    private var lostText: String {
+        if let there = p.elsewhere { return "This step is on \(there), which isn't open." }
+        if let opened = p.opened { return "I opened \(opened), but can't see it there. If it asks you to sign in, do that, then look again." }
+        return "I can't see it on this screen. Is the right page open?"
+    }
+
     @ViewBuilder private var footer: some View {
         switch p.state {
         case .showing:
@@ -567,12 +576,16 @@ struct ShowCardView: View {
             }
         case .lost:
             VStack(alignment: .leading, spacing: 8) {
-                Text(p.opened.map { "I opened \($0), but can't see it there. If it asks you to sign in, do that, then look again." }
-                     ?? "I can't see it on this screen. Is the right page open?")
-                    .font(.system(size: 12)).foregroundStyle(Pad.redInk).fixedSize(horizontal: false, vertical: true)
+                Text(lostText).font(.system(size: 12)).foregroundStyle(Pad.redInk).fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
-                    Button("Look again", action: model.onRetry).buttonStyle(CardButtonStyle(filled: true))
-                    Button("Stop", action: model.onStop).buttonStyle(CardButtonStyle(filled: false))
+                    if p.elsewhere != nil {
+                        // The × above stops; three buttons don't fit the note.
+                        Button("Take me there", action: model.onGo).buttonStyle(CardButtonStyle(filled: true))
+                        Button("Look again", action: model.onRetry).buttonStyle(CardButtonStyle(filled: false))
+                    } else {
+                        Button("Look again", action: model.onRetry).buttonStyle(CardButtonStyle(filled: true))
+                        Button("Stop", action: model.onStop).buttonStyle(CardButtonStyle(filled: false))
+                    }
                 }
             }
         case .done:

@@ -56,8 +56,12 @@ enum ShowFinder {
                     targetIsControl = true
                 }
                 let frame = target.frame.flatMap { $0.width >= 2 && $0.height >= 2 ? $0 : nil }
-                // A spot is never the page around it: a click once recorded as the page's root must find nothing.
-                if how == .place, let frame, let visibleArea, frame.width * frame.height > visibleArea.width * visibleArea.height * 0.4 {
+                // A spot is never the page around it: a click once recorded as the page's root must find nothing. And a
+                // step of a control's kind is never plain text or a group that merely has its name: a heading "Search"
+                // is not the "SEARCH" button, however alike.
+                let tooBig = how == .place && frame.map { f in visibleArea.map { f.width * f.height > $0.width * $0.height * 0.4 } ?? false } ?? false
+                let wrongKind = how < .kindAndName && step.role.map { controls.contains($0) } == true && !targetIsControl
+                if tooBig || wrongKind {
                     stack.append(contentsOf: node.children.reversed().map { ($0, isControl ? node : owner) })
                     continue
                 }
@@ -257,6 +261,18 @@ enum ShowFinder {
             let page = PageWalk.page(among: PageWalk.webAreas(under: AXPageNode(element: window), limit: 800).areas)
             guard let address = page?.string("AXURL") else { return false }
             return PageWalk.safeAddress(address) == PageWalk.safeAddress(recorded)
+        }
+        if let title = NoteAnchor.norm(step.title) { return NoteAnchor.norm(AX.string(window, kAXTitleAttribute)) == title }
+        return true
+    }
+
+    /// Whether the window in front shows the page a step was recorded on, by host and path (the page with another item
+    /// selected is still the page), read from the browser's address bar when the page's tree isn't built yet; for a
+    /// step from an app, whether the window has its title. A step that says neither is anywhere.
+    static func onPage(_ step: ShowStep, window: AXUIElement) -> Bool {
+        if let recorded = step.url {
+            guard let address = ContextWatcher.browserURL(window: window), !address.isEmpty else { return false }
+            return samePage(address, recorded)
         }
         if let title = NoteAnchor.norm(step.title) { return NoteAnchor.norm(AX.string(window, kAXTitleAttribute)) == title }
         return true

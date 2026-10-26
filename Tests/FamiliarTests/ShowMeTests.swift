@@ -225,6 +225,63 @@ struct ShowMeTests {
         #expect(ShowPathStore.load(packDir: dir)["old"]?.steps.map(\.label) == ["Open"])
     }
 
+    @Test func theWayKeepsTheClicksTheWriteUpNames() throws {
+        // Clicks A (home), B (opens a menu, same page), C (opens the page), D (a button there); the write-up lists all
+        // four as steps but its path picked only A and D, the menu clicks read as "did nothing".
+        var events: [WatchEvent] = []
+        func add(_ label: String, role: String = "AXButton", url: String) {
+            var e = WatchEvent(index: events.count, t: Double(events.count), kind: "click", app: "Google Chrome", title: "t", url: url)
+            e.label = label
+            e.axRole = role
+            e.rect = [0.1, 0.1, 0.1, 0.05]
+            events.append(e)
+        }
+        add("Home", url: "https://app.example.com/")                                     // 0: A
+        add("Search", role: "AXMenuItem", url: "https://app.example.com/")                // 1: B
+        add("Search", role: "AXMenuItem", url: "https://app.example.com/")                // 2: B again, a double click
+        add("Search by Id", role: "AXMenuItem", url: "https://app.example.com/")          // 3: C
+        add("Query", role: "AXTextField", url: "https://app.example.com/search/by-id")   // 4: into a field, to type
+        add("SEARCH", url: "https://app.example.com/search/by-id")                        // 5: D
+        add("Logout", url: "https://app.example.com/search/by-id")                        // 6: after the task
+        let recording = Recording(dir: URL(fileURLWithPath: "/tmp/none"), events: events, meta: WatchMeta(startedAt: "2026-10-26T12:00:00Z"))
+        let markdown = "1. Click **Home**.\n2. Click **Search**. It expands to show **Search by Id**.\n3. Click **Search by Id**.\n"
+            + "4. Type the id in **Query** and click **SEARCH**.\n5. **Logout** when done."
+        let (picks, added) = ShowPath.complete([(0, "Open home"), (5, "Click SEARCH")], from: markdown, recording: recording)
+        #expect(added == [1, 3] && picks.map(\.event) == [0, 1, 3, 5])
+        let path = try #require(ShowPath.from(recording: recording, picks: picks, title: "t", recorded: nil))
+        #expect(path.steps.map(\.say) == ["Open home", "Click “Search”", "Click “Search by Id”", "Click SEARCH"])
+        // A write-up that names nothing in bold, or picks nothing, is left alone.
+        #expect(ShowPath.complete([(0, "a"), (5, "b")], from: "1. Click Search.", recording: recording).added.isEmpty)
+        #expect(ShowPath.complete([], from: markdown, recording: recording).picks.isEmpty)
+        #expect(ShowPath.bold(in: "click **Search**, then **Search by Id** (not *this*)") == ["Search", "Search by Id"])
+        #expect(Prompt.watchSystem.contains("opens a menu"))
+    }
+
+    @Test func aStepOnAnotherPageIsNeverTakenByNameAlone() throws {
+        let step = ShowStep(say: "Click SEARCH", role: "AXButton", label: "SEARCH", url: "https://app.example.com/search/by-id")
+        // The home page has a menu item "Search" and a heading "SEARCH"; the step's page has the button.
+        let menu = FakeNode("AXGroup", ["AXDescription": "Search"], frame: CGRect(x: 10, y: 100, width: 150, height: 30))
+        let heading = FakeNode("AXStaticText", ["AXValue": "SEARCH"], frame: CGRect(x: 300, y: 100, width: 100, height: 24))
+        let home = FakeNode("AXWindow", [:], frame: Self.window, [FakeNode("AXWebArea", ["AXURL": "https://app.example.com/"], frame: Self.window, [menu, heading])])
+        // Plain text or a group with the name is never a control's kind: nothing on the home page is the button.
+        #expect(ShowFinder.find(step, in: home, visibleArea: Self.window, windowFrame: Self.window) == nil)
+        // A control of another kind with the name is a match by name, which the tour takes only on the step's page.
+        let link = FakeNode("AXLink", [:], frame: CGRect(x: 10, y: 100, width: 150, height: 30),
+                            [FakeNode("AXStaticText", ["AXValue": "SEARCH"], frame: CGRect(x: 20, y: 105, width: 60, height: 20))])
+        let withLink = FakeNode("AXWindow", [:], frame: Self.window, [FakeNode("AXWebArea", ["AXURL": "https://app.example.com/"], frame: Self.window, [link])])
+        #expect(ShowFinder.find(step, in: withLink, visibleArea: Self.window, windowFrame: Self.window)?.how == .name)
+        #expect(!ShowTour.accepts(.name, offset: 0, onPage: false, atItsPlace: false) && ShowTour.accepts(.name, offset: 0, onPage: true, atItsPlace: false))
+        #expect(ShowTour.accepts(.kindAndName, offset: 0, onPage: false, atItsPlace: false) && ShowTour.accepts(.place, offset: 0, onPage: true, atItsPlace: false))
+        #expect(!ShowTour.accepts(.kindAndName, offset: 1, onPage: true, atItsPlace: false) && ShowTour.accepts(.id, offset: 1, onPage: false, atItsPlace: true))
+        let button = FakeNode("AXButton", ["AXTitle": "SEARCH"], frame: CGRect(x: 300, y: 100, width: 100, height: 30))
+        let there = FakeNode("AXWindow", [:], frame: Self.window, [FakeNode("AXWebArea", ["AXURL": "https://app.example.com/search/by-id"], frame: Self.window, [button])])
+        #expect(ShowFinder.find(step, in: there, visibleArea: Self.window, windowFrame: Self.window)?.how == .kindAndName)
+        // Given up on another page, the card can take the person to the step's page.
+        #expect(ShowTour.elsewhere(for: step, place: TourPlace(app: "Google Chrome", isBrowser: true, address: "https://app.example.com/")) == "app.example.com/search/by-id")
+        #expect(ShowTour.elsewhere(for: step, place: TourPlace(app: "Google Chrome", isBrowser: true, address: "https://app.example.com/search/by-id?x=1")) == nil)
+        #expect(ShowTour.elsewhere(for: step, place: nil) == nil)
+    }
+
     @Test func theTourTakesThePersonToWhereTheWayStarts() throws {
         let step = ShowStep(say: "Open Waxwing App", label: "Waxwing App 24", app: "Google Chrome", url: "http://127.0.0.1:4310/")
         let start = try #require(URL(string: "http://127.0.0.1:4310/"))

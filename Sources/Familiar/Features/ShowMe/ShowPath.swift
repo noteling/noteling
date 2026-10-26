@@ -108,6 +108,42 @@ extension ShowPath {
 
     static let maxSteps = 12
 
+    /// The write-up's picks with the clicks it names in its steps but left out of its path put back, in event order.
+    /// A click that opens a menu or reveals the next control is part of the way although the page didn't change, and
+    /// a write-up that says "click **Search**" has named it. Only clicks between the first and the last pick count
+    /// (the trip there and anything after the task stay out), never a click into a field to type in it, and a click
+    /// again on the same control on the same page is one step. Returns the picks and which were put back.
+    static func complete(_ picks: [(event: Int, say: String)], from markdown: String, recording: Recording)
+        -> (picks: [(event: Int, say: String)], added: [Int]) {
+        guard let first = picks.map(\.event).min(), let last = picks.map(\.event).max() else { return (picks, []) }
+        let named = Set(bold(in: markdown).compactMap { NoteAnchor.norm($0) })
+        guard !named.isEmpty else { return (picks, []) }
+        let picked = Set(picks.map(\.event))
+        let clicks = Dictionary(recording.events.filter { $0.kind == "click" }.map { ($0.index, $0) }, uniquingKeysWith: { a, _ in a })
+        var added: [Int] = []
+        for e in recording.events where e.kind == "click" && e.index > first && e.index < last && !picked.contains(e.index) {
+            guard let label = NoteAnchor.norm(e.label), named.contains(label), !PageWalk.editable.contains(e.axRole ?? "") else { continue }
+            added.append(e.index)
+        }
+        guard !added.isEmpty else { return (picks, []) }
+        let all = (picks + added.map { (event: $0, say: "") }).sorted { $0.event < $1.event }
+        var kept: [(event: Int, say: String)] = []
+        for pick in all {
+            if added.contains(pick.event), let e = clicks[pick.event], let previous = kept.last.flatMap({ clicks[$0.event] }),
+               previous.label == e.label, previous.url == e.url { continue }
+            kept.append(pick)
+        }
+        return (kept, added.filter { index in kept.contains { $0.event == index } })
+    }
+
+    /// The bold phrases in a write-up: the labels it tells the reader to click.
+    static func bold(in markdown: String) -> [String] {
+        guard let re = try? NSRegularExpression(pattern: #"\*\*([^*\n]{1,60}?)\*\*"#) else { return [] }
+        return re.matches(in: markdown, range: NSRange(markdown.startIndex..., in: markdown)).compactMap {
+            Range($0.range(at: 1), in: markdown).map { String(markdown[$0]).trimmingCharacters(in: .whitespaces) }
+        }
+    }
+
     /// The local day of a recording's start, which is written in UTC: an evening recording in California is still
     /// the day it was made there.
     static func day(of startedAt: String, in zone: TimeZone = .current) -> String? {

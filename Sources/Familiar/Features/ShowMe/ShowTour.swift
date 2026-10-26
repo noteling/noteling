@@ -63,6 +63,8 @@ final class ShowTour {
     private var opened = false
     /// Since when the step's control has been out of view.
     private var offscreenSince: Date?
+    /// Where the person was the last time the step wasn't found, for the card when the step is given up.
+    private var lastPlace: TourPlace?
     /// While the page in front can't be read yet: since when, and when the browser was last told again.
     private var unreadableSince: Date?
     private var lastNudge = Date.distantPast
@@ -85,6 +87,7 @@ final class ShowTour {
         overlay.card.onStop = { [weak self] in self?.stop() }
         overlay.card.onRetry = { [weak self] in self?.retry() }
         overlay.card.onGotIt = { [weak self] in self?.finish() }
+        overlay.card.onGo = { [weak self] in self?.goThere() }
         overlay.present(from: NSEvent.mouseLocation)
         overlay.update(progress)
         lookingSince = Date()
@@ -116,9 +119,18 @@ final class ShowTour {
     /// The card's "Look again" after a step couldn't be seen.
     func retry() {
         guard progress.state == .lost else { return }
+        progress.elsewhere = nil
         lookingSince = Date()
         nextLook = .distantPast
         set(.looking)
+    }
+
+    /// The card's "Take me there" on a step whose page isn't open: opens it, as the tour does for the first step.
+    func goThere() {
+        guard progress.state == .lost, path.steps.indices.contains(progress.current),
+              let url = path.steps[progress.current].url, let target = URL(string: url) else { return }
+        progress.elsewhere = nil
+        go(.open(target), step: path.steps[progress.current])
     }
 
     /// "Got it" on the last step: they found it, nothing more to click.
@@ -166,6 +178,7 @@ final class ShowTour {
             }
         case .looking:
             if Date() > lookingSince.addingTimeInterval(stepPatience), finding == nil {
+                progress.elsewhere = Self.elsewhere(for: path.steps[progress.current], place: lastPlace)
                 set(.lost)
                 return
             }
@@ -201,15 +214,13 @@ final class ShowTour {
         // A browser's page has no controls to find until it is told someone is listening; the tree builds in a moment.
         if !held.contains(app.processIdentifier), BrowserAccessibility.hold(app) { held.insert(app.processIdentifier) }
         let target = UncheckedWindow(app: app, window: window)
-        let entry = index == 0 && !opened
         finding = Task.detached(priority: .userInitiated) { [weak self] in
             var found: (offset: Int, found: ShowFinder.Found<AXPageNode>)?
             for (offset, step) in steps.enumerated() {
                 guard let f = ShowFinder.findOnScreen(step, app: target.app, window: target.window) else { continue }
-                // The next step counts only as itself on its own page: a "Create" anywhere isn't the person going ahead.
-                // A control found only by where it was counts only on the page it was recorded on, too.
-                let onItsPage = { ShowFinder.samePlace(step, app: target.app, window: target.window) }
-                if offset == 0 ? (f.how > .place || onItsPage()) : (f.how >= .kindAndName && onItsPage()) {
+                let onPage = offset == 0 && f.how < .kindAndName ? ShowFinder.onPage(step, window: target.window) : false
+                let atItsPlace = offset > 0 && f.how >= .kindAndName ? ShowFinder.samePlace(step, app: target.app, window: target.window) : false
+                if ShowTour.accepts(f.how, offset: offset, onPage: onPage, atItsPlace: atItsPlace) {
                     found = (offset, f)
                     break
                 }
@@ -217,9 +228,26 @@ final class ShowTour {
             let result = found.map { Looked(offset: $0.offset, element: $0.found.node.element, frame: $0.found.frame,
                                             visible: $0.found.visible, area: $0.found.area) }
             let readable = found != nil || ShowFinder.readable(app: target.app, window: target.window)
-            let place = found == nil && entry ? ShowTour.place(of: target.app, window: target.window) : nil
+            let place = found == nil ? ShowTour.place(of: target.app, window: target.window) : nil
             await self?.looked(result, for: index, readable: readable, place: place, app: target.app)
         }
+    }
+
+    /// Whether a match is the step. The step looked for is taken anywhere by the page's own id or by kind and name;
+    /// by name alone, part of a name or where it was, only on the page it was recorded on, so a same-name control of
+    /// another kind on the wrong page (the menu's "Search" for the page's "SEARCH") is never it. The step after it,
+    /// which would mean the person went ahead, only as itself and only at its own place.
+    nonisolated static func accepts(_ how: ShowFinder.How, offset: Int, onPage: Bool, atItsPlace: Bool) -> Bool {
+        offset == 0 ? (how >= .kindAndName || onPage) : (how >= .kindAndName && atItsPlace)
+    }
+
+    /// Where the step is when the page in front isn't it: its address, as the card says it, for "Take me there"; nil
+    /// when the person is on the step's page, or it can't be told.
+    nonisolated static func elsewhere(for step: ShowStep, place: TourPlace?) -> String? {
+        guard let url = step.url, let target = URL(string: url), ["http", "https"].contains(target.scheme?.lowercased() ?? ""),
+              let place else { return nil }
+        if let address = place.address { return ShowFinder.samePage(address, url) ? nil : shortAddress(target) }
+        return place.isBrowser ? nil : shortAddress(target)
     }
 
     /// Where the person is: the app in front and, in a browser, the page's address. The address bar answers before the
@@ -334,6 +362,7 @@ final class ShowTour {
             let window = ShowFinder.window(fallback: bundleID)
             Log.info("show: step \(index + 1) not found yet in \(window?.app.bundleIdentifier ?? "no app") “\(window.flatMap { AX.string($0.window, kAXTitleAttribute) } ?? "-")”\(readable ? "" : ", page not readable yet")")
         }
+        if let place { lastPlace = place }
         guard !ended, progress.state == .looking, progress.current == index else { return }
         if let result {
             found(at: index + result.offset, result)
