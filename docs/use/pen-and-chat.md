@@ -49,6 +49,23 @@ From then on, the pen and chat use those steps in that app or on that page. Ask 
 control on, Noteling does it by following your steps. What Watch Me keeps is a tool in your tools folder, not a job: it
 never runs by itself.
 
+## Let it show you the way
+
+Ask where something is ("idk where to find the agent tokens", "how do I get to the history?") and Noteling shows you on
+your own screen instead of writing out steps:
+
+1. The rest of the screen dims, a purple ring sits on the control to click, Noteling's arrow points at it, and a small
+   note beside it says what to do and which step this is.
+2. **You** click it. Noteling never clicks for you: doing it yourself is how you'll know the way next time. When the next
+   page shows the next control, the ring moves there. A control further down the page is brought into view first.
+3. On the last step, click it or choose **Got it**. **Esc**, or the × on the note, stops at any time.
+
+The steps also show on the chat pad, ticked off as you go, with **Show again** once you're done.
+
+It shows the ways someone showed it with Watch Me: whoever knows the way records it once, and from then on anyone asking
+about that page can be shown. It can also ring a single control that's on your screen now. If no one has shown it the
+way, it says so and gives its best steps in words.
+
 ## Sticky notes
 
 While the pen is up, **right-click** a control to stick a note on it: a tip for the next time you're on that page. Notes

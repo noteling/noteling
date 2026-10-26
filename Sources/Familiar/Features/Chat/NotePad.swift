@@ -84,7 +84,7 @@ struct Note: Identifiable {
             case .assistant:
                 if let i = out.indices.last, !out[i].hasAnswer { out[i].answers.append(m) }
                 else { out.append(Note(id: m.id, heading: nil, answers: [m])) }
-            case .error, .note, .receipt, .check, .glance:
+            case .error, .note, .receipt, .check, .glance, .tour:
                 if let i = out.indices.last { out[i].answers.append(m) }
                 else { out.append(Note(id: m.id, heading: nil, answers: [m])) }
             }
@@ -136,6 +136,8 @@ struct StickyNoteView: View {
     var awaitingQuestion = false    // a pen pick waiting for its question: the tabs are the questions to ask
     let onSuggest: (String) -> Void
     var onDismiss: (() -> Void)? = nil
+    /// A tour's list: Stop while it runs (false), Show again once it is over (true).
+    var onTour: ((UUID, Bool) -> Void)? = nil
     @Environment(\.colorScheme) private var scheme
 
     private var tilt: Double { index.isMultiple(of: 2) ? -Pad.tilt : Pad.tilt }
@@ -243,6 +245,8 @@ struct StickyNoteView: View {
             .padding(.vertical, 3)
         case .glance:
             if let g = m.glance { GlanceView(glance: g) }
+        case .tour:
+            if let t = m.tour { TourListView(progress: t) { again in onTour?(m.id, again) } }
         case .check:
             // a note's check, in the script's own words: it holds, it doesn't, or what it found
             HStack(alignment: .top, spacing: 6) {
@@ -322,6 +326,78 @@ struct GlanceView: View {
                 }
             }
         }
+    }
+}
+
+/// The way being shown on screen, as a card pinned to the note: each step ticked off as it is clicked, the one lit up
+/// now, and Stop while it runs or Show again once it's over. Printed, not inked: it comes from the path someone showed.
+struct TourListView: View {
+    let progress: TourProgress
+    let action: (_ again: Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Label(heading, systemImage: icon)
+                    .font(.system(size: 10.5, weight: .semibold)).foregroundStyle(tint)
+                Spacer(minLength: 6)
+                Button(progress.isOver ? "Show again" : "Stop") { action(progress.isOver) }
+                    .buttonStyle(.plain).font(.system(size: 11, weight: .medium)).foregroundStyle(Pad.penInk)
+                    .help(progress.isOver ? "Light the way up again on your screen" : "Stop showing (Esc)")
+            }
+            ForEach(Array(progress.steps.enumerated()), id: \.offset) { i, step in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    ZStack {
+                        Circle().fill(dotFill(i)).frame(width: 17, height: 17)
+                        if i < progress.current {
+                            Image(systemName: "checkmark").font(.system(size: 8.5, weight: .heavy)).foregroundStyle(.white)
+                        } else {
+                            Text("\(i + 1)").font(.system(size: 9.5, weight: .bold)).foregroundStyle(i == progress.current && !progress.isOver ? .white : Pad.inkSoft)
+                        }
+                    }
+                    .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                    Text(step).font(.system(size: 13, weight: i == progress.current && !progress.isOver ? .semibold : .regular))
+                        .foregroundStyle(i < progress.current ? Pad.inkSoft : Pad.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if progress.state == .lost {
+                Text("I couldn't find this step on your screen. Is the right page open? The card on screen can look again.")
+                    .font(.system(size: 11.5)).foregroundStyle(Pad.redInk).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(EdgeInsets(top: 8, leading: 10, bottom: 9, trailing: 10))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 3).fill(Pad.tabPaper).shadow(color: .black.opacity(0.12), radius: 1.5, y: 1))
+        .padding(.vertical, 2)
+        .animation(.easeInOut(duration: 0.2), value: progress)
+    }
+
+    private var heading: String {
+        switch progress.state {
+        case .done: return "Shown: \(progress.title)"
+        case .stopped: return "Stopped showing \(progress.title)"
+        case .lost: return "Lost the way to \(progress.title)"
+        default: return "Showing you on screen · \(progress.count)"
+        }
+    }
+
+    private var icon: String {
+        switch progress.state {
+        case .done: return "checkmark.circle.fill"
+        case .stopped, .lost: return "hand.raised"
+        default: return "hand.point.up.left.fill"
+        }
+    }
+
+    private var tint: Color {
+        progress.state == .done ? Color(red: 0.13, green: 0.55, blue: 0.30) : progress.state == .lost ? Pad.redInk : Pad.penInk
+    }
+
+    private func dotFill(_ i: Int) -> Color {
+        if i < progress.current { return Color(red: 0.20, green: 0.65, blue: 0.40) }
+        if i == progress.current && !progress.isOver { return Pad.penInk }
+        return Pad.ink.opacity(0.10)
     }
 }
 

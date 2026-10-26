@@ -3,10 +3,12 @@ import SwiftUI
 import FamiliarContracts
 import FamiliarRuntime
 
-/// `Noteling --ask "question" [url] [--shot] [--api] [--pen "what was pointed at"]`: headless question through the real
+/// `Noteling --ask "question" [url] [--shot] [--api] [--pen "what was pointed at"] [--show] [--tools-root <dir>]`:
+/// headless question through the real
 /// Claude tool loop, no screenshot, no UI. A pack that briefs the page runs its brief first, as in the app; `--pen`
 /// asks as a pen pick on a control with that label instead of a typed question; `--api` uses the API key whatever the
-/// config says.
+/// config says. `--show` lets the answer show the way on the real screen (show_me) and waits for the tour to end;
+/// `--tools-root` reads packs from another tools folder.
 @MainActor
 func runHeadlessAsk() async {
     let args = CommandLine.arguments
@@ -24,7 +26,8 @@ func runHeadlessAsk() async {
     runner.extraEnv = config.env
     runner.networkEnv = await ScriptNetwork.current()   // the Mac's proxy and certificates, as in the app
     ScriptedSecrets.shared.runner = runner   // a gateway token's script, made before each request as in the app
-    let registry = ToolRegistry(root: config.resolvedToolsDir, runner: runner)
+    let toolsRoot = args.firstIndex(of: "--tools-root").flatMap { $0 + 1 < args.count ? URL(fileURLWithPath: args[$0 + 1]) : nil }
+    let registry = ToolRegistry(root: toolsRoot ?? config.resolvedToolsDir, runner: runner)
     registry.linkedRoot = LinkedTools.root(for: config)
     registry.secretScripts = { Set(config.secretScripts.values) }
     await registry.reload()
@@ -77,6 +80,32 @@ func runHeadlessAsk() async {
         } catch { print("screenshot failed: \(error.localizedDescription)") }
     }
     content.append(["type": "text", "text": text])
+    // --show: the chat can show the way on the real screen (show_me), and the command waits for the tour to end.
+    var showMe: ShowMeConversation?
+    var tourOver: CheckedContinuation<Void, Never>?
+    if args.contains("--show") {
+        let conversation = ShowMeConversation(registry: registry)
+        conversation.onStart = { path, progress in
+            print("  [show_me] “\(path.title)”: \(path.route)")
+            return UUID()
+        }
+        var last: TourProgress?
+        conversation.onProgress = { _, progress in
+            guard progress != last else { return }
+            last = progress
+            print("  [tour \(Date().formatted(date: .omitted, time: .standard))] \(progress.count) \(progress.state): \(progress.step ?? progress.title)")
+            if progress.isOver { tourOver?.resume(); tourOver = nil }
+        }
+        showMe = conversation
+    }
+    // --show-path pack/slug: the show_me tool as the chat would call it, without asking Claude (for checking the tour).
+    if let showMe, let p = args.firstIndex(of: "--show-path"), p + 1 < args.count {
+        do { print("  [show_me] " + (try await showMe.show(["path": args[p + 1]], bundleID: ctx.bundleID))) }
+        catch { print("FAILED: \(error.localizedDescription)"); exit(1) }
+        if showMe.tour != nil { await withCheckedContinuation { tourOver = $0 } }
+        try? await Task.sleep(nanoseconds: 2_600_000_000)
+        return
+    }
     let execution = ExecutionCoordinator()
     let desktop = DesktopExecutionService(control: control, activities: NativeActivityGate(), enablesPeek: false)
     let id = UUID()
@@ -96,7 +125,8 @@ func runHeadlessAsk() async {
                                                      target: backgroundTarget, lookAtScreen: capture)
             } else {
                 let router = try ExecutionTools.make(registry: registry, context: ctx, control: nil,
-                                                     background: false, lookAtScreen: capture)
+                                                     background: false, additionalRoutes: showMe?.routes(context: ctx) ?? [],
+                                                     lookAtScreen: capture)
                 prepared = PreparedExecution(system: Prompt.system, router: router)
             }
             print("context: \(ctx.summaryLine)\nactive packs: \(packContext.active.map(\.dirName)) tools: \(prepared.router.definitions.count) notes on scene: \(packContext.sceneNotes.count)\n")
@@ -111,5 +141,9 @@ func runHeadlessAsk() async {
         case .failed(let error): throw error
         }
     } catch { print("FAILED: \(error.localizedDescription)"); exit(1) }
+    if showMe?.tour != nil {
+        await withCheckedContinuation { tourOver = $0 }
+        try? await Task.sleep(nanoseconds: 2_600_000_000)   // the card's last word and the fade
+    }
 
 }

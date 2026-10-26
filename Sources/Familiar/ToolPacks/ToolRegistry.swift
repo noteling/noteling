@@ -60,6 +60,7 @@ final class ToolPack {
     var docs: [DocFile] = []
     var scripts: [ScriptTool] = []
     var notes: [StickyNote] = []    // notes.json: what people stuck to this tool's controls with the pen
+    var paths: [String: ShowPath] = [:]   // paths/*.json: ways someone showed with Watch Me, to show the next person
     var linked = false              // from the team's linked tools (`LinkedTools`), which only an update changes
     var isGlobal: Bool { match.isEmpty }
 
@@ -133,6 +134,7 @@ final class ToolRegistry {
             pack.docs = loadDocs(pack)
             pack.scripts = await loadScripts(pack)
             pack.notes = NoteStore.load(packDir: dir)
+            pack.paths = ShowPathStore.load(packDir: dir)
             result.append(pack)
         }
         packs = result

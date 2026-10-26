@@ -17,6 +17,11 @@ struct WatchEvent: Codable {
     var crop: String?        // NNN-crop.jpg, around the click
     var full: String?        // NNN-full.jpg, the whole display
     var text: String?        // typed text, or a note
+    // A click's control, so it can be found again to show someone the way (see `ShowPath`): its Accessibility role,
+    // the page's own id for it, and its frame as fractions of its window (x, y, w, h, top-left origin).
+    var axRole: String?
+    var domID: String?
+    var rect: [Double]?
 
     static let notRecorded = "not recorded"
 
@@ -137,6 +142,8 @@ final class WatchRecorder {
     private var pollTimer: Timer?
     private var captureChain: Task<Void, Never>?
     private var typing: (field: Field, text: String)?
+    /// Browsers whose page trees the recording turned on, so their clicks carry the control's name; off again after.
+    private var heldBrowsers: [pid_t] = []
     private var focusedCache: (at: Date, field: Field)?
 
     private static let stamp: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyyMMdd-HHmmss"; return f }()
@@ -160,6 +167,7 @@ final class WatchRecorder {
             watcher.start(interval: 1)
             restoreWatcherInterval = true
         }
+        heldBrowsers = BrowserAccessibility.holdAll()
         installMonitors()
         showHUD()
         let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.pollScene() } }
@@ -204,6 +212,8 @@ final class WatchRecorder {
         monitors.removeAll()
         for p in huds { p.orderOut(nil) }
         huds.removeAll(); captions.removeAll()
+        for pid in heldBrowsers { BrowserAccessibility.release(pid) }
+        heldBrowsers = []
         if restoreWatcherInterval {
             restoreWatcherInterval = false
             if watcher.isRunning { watcher.start(interval: config.watcherIntervalSeconds) }
@@ -402,6 +412,17 @@ final class WatchRecorder {
             e.role = Self.prettyRole(el.role)
             e.label = el.title?.isEmpty == false ? el.title : el.description
             e.value = Self.safeValue(el, bundle: target.ownerBundleID ?? ctx?.bundleID)
+        }
+        // The text inside a button stands for the button: the control a person would say they clicked, and what the
+        // way shown later looks for.
+        if let control = ShowFinder.control(at: p) {
+            if e.label?.isEmpty != false || control.role != target.element?.role {
+                e.role = Self.prettyRole(control.role)
+                if let name = control.name, !Self.looksSecret(name) { e.label = name }
+            }
+            e.axRole = control.role
+            e.domID = NoteAnchor.isSteadyID(control.domID) ? control.domID : nil
+            if let window = target.windowFrame { e.rect = NoteAnchor.fractions(of: control.frame, in: window) }
         }
         guard let index = append(e) else { return }
         meta.clicks += 1
