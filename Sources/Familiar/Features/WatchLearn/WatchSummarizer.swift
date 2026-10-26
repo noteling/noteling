@@ -226,7 +226,13 @@ enum WatchSummarizer {
             guard let event = (pick["event"] as? NSNumber)?.intValue else { return nil }
             return (event, pick["say"] as? String ?? "")
         }
-        d.path = ShowPath.from(recording: recording, picks: picks, title: d.workflowTitle, recorded: ShowPath.day(of: recording.meta.startedAt))
+        // The way keeps the clicks the write-up's own steps name, even where its path left them out; the log says which,
+        // since the recording is gone once the write-up is kept.
+        let completed = ShowPath.complete(picks, from: d.workflowMarkdown, recording: recording)
+        let clicks = recording.events.filter { $0.kind == "click" }.map(\.index)
+        Log.info("watch: path picks \(picks.map(\.event)) of clicks \(clicks)"
+                 + (completed.added.isEmpty ? "" : "; put back from the write-up's steps: \(completed.added)"))
+        d.path = ShowPath.from(recording: recording, picks: completed.picks, title: d.workflowTitle, recorded: ShowPath.day(of: recording.meta.startedAt))
         return d
     }
 

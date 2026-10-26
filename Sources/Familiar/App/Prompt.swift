@@ -280,7 +280,9 @@ enum Prompt {
     - path: the clicks that make up the task, in order, so Noteling can later show the way to someone else on their \
     own screen, as objects {"event": <the click's [index] in the event log>, "say": "<what to tell a newcomer at that \
     step, under 8 words, with the real label, e.g. Open Account and access>"}. Only clicks on controls; leave out stray \
-    clicks, clicks that did nothing, clicks into a field just to type in it, and anything after the task was done. The \
+    clicks, clicks that did nothing, clicks into a field just to type in it, and anything after the task was done. A \
+    click that opens a menu, expands a section or reveals the next control did something: it is part of the way and \
+    must be picked, so that the path has one pick for each click your numbered steps tell the reader to make. The \
     way starts at the first click on the tool itself: the trip there (a search engine, the address bar, a bookmark, a \
     sign-in page) is not part of it, since Noteling opens the page the way starts on. May be empty.
     """

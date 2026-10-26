@@ -149,7 +149,11 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    `ShowStep.isOnTheWayThere`) are dropped when the path is kept and again when it is read back
    (`ShowPath.withoutTheWayThere`), since the tour takes the person to that page itself: when the first step isn't on
    the screen in front, `ShowTour.entry` opens the page the way starts on in the browser they asked from, or brings the
-   app forward, once, and gives the page a load to show.
+   app forward, once, and gives the page a load to show. The write-up's `path` is completed with the clicks its own
+   numbered steps name in bold but it left out, such as the clicks that open a menu (`ShowPath.complete`; the log says
+   which). A step of a control's kind never matches plain text or a group by name, and by name alone it is taken only
+   on the page it was recorded on (`ShowTour.accepts`, `ShowFinder.onPage`); given up on another page, the card
+   offers **Take me there**.
 9. **Explain, Teach me, Do it for me** (`Features/Chat/Intent.swift`): every message is one of three intents, named by
    what the person would be unhappy without (understanding, the ability, the result). The intent is never matched on
    words: the person taps a verb tab under an answer (the model ends a how-to's Suggestions line with the two verbs,

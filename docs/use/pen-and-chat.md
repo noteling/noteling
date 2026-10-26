@@ -85,7 +85,8 @@ you the way on your own screen instead of writing out steps:
 You don't have to know where the way starts. Ask from wherever you are, a search page, a blank tab, another app: if
 the page the way starts on isn't in front, Noteling opens it for you first, in a new tab of the browser you asked
 from, and the note says where it's taking you. The ring appears once the page shows. That is the one thing it does
-for you: a page is an address, not a lesson. If the page asks you to sign in, do that, then choose **Look again**.
+for you: a page is an address, not a lesson. If the page asks you to sign in, do that, then choose **Look again**. When
+a later step is on a page that isn't open, the note says so and offers **Take me there**.
 
 The steps also show on the chat pad, ticked off as you go, with **Show again** once you're done.
 
