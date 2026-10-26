@@ -23,12 +23,24 @@ struct TourProgress: Equatable {
     var opened: String? = nil
     /// Where a step given up on is, when the page in front isn't it: its address, for the card's "Take me there".
     var elsewhere: String? = nil
+    /// The step's control is greyed out: ringed, but a click on it does nothing until the page enables it.
+    var disabled = false
+    /// What the way says to do when it is greyed out, if it says.
+    var hint: String? = nil
+    /// The step is a field the person has clicked into: done when they leave it.
+    var inField = false
 
     var isOver: Bool { state == .done || state == .stopped }
     var isLast: Bool { current == steps.count - 1 }
     var step: String? { steps.indices.contains(current) ? steps[current] : nil }
     /// "1 of 3"
     var count: String { "\(min(current + 1, steps.count)) of \(steps.count)" }
+    /// The line under a step that is ringed: what to do now.
+    var instruction: String {
+        if disabled { return hint ?? "It's greyed out: something on the page still needs finishing." }
+        if inField { return "Type what it needs, then press Enter or Tab." }
+        return "Click it when you're ready."
+    }
 }
 
 /// The way shown on screen: everything but the control dims, a breathing ring sits on it, Noteling's purple arrow glides
@@ -557,13 +569,16 @@ struct ShowCardView: View {
     @ViewBuilder private var footer: some View {
         switch p.state {
         case .showing:
-            if p.isLast {
+            if p.disabled {
+                Label(p.instruction, systemImage: "hourglass")
+                    .font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
+            } else if p.isLast, !p.inField {
                 HStack(spacing: 10) {
                     Text("Click it, or").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
                     Button("Got it", action: model.onGotIt).buttonStyle(CardButtonStyle(filled: true))
                 }
             } else {
-                Text("Click it when you're ready.").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
+                Text(p.instruction).font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
             }
         case .offscreen:
             Label("It's further down the page. Bringing it into view…", systemImage: "arrow.down.circle")

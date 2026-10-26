@@ -250,7 +250,8 @@ enum Prompt {
     static let watchSystem = """
     You are Noteling, and you are writing the company's own notes for an internal tool by watching an employee use it. \
     You get an event log (clicks with the real labels of what was clicked, screen changes with window titles and URLs, \
-    text typed into named fields) and screenshots: a zoomed crop around each click and full frames when the screen changed. \
+    text typed into named fields, and the keys that commit or leave it: Enter, Tab, Escape) and screenshots: a zoomed \
+    crop around each click and full frames when the screen changed. \
     The user may have supplied a short name or description and separate optional context. Use the description to name \
     the workflow, and incorporate the additional context as rules, limits or exceptions in the instructions. Preserve \
     explicit context even when the demonstration shows a broader view. If following a requested rule needs controls \
@@ -284,7 +285,10 @@ enum Prompt {
     click that opens a menu, expands a section or reveals the next control did something: it is part of the way and \
     must be picked, so that the path has one pick for each click your numbered steps tell the reader to make. The \
     way starts at the first click on the tool itself: the trip there (a search engine, the address bar, a bookmark, a \
-    sign-in page) is not part of it, since Noteling opens the page the way starts on. May be empty.
+    sign-in page) is not part of it, since Noteling opens the page the way starts on. When a control was greyed out \
+    until something was done just before it (a key pressed, a counter that changed, a field filled), add "blocked": \
+    "<what to do so it takes a click, under 12 words, e.g. Press Enter so the item number becomes a chip>" to that \
+    pick; leave it out otherwise. May be empty.
     """
 
     static func context(_ ctx: ScreenContext?, recent: [ScreenContext]) -> String {

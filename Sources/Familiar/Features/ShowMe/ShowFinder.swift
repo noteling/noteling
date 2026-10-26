@@ -19,6 +19,8 @@ enum ShowFinder {
         let how: How
         /// Inside the part of the window that shows; false when it is scrolled out of view.
         let visible: Bool
+        /// Whether it takes a click now: false for a greyed-out control, which the page enables once something is done.
+        var enabled: Bool = true
         /// That part of the window: a browser's page area, else the window.
         var area: CGRect? = nil
     }
@@ -28,17 +30,24 @@ enum ShowFinder {
                                         "AXCheckBox", "AXPopUpButton", "AXMenuButton", "AXComboBox", "AXTextField",
                                         "AXSearchField", "AXTextArea", "AXDisclosureTriangle", "AXRow", "AXCell", "AXSwitch"]
 
+    /// `skipping` names roles whose subtrees are not looked in: the web areas, when the step is in the browser's own
+    /// part of the window.
     static func find<N: PageNode>(_ step: ShowStep, in window: N, visibleArea: CGRect?, windowFrame: CGRect? = nil,
-                                  budget: Int = 8_000, seconds: TimeInterval = 1.5, now: () -> Date = Date.init) -> Found<N>? {
+                                  skipping: Set<String> = [], budget: Int = 8_000, seconds: TimeInterval = 1.5,
+                                  now: () -> Date = Date.init) -> Found<N>? {
         let deadline = now().addingTimeInterval(seconds)
         let want = NoteAnchor.norm(step.label)
         let wantID = isControlID(step.domID) ? step.domID : nil
-        // Where it was and how big, for a control without a name, and to choose between two with the same name.
+        // Where it was and how big, for a control without a name, and to choose between two with the same name. A
+        // rect without a size is a spot: a click that could not be resolved to a control when it was recorded.
         let wasRect: CGRect? = {
-            guard let r = step.rect, r.count == 4, let w = windowFrame, r[2] > 0, r[3] > 0 else { return nil }
+            guard let r = step.rect, r.count == 4, let w = windowFrame, r[2] >= 0, r[3] >= 0 else { return nil }
             return CGRect(x: w.minX + w.width * r[0], y: w.minY + w.height * r[1], width: w.width * r[2], height: w.height * r[3])
         }()
         let was = wasRect.map { CGPoint(x: $0.midX, y: $0.midY) }
+        // A browser's own toolbar is laid out the same on every page, and its buttons are named for their state
+        // ("New download available" today, "Downloads" tomorrow): there, a named step is also its place.
+        let placeForNamed = inBrowsersOwnUI(step)
         var best: (found: Found<N>, rank: Double)?
         var stack: [(N, N?)] = [(window, nil)]
         var visited = 0
@@ -46,8 +55,10 @@ enum ShowFinder {
             if visited >= budget || (visited % 64 == 63 && now() > deadline) { break }
             visited += 1
             let role = node.string(kAXRoleAttribute) ?? ""
+            if skipping.contains(role) { continue }
             let isControl = controls.contains(role)
-            if let how = match(node, role: role, want: want, wantRole: step.role, wantID: wantID, was: wasRect, isControl: isControl) {
+            if let how = match(node, role: role, want: want, wantRole: step.role, wantID: wantID, was: wasRect, isControl: isControl,
+                               placeForNamed: placeForNamed) {
                 // The text inside a control stands for it, unless the "control" is a whole row of a table.
                 var target = node, targetIsControl = isControl
                 if !isControl, let owner, let frame = owner.frame, let inner = node.frame,
@@ -70,7 +81,7 @@ enum ShowFinder {
                 if let was, let frame { rank -= min(3, hypot(frame.midX - was.x, frame.midY - was.y) / 400) }
                 if how == .place, let frame { rank -= Double(frame.width * frame.height) / 1_000_000 }   // the smallest that holds the spot
                 if best == nil || rank > best!.rank {
-                    best = (Found(node: target, frame: frame, how: how, visible: visible), rank)
+                    best = (Found(node: target, frame: frame, how: how, visible: visible, enabled: target.flag("AXEnabled") ?? true), rank)
                 }
             }
             let next = isControl ? node : owner
@@ -91,12 +102,16 @@ enum ShowFinder {
     }
 
     private static func match<N: PageNode>(_ node: N, role: String, want: String?, wantRole: String?, wantID: String?,
-                                           was: CGRect?, isControl: Bool) -> How? {
+                                           was: CGRect?, isControl: Bool, placeForNamed: Bool = false) -> How? {
         if let wantID, node.string("AXDOMIdentifier") == wantID { return .id }
         if let want, let have = NoteAnchor.norm(name(node, role: role)) {
             if have == want { return role == wantRole ? .kindAndName : .name }
-            // "Inbox 3" is the same control as "Inbox 1" was: a count after the name changes, the name doesn't.
-            if role == wantRole || wantRole == nil, let name = withoutCount(want), name == withoutCount(have) { return .nameButNumbers }
+            if role == wantRole || wantRole == nil {
+                // "Inbox 3" is the same control as "Inbox 1" was: a count after the name changes, the name doesn't.
+                if let name = withoutCount(want), name == withoutCount(have) { return .nameButNumbers }
+                // "Show report-1793038791953.xlsx in Finder" is "Show … in Finder" with today's file in it.
+                if let stable = stablePart(want), stable == (stablePart(have) ?? have) { return .nameButNumbers }
+            }
             // Part of a name: the control says a little more than was recorded ("Create agent token…"), or most of
             // it. Never a short word that merely appears in a longer name, such as "Settings".
             if isControl, want.count >= 4, have.count <= want.count * 3,
@@ -105,9 +120,11 @@ enum ShowFinder {
             }
         }
         // A control without a name is found by where it was, and only then: the one at that spot of about that size,
-        // so a card built from plain groups is the card again, not a group around it or inside it.
-        if want == nil, isControl || role == wantRole, let was, let frame = node.frame, frame.contains(CGPoint(x: was.midX, y: was.midY)) {
+        // so a card built from plain groups is the card again, not a group around it or inside it. A spot without a
+        // size (a click that resolved to no control when it was recorded) is the smallest control that holds it.
+        if want == nil || placeForNamed, isControl || role == wantRole, let was, let frame = node.frame, frame.contains(CGPoint(x: was.midX, y: was.midY)) {
             let area = frame.width * frame.height, wasArea = was.width * was.height
+            if wasArea == 0 { return isControl ? .place : nil }
             if area >= wasArea / 4, area <= wasArea * 4 { return .place }
         }
         return nil
@@ -127,6 +144,25 @@ enum ShowFinder {
         guard let count = name.range(of: #"[\s(\[]*\d+[)\]]?\s*$"#, options: .regularExpression) else { return nil }
         let rest = name[..<count.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
         return rest.count >= 5 ? rest : nil
+    }
+
+    /// A name without the words in it that are another thing's next time: a file name, a long number such as a
+    /// timestamp or an id, a slug with digits in it ("Show Price-Changes-8f3a-1793038791953.xlsx in Finder" → "Show in
+    /// Finder"). Nil when the name has none of those, or too little is left to tell controls apart. Short numbers stay:
+    /// "Q3 2026 report" is a name, not a changing one.
+    static func stablePart(_ name: String) -> String? {
+        let words = name.split(whereSeparator: \.isWhitespace).map(String.init)
+        let kept = words.filter { !isUnstable($0) }
+        guard kept.count < words.count else { return nil }
+        let rest = kept.joined(separator: " ")
+        return rest.count >= 5 ? rest : nil
+    }
+
+    static func isUnstable(_ word: String) -> Bool {
+        if word.range(of: #"\d{6,}"#, options: .regularExpression) != nil { return true }                      // a timestamp, an id
+        if word.range(of: #"^\S+\.[A-Za-z0-9]{2,5}$"#, options: .regularExpression) != nil, word.contains(where: \.isLetter) { return true }   // a file name
+        if word.count >= 8, word.contains("-") || word.contains("_"), word.contains(where: \.isNumber), word.contains(where: \.isLetter) { return true }   // a slug id
+        return false
     }
 
     /// What a person would call it: its title, description or placeholder; a text's own words; a control's inner text.
@@ -151,6 +187,9 @@ enum ShowFinder {
         let name: String?
         let domID: String?
         let frame: NSRect   // AppKit global coordinates
+        /// Whether it is on a web page, as against the browser's own toolbar, tab strip or bubbles. True when the
+        /// climb from the click didn't reach either, which is the page in any browser worth the name.
+        var inPage = true
     }
 
     @MainActor
@@ -166,6 +205,7 @@ enum ShowFinder {
         var chain = [AXPageNode(element: hit)]
         var around: CGRect?
         var rootChild = false
+        var inPage = true
         var element = hit
         for _ in 0..<12 {
             guard let parent = AX.element(element, kAXParentAttribute) else { break }
@@ -174,6 +214,7 @@ enum ShowFinder {
             if role == kAXWindowRole || role == "AXWebArea" {
                 around = AXPageNode(element: parent).frame
                 rootChild = true
+                inPage = role == "AXWebArea"
                 break
             }
             chain.append(AXPageNode(element: parent))
@@ -182,7 +223,8 @@ enum ShowFinder {
         guard let picked = pick(chain, around: around, rootChild: rootChild),
               let frame = ScreenHitTester.axFrame(of: picked.node.element, primaryMaxY: primaryMaxY) else { return nil }
         let id = picked.node.string("AXDOMIdentifier").flatMap { $0.isEmpty ? nil : $0 }
-        return Control(role: picked.node.string(kAXRoleAttribute) ?? "AXUnknown", name: picked.label, domID: isControlID(id) ? id : nil, frame: frame)
+        return Control(role: picked.node.string(kAXRoleAttribute) ?? "AXUnknown", name: picked.label, domID: isControlID(id) ? id : nil,
+                       frame: frame, inPage: inPage)
     }
 
     /// Which element on the climb from what was clicked stands for the control, and what to call it: the first with a
@@ -231,49 +273,67 @@ enum ShowFinder {
     /// Looks for a step in the window in front. Call it off the main thread: a page's tree is read one call at a time.
     static func findOnScreen(_ step: ShowStep, app: NSRunningApplication, window: AXUIElement) -> Found<AXPageNode>? {
         let root = AXPageNode(element: window)
-        let frame = root.frame
         // A browser's page: what shows is the page's own area, not the window with its toolbars.
         let page = PageWalk.page(among: PageWalk.webAreas(under: root, limit: 800).areas)
-        let visible = page?.frame.flatMap { area in frame.map { $0.intersection(area) } ?? area } ?? frame
-        let inBrowser = ContextWatcher.browserBundles.contains(app.bundleIdentifier ?? "")
-        for scope in scopes(for: step, window: root, page: page, inBrowser: inBrowser) {
-            guard var found = find(step, in: scope, visibleArea: visible, windowFrame: frame) else { continue }
-            found.area = visible
+        return findInWindow(step, window: root, page: page, inBrowser: ContextWatcher.browserBundles.contains(app.bundleIdentifier ?? ""))
+    }
+
+    /// Looks for a step where `scopes` says, and says what shows of that: the page's own area for a control on the page,
+    /// the window for one in the browser's own part of it (its toolbar, its bubbles) or in any other app. The window
+    /// pass in a browser leaves the page out: it is the rest of the window.
+    static func findInWindow<N: PageNode>(_ step: ShowStep, window: N, page: N?, inBrowser: Bool) -> Found<N>? {
+        let frame = window.frame
+        let pageArea = page?.frame.flatMap { area in frame.map { $0.intersection(area) } ?? area }
+        for scope in scopes(for: step, window: window, page: page, inBrowser: inBrowser) {
+            let area = scope.isPage ? pageArea ?? frame : frame
+            let skipping: Set<String> = inBrowser && !scope.isPage ? ["AXWebArea"] : []
+            guard var found = find(step, in: scope.node, visibleArea: area, windowFrame: frame, skipping: skipping) else { continue }
+            found.area = area
             return found
         }
         return nil
     }
 
+    /// A step recorded in a browser but not on a page: its toolbar, tab strip or a bubble, which every page has.
+    static func inBrowsersOwnUI(_ step: ShowStep) -> Bool {
+        step.url == nil && ShowStep.browsers.contains(step.app ?? "")
+    }
+
     /// Where a step is looked for, in order. One recorded on a web page is on the page: the browser's own tab strip and
     /// toolbar are never it (a "Search tabs" button is not the page's "Search"), and a page still loading has nothing
-    /// to find yet. One named for the screen now is looked for on the page first, then in the rest of the window. In
-    /// any other app, the window.
-    static func scopes<N: PageNode>(for step: ShowStep, window: N, page: N?, inBrowser: Bool) -> [N] {
-        guard inBrowser else { return [window] }
-        if step.url != nil { return page.map { [$0] } ?? [] }
-        return [page, window].compactMap { $0 }
+    /// to find yet. One recorded in the browser's own part of the window is looked for there first, then on the page;
+    /// one named for the screen now on the page first, then in the rest of the window. In any other app, the window.
+    static func scopes<N: PageNode>(for step: ShowStep, window: N, page: N?, inBrowser: Bool) -> [(node: N, isPage: Bool)] {
+        guard inBrowser else { return [(window, false)] }
+        if step.url != nil { return page.map { [($0, true)] } ?? [] }
+        let inPage = page.map { [($0, true)] } ?? []
+        return inBrowsersOwnUI(step) ? [(window, false)] + inPage : inPage + [(window, false)]
     }
 
     /// Whether the window in front shows the page (or window) a step was recorded on: its address without the part after
-    /// #, or for an app, its window's title. A step that says neither is anywhere.
+    /// #, or for an app, its window's title. A step in a browser's own part of the window is at its place in any window
+    /// of a browser. A step that says neither is anywhere.
     static func samePlace(_ step: ShowStep, app: NSRunningApplication, window: AXUIElement) -> Bool {
         if let recorded = step.url {
             let page = PageWalk.page(among: PageWalk.webAreas(under: AXPageNode(element: window), limit: 800).areas)
             guard let address = page?.string("AXURL") else { return false }
             return PageWalk.safeAddress(address) == PageWalk.safeAddress(recorded)
         }
+        if inBrowsersOwnUI(step) { return ContextWatcher.browserBundles.contains(app.bundleIdentifier ?? "") }
         if let title = NoteAnchor.norm(step.title) { return NoteAnchor.norm(AX.string(window, kAXTitleAttribute)) == title }
         return true
     }
 
     /// Whether the window in front shows the page a step was recorded on, by host and path (the page with another item
     /// selected is still the page), read from the browser's address bar when the page's tree isn't built yet; for a
-    /// step from an app, whether the window has its title. A step that says neither is anywhere.
-    static func onPage(_ step: ShowStep, window: AXUIElement) -> Bool {
+    /// step from an app, whether the window has its title; for one in a browser's own part of the window, whether `app`
+    /// is a browser. A step that says neither is anywhere.
+    static func onPage(_ step: ShowStep, window: AXUIElement, app: NSRunningApplication? = nil) -> Bool {
         if let recorded = step.url {
             guard let address = ContextWatcher.browserURL(window: window), !address.isEmpty else { return false }
             return samePage(address, recorded)
         }
+        if inBrowsersOwnUI(step) { return app.map { ContextWatcher.browserBundles.contains($0.bundleIdentifier ?? "") } ?? false }
         if let title = NoteAnchor.norm(step.title) { return NoteAnchor.norm(AX.string(window, kAXTitleAttribute)) == title }
         return true
     }

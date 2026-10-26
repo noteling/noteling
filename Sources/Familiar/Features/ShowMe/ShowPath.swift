@@ -23,8 +23,8 @@ struct ShowPath: Codable, Equatable {
     /// tab, and the clicks that got them to the tool teach nothing: the tour opens the page the way starts on. So the
     /// leading steps on the trip go, up to the first on the tool, which is wherever the last step is; never all of them.
     var withoutTheWayThere: ShowPath {
-        let tool = steps.last?.host
-        guard let first = steps.firstIndex(where: { !$0.isOnTheWayThere || $0.host == tool }), first > 0 else { return self }
+        let tool = steps.last(where: { $0.host != nil })?.host
+        guard let first = steps.firstIndex(where: { !$0.isOnTheWayThere || ($0.host != nil && $0.host == tool) }), first > 0 else { return self }
         var path = self
         path.steps = Array(steps[first...])
         return path
@@ -72,36 +72,48 @@ struct ShowStep: Codable, Equatable {
     var title: String?
     var url: String?
     /// Its frame as fractions of its window (x, y, w, h, top-left origin): a last resort for a control without a name.
+    /// Without a size (w and h both 0) it is the spot clicked, for a click that resolved to no control when recorded.
     var rect: [Double]?
+    /// What to do when the control is greyed out, from the write-up: "Press Enter so the item number becomes a chip".
+    var blocked: String?
 
     /// The name to look for and to say: the label, else the instruction.
     var name: String { label ?? say }
+    /// A field to type in rather than a control to click: done when the person leaves it, not when they click into it.
+    var isField: Bool { role.map { PageWalk.editable.contains($0) } ?? false }
 }
 
 extension ShowPath {
-    /// The path through a recording: the clicks the write-up picked, in its order, each with its line, as recorded.
-    /// Without picks it is every click on a named control, so a write-up that leaves the path out still keeps one.
-    static func from(recording: Recording, picks: [(event: Int, say: String)], title: String, recorded: String?) -> ShowPath? {
+    /// The path through a recording: the clicks the write-up picked, in its order, each with its line, as recorded, and
+    /// with what the write-up says to do when its control is greyed out (`blocked`, by event). Without picks it is
+    /// every click on a named control, so a write-up that leaves the path out still keeps one.
+    static func from(recording: Recording, picks: [(event: Int, say: String)], blocked: [Int: String] = [:], title: String,
+                     recorded: String?) -> ShowPath? {
         let clicks = Dictionary(recording.events.filter { $0.kind == "click" }.map { ($0.index, $0) }, uniquingKeysWith: { a, _ in a })
-        var steps: [ShowStep] = []
+        var steps: [(event: Int, step: ShowStep)] = []
         if picks.isEmpty {
             for e in recording.events where e.kind == "click" {
                 guard let label = e.label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty else { continue }
-                if let last = steps.last, last.label == label, last.url == e.url.map(PageWalk.safeAddress) { continue }   // a double click, or a click again
-                steps.append(step(e, say: "Click “\(label)”"))
+                if let last = steps.last?.step, last.label == label, last.url == e.url.map(PageWalk.safeAddress) { continue }   // a double click, or a click again
+                steps.append((e.index, step(e, say: "Click “\(label)”")))
             }
         } else {
             for pick in picks {
                 guard let e = clicks[pick.event] else { continue }
                 let say = pick.say.trimmingCharacters(in: .whitespacesAndNewlines)
                 let fallback = e.label.map { "Click “\($0)”" } ?? "Click here"
-                steps.append(step(e, say: say.isEmpty ? fallback : String(say.prefix(80))))
+                var s = step(e, say: say.isEmpty ? fallback : String(say.prefix(80)))
+                s.blocked = blocked[pick.event].map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80)) }.flatMap { $0.isEmpty ? nil : $0 }
+                steps.append((e.index, s))
             }
         }
-        // A step must be findable again: by its name, by the page's id for it, or by where it was.
-        steps = steps.filter { $0.label != nil || $0.domID != nil || $0.rect != nil }
-        guard !steps.isEmpty else { return nil }
-        var path = ShowPath(title: title, recorded: recorded, steps: steps).withoutTheWayThere
+        // A step must be findable again: by its name, by the page's id for it, or by where it was. One that can't be is
+        // left out, and the log says so, since a thin way is otherwise a mystery once the recording is gone.
+        let dropped = steps.filter { $0.step.label == nil && $0.step.domID == nil && $0.step.rect == nil }.map(\.event)
+        if !dropped.isEmpty { Log.info("watch: path picks \(dropped) left out: no name, id or place to find them by") }
+        let kept = steps.filter { !dropped.contains($0.event) }.map(\.step)
+        guard !kept.isEmpty else { return nil }
+        var path = ShowPath(title: title, recorded: recorded, steps: kept).withoutTheWayThere
         path.steps = Array(path.steps.prefix(Self.maxSteps))
         return path
     }

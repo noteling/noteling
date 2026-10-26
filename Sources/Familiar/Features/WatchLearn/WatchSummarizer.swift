@@ -96,6 +96,7 @@ enum WatchSummarizer {
         case "typed":
             if e.value == WatchEvent.notRecorded { what = "typed into a \(e.role ?? "field") (text not recorded)" }
             else { what = "typed into \(e.label ?? e.role ?? "a field"): “\(e.text ?? "")”" }
+        case "key": what = "pressed \(e.text ?? "a key")" + (e.label.map { " in \($0)" } ?? "")
         case "note": what = "note from the user: \(e.text ?? "")"
         default: what = e.kind
         }
@@ -222,8 +223,10 @@ enum WatchSummarizer {
         d.screensMarkdown = str("screens_markdown")
         d.glossaryMarkdown = str("glossary_markdown")
         d.confidence = (obj["confidence"] as? NSNumber)?.doubleValue ?? 0
+        var blocked: [Int: String] = [:]
         let picks = (obj["path"] as? [[String: Any]] ?? []).compactMap { pick -> (event: Int, say: String)? in
             guard let event = (pick["event"] as? NSNumber)?.intValue else { return nil }
+            if let hint = pick["blocked"] as? String, !hint.trimmingCharacters(in: .whitespaces).isEmpty { blocked[event] = hint }
             return (event, pick["say"] as? String ?? "")
         }
         // The way keeps the clicks the write-up's own steps name, even where its path left them out; the log says which,
@@ -232,7 +235,8 @@ enum WatchSummarizer {
         let clicks = recording.events.filter { $0.kind == "click" }.map(\.index)
         Log.info("watch: path picks \(picks.map(\.event)) of clicks \(clicks)"
                  + (completed.added.isEmpty ? "" : "; put back from the write-up's steps: \(completed.added)"))
-        d.path = ShowPath.from(recording: recording, picks: completed.picks, title: d.workflowTitle, recorded: ShowPath.day(of: recording.meta.startedAt))
+        d.path = ShowPath.from(recording: recording, picks: completed.picks, blocked: blocked, title: d.workflowTitle,
+                               recorded: ShowPath.day(of: recording.meta.startedAt))
         return d
     }
 
