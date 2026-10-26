@@ -94,6 +94,7 @@ func runHeadlessAsk() async {
             guard progress != last else { return }
             last = progress
             print("  [tour \(Date().formatted(date: .omitted, time: .standard))] \(progress.count) \(progress.state): \(progress.step ?? progress.title)")
+            if progress.state == .lost { conversation.stop() }   // no one to press Look again
             if progress.isOver { tourOver?.resume(); tourOver = nil }
         }
         showMe = conversation
@@ -104,6 +105,7 @@ func runHeadlessAsk() async {
         catch { print("FAILED: \(error.localizedDescription)"); exit(1) }
         if showMe.tour != nil { await withCheckedContinuation { tourOver = $0 } }
         try? await Task.sleep(nanoseconds: 2_600_000_000)
+        BrowserAccessibility.settle()
         return
     }
     let execution = ExecutionCoordinator()
@@ -145,5 +147,6 @@ func runHeadlessAsk() async {
         await withCheckedContinuation { tourOver = $0 }
         try? await Task.sleep(nanoseconds: 2_600_000_000)   // the card's last word and the fade
     }
+    BrowserAccessibility.settle()
 
 }

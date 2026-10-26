@@ -64,9 +64,11 @@ enum BrowserAccessibility {
         DispatchQueue.main.asyncAfter(deadline: .now() + offDelay, execute: off)
     }
 
-    /// Turns off at once every browser that is only waiting to go off, as Noteling quits.
+    /// Turns off at once every browser Noteling turned on, held or waiting to go off: as Noteling quits, or as a
+    /// command-line check ends, since nothing would be left to turn it off later.
     static func settle() {
-        for pid in Array(goingOff.keys) { turnOff(pid) }
+        for pid in Array(goingOff.keys) + Array(holds.keys) { turnOff(pid) }
+        holds = [:]
     }
 
     private static func turnOff(_ pid: pid_t) {

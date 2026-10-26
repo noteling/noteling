@@ -48,8 +48,6 @@ final class ShowTour {
         progress = TourProgress(title: path.title, steps: path.steps.map(\.say), current: 0, state: .looking)
     }
 
-    var isRunning: Bool { !ended }
-
     func start() {
         guard !path.steps.isEmpty, timer == nil, !ended else { return }
         overlay.card.onStop = { [weak self] in self?.stop() }
@@ -157,7 +155,9 @@ final class ShowTour {
         finding = Task.detached(priority: .userInitiated) { [weak self] in
             var found: (offset: Int, found: ShowFinder.Found<AXPageNode>)?
             for (offset, step) in steps.enumerated() {
-                if let f = ShowFinder.findOnScreen(step, app: target.app, window: target.window), f.how > .partOfName || offset == 0 {
+                guard let f = ShowFinder.findOnScreen(step, app: target.app, window: target.window) else { continue }
+                // The next step counts only as itself on its own page: a "Create" anywhere isn't the person going ahead.
+                if offset == 0 || (f.how >= .kindAndName && ShowFinder.samePlace(step, app: target.app, window: target.window)) {
                     found = (offset, f)
                     break
                 }
@@ -212,6 +212,8 @@ final class ShowTour {
     }
 
     private func found(at index: Int, _ result: Looked) {
+        // Each tick reads where it is on the main thread: a page that stops answering costs a quarter second, not six.
+        AXUIElementSetMessagingTimeout(result.element, 0.25)
         element = result.element
         progress.current = index
         // What shows of the window: the page's own area in a browser, else the window; outside it is out of view.
@@ -292,6 +294,7 @@ final class ShowTour {
 
     private static func windowFrame(of element: AXUIElement) -> NSRect? {
         guard let window = AX.element(element, kAXWindowAttribute) else { return nil }
+        AXUIElementSetMessagingTimeout(window, 0.25)
         return ScreenHitTester.axFrame(of: window, primaryMaxY: primaryMaxY)
     }
 }

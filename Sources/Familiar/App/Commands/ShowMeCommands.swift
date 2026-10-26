@@ -27,11 +27,12 @@ func runShowMe() {
     NSApp.setActivationPolicy(.accessory)
     let tour = ShowTour(path: shown, bundleID: value("--bundle"), hideFromScreenShare: false)
     var last: TourProgress?
-    tour.onProgress = { p in
+    tour.onProgress = { [weak tour] p in
         guard p != last else { return }
         last = p
         print("  \(p.count) \(p.state): \(p.step ?? p.title)")
         fflush(stdout)
+        if p.state == .lost { tour?.stop() }   // no one to press Look again
     }
     tour.onFound = { index, rect in
         let top = (NSScreen.screens.first?.frame.maxY ?? 0) - rect.maxY
@@ -40,7 +41,10 @@ func runShowMe() {
     }
     tour.onEnd = { p in
         print("ended: \(p.state)")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { exit(p.state == .done ? 0 : 1) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) {
+            BrowserAccessibility.settle()
+            exit(p.state == .done ? 0 : 1)
+        }
     }
     tour.start()
     // The app's own event loop, not the bare run loop: the tour hears clicks and Esc through event monitors, which
@@ -65,10 +69,12 @@ func runFindStep() {
         let ms = Int(Date().timeIntervalSince(started) * 1_000)
         if let found {
             print("attempt \(attempt): \(found.how) visible=\(found.visible) frame=\(found.frame.map { "\($0)" } ?? "none") in \(ms) ms")
+            BrowserAccessibility.settle()
             exit(0)
         }
         print("attempt \(attempt): not found in \(ms) ms")
         Thread.sleep(forTimeInterval: 0.5)
     }
+    BrowserAccessibility.settle()
     exit(1)
 }

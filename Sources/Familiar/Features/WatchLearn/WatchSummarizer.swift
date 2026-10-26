@@ -226,7 +226,7 @@ enum WatchSummarizer {
             guard let event = (pick["event"] as? NSNumber)?.intValue else { return nil }
             return (event, pick["say"] as? String ?? "")
         }
-        d.path = ShowPath.from(recording: recording, picks: picks, title: d.workflowTitle, recorded: String(recording.meta.startedAt.prefix(10)))
+        d.path = ShowPath.from(recording: recording, picks: picks, title: d.workflowTitle, recorded: ShowPath.day(of: recording.meta.startedAt))
         return d
     }
 

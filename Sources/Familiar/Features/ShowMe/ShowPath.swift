@@ -66,6 +66,17 @@ extension ShowPath {
 
     static let maxSteps = 12
 
+    /// The local day of a recording's start, which is written in UTC: an evening recording in California is still
+    /// the day it was made there.
+    static func day(of startedAt: String, in zone: TimeZone = .current) -> String? {
+        guard let date = ISO8601DateFormatter().date(from: startedAt) else { return nil }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = zone
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f.string(from: date)
+    }
+
     private static func step(_ e: WatchEvent, say: String) -> ShowStep {
         ShowStep(say: say, role: e.axRole, label: e.label.flatMap { $0.isEmpty ? nil : $0 }, domID: e.domID,
                  app: e.app, title: e.title, url: e.url.map(PageWalk.safeAddress), rect: e.rect)
@@ -73,8 +84,9 @@ extension ShowPath {
 
     /// Which part of the path to show: `from` and `until` are 1-based and inclusive, as the model names steps.
     func slice(from: Int?, until: Int?) -> ShowPath {
-        let lower = max(1, from ?? 1), upper = min(steps.count, until ?? steps.count)
-        guard lower <= upper else { return self }
+        let lower = min(max(1, from ?? 1), steps.count)
+        let upper = max(lower, min(steps.count, until ?? steps.count))   // "until 0" still shows where it starts
+        guard lower >= 1 else { return self }
         var part = self
         part.steps = Array(steps[(lower - 1)...(upper - 1)])
         return part

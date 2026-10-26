@@ -74,12 +74,12 @@ enum ShowFinder {
         if let wantID, node.string("AXDOMIdentifier") == wantID { return .id }
         if let want, let have = NoteAnchor.norm(name(node, role: role)) {
             if have == want { return role == wantRole ? .kindAndName : .name }
-            // "Inbox 3" is the same control as "Inbox 1" was: counts and dates change, the words don't.
-            if let words = withoutNumbers(want), words == withoutNumbers(have) { return .nameButNumbers }
+            // "Inbox 3" is the same control as "Inbox 1" was: a count after the name changes, the name doesn't.
+            if role == wantRole || wantRole == nil, let name = withoutCount(want), name == withoutCount(have) { return .nameButNumbers }
             // Part of a name: the control says a little more than was recorded ("Create agent token…"), or most of
             // it. Never a short word that merely appears in a longer name, such as "Settings".
             if isControl, want.count >= 4, have.count <= want.count * 3,
-               have.contains(want) || (want.contains(have) && have.count * 10 >= want.count * 6) {
+               contains(have, want) || (contains(want, have) && have.count * 10 >= want.count * 6) {
                 return .partOfName
             }
         }
@@ -88,10 +88,20 @@ enum ShowFinder {
         return nil
     }
 
-    /// A name's words without its numbers and punctuation, or nil when too little is left to tell controls apart.
-    static func withoutNumbers(_ name: String) -> String? {
-        let words = name.split { !$0.isLetter }.joined(separator: " ")
-        return words.count >= 3 ? words : nil
+    /// Whether `inner`'s words appear together, as whole words, in `outer`: "Page 1" is not in "Page 12".
+    static func contains(_ outer: String, _ inner: String) -> Bool {
+        let words = { (s: String) in s.split { !$0.isLetter && !$0.isNumber }.map(String.init) }
+        let o = words(outer), i = words(inner)
+        guard !i.isEmpty, i.count <= o.count else { return false }
+        return (0...(o.count - i.count)).contains { Array(o[$0..<($0 + i.count)]) == i }
+    }
+
+    /// A name without the count at its end ("Inbox 3", "Notifications (12)"), or nil when it has none or too little is
+    /// left to tell controls apart. Numbers inside a name ("Q3 2026 report", "Page 2 of 5") are part of the name.
+    static func withoutCount(_ name: String) -> String? {
+        guard let count = name.range(of: #"[\s(\[]*\d+[)\]]?\s*$"#, options: .regularExpression) else { return nil }
+        let rest = name[..<count.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        return rest.count >= 5 ? rest : nil
     }
 
     /// What a person would call it: its title, description or placeholder; a text's own words; a control's inner text.
@@ -166,6 +176,18 @@ enum ShowFinder {
         guard var found = find(step, in: root, visibleArea: visible, windowFrame: frame) else { return nil }
         found.area = visible
         return found
+    }
+
+    /// Whether the window in front shows the page (or window) a step was recorded on: its address without the part after
+    /// #, or for an app, its window's title. A step that says neither is anywhere.
+    static func samePlace(_ step: ShowStep, app: NSRunningApplication, window: AXUIElement) -> Bool {
+        if let recorded = step.url {
+            let page = PageWalk.page(among: PageWalk.webAreas(under: AXPageNode(element: window), limit: 800).areas)
+            guard let address = page?.string("AXURL") else { return false }
+            return PageWalk.safeAddress(address) == PageWalk.safeAddress(recorded)
+        }
+        if let title = NoteAnchor.norm(step.title) { return NoteAnchor.norm(AX.string(window, kAXTitleAttribute)) == title }
+        return true
     }
 
     /// Whether there is anything to look in yet. A browser's page can read as empty for a while after it is told
