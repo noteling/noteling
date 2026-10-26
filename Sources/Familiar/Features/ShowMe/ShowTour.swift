@@ -1,9 +1,30 @@
 import AppKit
 import ApplicationServices
 
+/// Where the person is when a way is to be taught: what the tour compares with where the way starts.
+struct TourPlace: Equatable {
+    /// The app in front, by the name a recording gives it.
+    var app: String?
+    var isBrowser: Bool
+    /// The page's address, when the app is a browser and it can be read.
+    var address: String?
+}
+
+/// What gets the person to where the way starts, when they are elsewhere.
+enum TourEntry: Equatable {
+    /// The page the way starts on, in a browser.
+    case open(URL)
+    /// The app the way starts in, to the front.
+    case bring(String)
+}
+
 /// Shows someone the way, one step at a time, on their own screen. It looks for the step's control, rings it, follows it
 /// as the page moves, and moves on when the person clicks it: they do every click themselves, so next time they know
 /// the way. It never clicks for them. Esc or the card's × stops it.
+///
+/// Someone who asks from elsewhere (a search engine, a blank tab, another app) is taken to where the way starts first:
+/// the tour opens that page in their browser, or brings that app forward, and the first ring appears when it shows.
+/// That is the one thing it does for them: a page is an address, not a lesson.
 @MainActor
 final class ShowTour {
     /// How long a step is looked for on a page that can be read (the next page loading, a menu opening) before the
@@ -11,6 +32,8 @@ final class ShowTour {
     static let patience: TimeInterval = 10
     /// How long a page that can't be read yet is waited for before giving up all the same.
     static let pageWait: TimeInterval = 45
+    /// How long a browser whose address can't be read is given before the page the way starts on is opened all the same.
+    nonisolated static let entryPatience: TimeInterval = 3
     /// How far outside the ring a click still counts as clicking the control.
     static let slack: CGFloat = 10
 
@@ -31,6 +54,10 @@ final class ShowTour {
     private var finding: Task<Void, Never>?
     private var lookingSince = Date()
     private var nextLook = Date.distantPast
+    /// How long the step being looked for is given: the usual patience, or a page's load after the tour opened it.
+    private var stepPatience = ShowTour.patience
+    /// Whether the tour has taken the person to where the way starts; once at most, so a wrong guess costs one tab.
+    private var opened = false
     /// While the page in front can't be read yet: since when, and when the browser was last told again.
     private var unreadableSince: Date?
     private var lastNudge = Date.distantPast
@@ -125,7 +152,7 @@ final class ShowTour {
                 set(.offscreen)
             }
         case .looking:
-            if Date() > lookingSince.addingTimeInterval(Self.patience), finding == nil {
+            if Date() > lookingSince.addingTimeInterval(stepPatience), finding == nil {
                 set(.lost)
                 return
             }
@@ -152,12 +179,15 @@ final class ShowTour {
         // A browser's page has no controls to find until it is told someone is listening; the tree builds in a moment.
         if !held.contains(app.processIdentifier), BrowserAccessibility.hold(app) { held.insert(app.processIdentifier) }
         let target = UncheckedWindow(app: app, window: window)
+        let entry = index == 0 && !opened
         finding = Task.detached(priority: .userInitiated) { [weak self] in
             var found: (offset: Int, found: ShowFinder.Found<AXPageNode>)?
             for (offset, step) in steps.enumerated() {
                 guard let f = ShowFinder.findOnScreen(step, app: target.app, window: target.window) else { continue }
                 // The next step counts only as itself on its own page: a "Create" anywhere isn't the person going ahead.
-                if offset == 0 || (f.how >= .kindAndName && ShowFinder.samePlace(step, app: target.app, window: target.window)) {
+                // A control found only by where it was counts only on the page it was recorded on, too.
+                let onItsPage = { ShowFinder.samePlace(step, app: target.app, window: target.window) }
+                if offset == 0 ? (f.how > .place || onItsPage()) : (f.how >= .kindAndName && onItsPage()) {
                     found = (offset, f)
                     break
                 }
@@ -165,8 +195,83 @@ final class ShowTour {
             let result = found.map { Looked(offset: $0.offset, element: $0.found.node.element, frame: $0.found.frame,
                                             visible: $0.found.visible, area: $0.found.area) }
             let readable = found != nil || ShowFinder.readable(app: target.app, window: target.window)
-            await self?.looked(result, for: index, readable: readable, app: target.app)
+            let place = found == nil && entry ? ShowTour.place(of: target.app, window: target.window) : nil
+            await self?.looked(result, for: index, readable: readable, place: place, app: target.app)
         }
+    }
+
+    /// Where the person is: the app in front and, in a browser, the page's address. The address bar answers before the
+    /// page's tree is built, so a browser on the wrong page is known at once.
+    nonisolated static func place(of app: NSRunningApplication, window: AXUIElement) -> TourPlace {
+        let isBrowser = app.bundleIdentifier.map { ContextWatcher.browserBundles.contains($0) } ?? false
+        let address = isBrowser ? ContextWatcher.browserURL(window: window).flatMap { $0.isEmpty ? nil : $0 } : nil
+        return TourPlace(app: app.localizedName, isBrowser: isBrowser, address: address)
+    }
+
+    /// What gets the person to where `step` was shown, from `place`: the page, when they are on another one or in
+    /// another kind of app, or when a browser hasn't said where it is for `entryPatience` seconds; the app, when the way
+    /// is through one; nil when they are there, or it can't be told yet. A page is the same page with another query or
+    /// fragment: the way is waited for there as usual.
+    nonisolated static func entry(to step: ShowStep, from place: TourPlace, waited: TimeInterval) -> TourEntry? {
+        if let url = step.url, let target = URL(string: url), ["http", "https"].contains(target.scheme?.lowercased() ?? "") {
+            if let address = place.address { return ShowFinder.samePage(address, url) ? nil : .open(target) }
+            if !place.isBrowser { return .open(target) }
+            return waited >= entryPatience ? .open(target) : nil
+        }
+        if let app = step.app, let here = place.app, here != app { return .bring(app) }
+        return nil
+    }
+
+    /// Takes the person to where the way starts, once: the page in the browser they asked from (else the one the way
+    /// was shown in, if it is running, else the one that opens addresses), or the app, brought to the front. The first
+    /// step is then given a page's load to show.
+    private func go(_ entry: TourEntry, step: ShowStep) {
+        opened = true
+        switch entry {
+        case .open(let url):
+            if let browser = Self.browser(askedFrom: bundleID, recorded: step.app) {
+                let configuration = NSWorkspace.OpenConfiguration()
+                configuration.addsToRecentItems = false
+                NSWorkspace.shared.open([url], withApplicationAt: browser, configuration: configuration) { _, error in
+                    if let error { Log.info("show: couldn't open \(url.absoluteString) in \(browser.lastPathComponent): \(error.localizedDescription)") }
+                }
+            } else {
+                NSWorkspace.shared.open(url)
+            }
+            progress.opened = Self.shortAddress(url)
+            Log.info("show: opening \(url.absoluteString), where the way starts")
+        case .bring(let name):
+            guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == name }) else {
+                Log.info("show: the way starts in \(name), which isn't running")
+                return
+            }
+            app.activate()
+            progress.opened = name
+            Log.info("show: bringing \(name) forward, where the way starts")
+        }
+        stepPatience = Self.pageWait
+        lookingSince = Date()
+        unreadableSince = nil
+        nextLook = Date().addingTimeInterval(0.8)
+        set(.looking)
+    }
+
+    /// The browser to open the start page in: the one the person asked from, else the one the way was shown in when it
+    /// is running, else nil for whichever opens addresses.
+    private static func browser(askedFrom bundleID: String?, recorded name: String?) -> URL? {
+        if let bundleID, ContextWatcher.browserBundles.contains(bundleID),
+           let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) { return url }
+        if let name, let app = NSWorkspace.shared.runningApplications.first(where: {
+            $0.localizedName == name && ContextWatcher.browserBundles.contains($0.bundleIdentifier ?? "")
+        }) { return app.bundleURL }
+        return nil
+    }
+
+    /// "app.example.com/settings/tokens": the address as a person would say it, for the card.
+    nonisolated static func shortAddress(_ url: URL) -> String {
+        var s = (url.host ?? "") + (url.port.map { ":\($0)" } ?? "") + url.path
+        while s.hasSuffix("/") { s.removeLast() }
+        return s.count > 44 ? String(s.prefix(43)) + "…" : s
     }
 
     private struct UncheckedWindow: @unchecked Sendable {
@@ -182,7 +287,7 @@ final class ShowTour {
         let area: CGRect?
     }
 
-    private func looked(_ result: Looked?, for index: Int, readable: Bool, app: NSRunningApplication) {
+    private func looked(_ result: Looked?, for index: Int, readable: Bool, place: TourPlace?, app: NSRunningApplication) {
         finding = nil
         nextLook = Date().addingTimeInterval(0.3)
         // A page that can't be read yet isn't a page without the control: the wait for the control starts once it can
@@ -207,8 +312,13 @@ final class ShowTour {
             let window = ShowFinder.window(fallback: bundleID)
             Log.info("show: step \(index + 1) not found yet in \(window?.app.bundleIdentifier ?? "no app") “\(window.flatMap { AX.string($0.window, kAXTitleAttribute) } ?? "-")”\(readable ? "" : ", page not readable yet")")
         }
-        guard !ended, progress.state == .looking, progress.current == index, let result else { return }
-        found(at: index + result.offset, result)
+        guard !ended, progress.state == .looking, progress.current == index else { return }
+        if let result {
+            found(at: index + result.offset, result)
+        } else if index == 0, !opened, let place,
+                  let entry = Self.entry(to: path.steps[0], from: place, waited: readable ? Date().timeIntervalSince(lookingSince) : 0) {
+            go(entry, step: path.steps[0])
+        }
     }
 
     private func found(at index: Int, _ result: Looked) {
@@ -216,6 +326,7 @@ final class ShowTour {
         AXUIElementSetMessagingTimeout(result.element, 0.25)
         element = result.element
         progress.current = index
+        stepPatience = Self.patience
         // What shows of the window: the page's own area in a browser, else the window; outside it is out of view.
         visibleArea = result.area.map(Self.appKit) ?? Self.windowFrame(of: result.element)
         if result.visible, let axFrame = result.frame {

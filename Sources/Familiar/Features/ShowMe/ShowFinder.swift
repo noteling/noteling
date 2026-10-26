@@ -190,6 +190,20 @@ enum ShowFinder {
         return true
     }
 
+    /// Whether two addresses are the same page: the same host and path, whatever the scheme, "www.", a trailing slash,
+    /// the query or the fragment. The page a way starts on with another item selected is still that page.
+    static func samePage(_ a: String, _ b: String) -> Bool {
+        func key(_ address: String) -> String? {
+            guard let c = URLComponents(string: address), var host = c.host?.lowercased() else { return nil }
+            if host.hasPrefix("www.") { host.removeFirst(4) }
+            var path = c.path
+            while path.hasSuffix("/") { path.removeLast() }
+            return host + (c.port.map { ":\($0)" } ?? "") + path
+        }
+        guard let a = key(a), let b = key(b) else { return false }
+        return a == b
+    }
+
     /// Whether there is anything to look in yet. A browser's page can read as empty for a while after it is told
     /// someone is listening, and "not found" then means "not readable yet", not "not on this page".
     static func readable(app: NSRunningApplication, window: AXUIElement) -> Bool {

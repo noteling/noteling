@@ -362,7 +362,8 @@ struct TourListView: View {
                 }
             }
             if progress.state == .lost {
-                Text("I couldn't find this step on your screen. Is the right page open? The card on screen can look again.")
+                Text(progress.opened.map { "I opened \($0) for you, but couldn't find this step there. The card on screen can look again." }
+                     ?? "I couldn't find this step on your screen. Is the right page open? The card on screen can look again.")
                     .font(.system(size: 11.5)).foregroundStyle(Pad.redInk).fixedSize(horizontal: false, vertical: true)
             }
         }

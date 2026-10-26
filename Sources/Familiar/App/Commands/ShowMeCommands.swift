@@ -1,14 +1,16 @@
 import AppKit
 
-/// `Noteling --show-me <path.json | pack/slug> [--bundle <id>] [--from N] [--until N]`: shows a kept path on the real
-/// screen, as the chat's show_me does, and prints each step as it goes. Bring the app to the front first: the steps are
-/// looked for in the frontmost app's window (or in `--bundle`'s while nothing else is in front). Needs Accessibility, so
-/// run the bundle binary (build/Noteling.app/Contents/MacOS/Noteling).
+/// `Noteling --show-me <path.json | pack/slug> [--bundle <id>] [--from N] [--until N] [--seconds N]`: shows a kept path
+/// on the real screen, as the chat's teach_the_way does, and prints each step as it goes. Bring the app to the front
+/// first: the steps are looked for in the frontmost app's window (or in `--bundle`'s while nothing else is in front);
+/// from elsewhere, the tour opens the page the way starts on, in `--bundle`'s browser. `--seconds` stops it after that
+/// long, for a check nobody clicks through. Needs Accessibility, so run the bundle binary
+/// (build/Noteling.app/Contents/MacOS/Noteling).
 @MainActor
 func runShowMe() {
     let args = CommandLine.arguments
     guard let i = args.firstIndex(of: "--show-me"), i + 1 < args.count else {
-        print("usage: --show-me <path.json | pack/slug> [--bundle <id>] [--from N] [--until N]"); exit(2)
+        print("usage: --show-me <path.json | pack/slug> [--bundle <id>] [--from N] [--until N] [--seconds N]"); exit(2)
     }
     func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
     let name = args[i + 1]
@@ -30,9 +32,12 @@ func runShowMe() {
     tour.onProgress = { [weak tour] p in
         guard p != last else { return }
         last = p
-        print("  \(p.count) \(p.state): \(p.step ?? p.title)")
+        print("  \(p.count) \(p.state)\(p.opened.map { " (opened \($0))" } ?? ""): \(p.step ?? p.title)")
         fflush(stdout)
         if p.state == .lost { tour?.stop() }   // no one to press Look again
+    }
+    if let seconds = value("--seconds").flatMap(Double.init) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak tour] in tour?.stop() }
     }
     tour.onFound = { index, rect in
         let top = (NSScreen.screens.first?.frame.maxY ?? 0) - rect.maxY

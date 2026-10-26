@@ -96,10 +96,13 @@ final class ShowMeConversation {
         } else if !readable {
             reply += " The page in front can't be read yet (it is still being prepared for Noteling), so whether step 1 is on it is"
                 + " unknown; the ring appears as soon as it can be read. Don't send them anywhere: tell them to follow the ring."
+        } else if let place = path.start, path.steps[0].url != nil || path.steps[0].app != nil {
+            reply += " Step 1 (“\(path.steps[0].name)”) isn't on the screen in front: the way starts on \(place), which the tour"
+                + " is opening for them now (a new tab in their browser, or the app brought forward); the ring appears when it"
+                + " shows. Don't send them anywhere: tell them to follow the ring."
         } else {
-            reply += " Step 1 (“\(path.steps[0].name)”) isn't on the screen in front yet"
-            if let place = path.start { reply += "; the way starts on \(place)" }
-            reply += ". The card waits for it a few seconds, then says it can't see it. Tell them where to start."
+            reply += " Step 1 (“\(path.steps[0].name)”) isn't on the screen in front yet. The card waits for it a few seconds,"
+                + " then says it can't see it. Tell them where to start."
         }
         reply += " Reply in one short line: they are following the ring, so don't write out the steps."
         return reply
