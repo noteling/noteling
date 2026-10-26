@@ -46,7 +46,15 @@ struct ShowMeTests {
         // Recorded as "Waxwing App 24"; the page now says 25.
         let found = try #require(Self.find(ShowStep(say: "Open Waxwing App", role: "AXLink", label: "Waxwing App 24")))
         #expect(found.how == .nameButNumbers && found.frame?.minX == 20)
-        #expect(ShowFinder.withoutNumbers("Inbox 3") == "Inbox" && ShowFinder.withoutNumbers("42") == nil)
+        #expect(ShowFinder.withoutCount("Inbox 3") == "Inbox" && ShowFinder.withoutCount("Notifications (12)") == "Notifications")
+        // Numbers inside a name are the name: another quarter's report, or another page, is another control.
+        #expect(ShowFinder.withoutCount("Q3 2026 report") == nil && ShowFinder.withoutCount("Page 12") == nil && ShowFinder.withoutCount("42") == nil)
+        let reports = FakeNode("AXWindow", [:], frame: Self.window, [
+            FakeNode("AXLink", ["AXTitle": "Q4 2025 report"], frame: CGRect(x: 10, y: 10, width: 100, height: 20)),
+            FakeNode("AXLink", ["AXTitle": "Page 12"], frame: CGRect(x: 10, y: 40, width: 100, height: 20)),
+        ])
+        #expect(ShowFinder.find(ShowStep(say: "", role: "AXLink", label: "Q3 2026 report"), in: reports, visibleArea: Self.window) == nil)
+        #expect(ShowFinder.find(ShowStep(say: "", role: "AXLink", label: "Page 1"), in: reports, visibleArea: Self.window) == nil)
     }
 
     @Test func thePagesOwnIdComesFirstAndPlaceBreaksATie() throws {
@@ -110,6 +118,15 @@ struct ShowMeTests {
         #expect(path.steps[0].url == "http://127.0.0.1:4310/" && path.start == "“Waxwing” at http://127.0.0.1:4310/")
         #expect(path.slice(from: 2, until: nil).steps.map(\.label) == ["History"])
         #expect(path.slice(from: nil, until: 1).steps.count == 1)
+        #expect(path.slice(from: nil, until: 0).steps.map(\.say) == ["Open Waxwing App in the sidebar"])   // never the whole way
+        #expect(path.slice(from: 9, until: nil).steps.map(\.label) == ["History"])
+    }
+
+    @Test func theDayShownIsTheLocalDay() {
+        let pacific = TimeZone(identifier: "America/Los_Angeles")!
+        #expect(ShowPath.day(of: "2026-10-27T01:30:00Z", in: pacific) == "2026-10-26")   // 18:30 the evening before
+        #expect(ShowPath.day(of: "2026-10-27T01:30:00Z", in: TimeZone(identifier: "UTC")!) == "2026-10-27")
+        #expect(ShowPath.day(of: "not a date") == nil)
     }
 
     @Test func withoutPicksEveryNamedClickIsKeptOnce() throws {

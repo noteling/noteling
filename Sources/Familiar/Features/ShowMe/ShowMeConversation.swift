@@ -14,7 +14,6 @@ final class ShowMeConversation {
     /// The tour moved on, ended or was stopped: the pad's list follows.
     var onProgress: ((UUID, TourProgress) -> Void)?
     private(set) var tour: ShowTour?
-    private var tourMessage: UUID?
     /// Each list on the pad and the path it shows, for "Show again".
     private var shown: [UUID: (path: ShowPath, bundleID: String?)] = [:]
 
@@ -110,7 +109,6 @@ final class ShowMeConversation {
         tour?.stop()
         let tour = ShowTour(path: path, bundleID: bundleID, hideFromScreenShare: hideFromScreenShare())
         let message = onStart?(path, tour.progress)
-        tourMessage = message
         if let message { shown[message] = (path, bundleID) }
         tour.onProgress = { [weak self] progress in
             guard let self, let message else { return }
@@ -134,7 +132,11 @@ final class ShowMeConversation {
         start(shown.path, bundleID: shown.bundleID)
     }
 
-    func isRunning(_ message: UUID) -> Bool { tour != nil && tourMessage == message }
+    /// The pad was cleared: no list is left to show again.
+    func clear() {
+        tour?.stop()
+        shown = [:]
+    }
 
     /// The index of the last step whose control is on the page in front now (in view, or scrolled out of it), or nil
     /// when none is. A control the page hides, such as in a closed menu, isn't in its tree at all.
@@ -151,9 +153,12 @@ final class ShowMeConversation {
             if attempt > 0 { try? await Task.sleep(nanoseconds: 400_000_000) }
             let (found, canRead) = await Task.detached(priority: .userInitiated) { () -> (Int?, Bool) in
                 for index in steps.indices.reversed() {
-                    if let f = ShowFinder.findOnScreen(steps[index], app: target.app, window: target.window), f.how > .partOfName {
-                        return (index, true)
-                    }
+                    guard let f = ShowFinder.findOnScreen(steps[index], app: target.app, window: target.window) else { continue }
+                    // A later step proves the person is partway only as itself, on the page it was recorded on: the
+                    // first page may well have a "Create" or "Next" of its own.
+                    let sure = index == 0 ? f.how > .partOfName
+                        : f.how >= .kindAndName && ShowFinder.samePlace(steps[index], app: target.app, window: target.window)
+                    if sure { return (index, true) }
                 }
                 return (nil, ShowFinder.readable(app: target.app, window: target.window))
             }.value

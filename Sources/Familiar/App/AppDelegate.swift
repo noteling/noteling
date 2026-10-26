@@ -560,7 +560,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         MainThreadDiagnostics.shared.stop()
         assistant?.showMe?.stop()
-        BrowserAccessibility.settle()
         cardGeneration?.stop()
         origami.cancel()
         calendarReader?.shutdown()
@@ -572,6 +571,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         control.end()          // never leave a ghost cursor behind
         taskPanel.close()
         assistant.abortWatching()
+        BrowserAccessibility.settle()   // last: a recording just stopped lets go of its browsers above
     }
     @objc private func openChat() {
         origami.cancel()

@@ -209,7 +209,7 @@ final class Assistant: ObservableObject {
         contextMessageID = nil
         pendingSourceTabs = []
         offeredRuns = [:]
-        showMe?.stop()
+        showMe?.clear()
     }
 
     func startWand() {
