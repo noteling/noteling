@@ -421,7 +421,7 @@ final class WatchRecorder {
                 if let name = control.name, !Self.looksSecret(name) { e.label = name }
             }
             e.axRole = control.role
-            e.domID = NoteAnchor.isSteadyID(control.domID) ? control.domID : nil
+            e.domID = ShowFinder.isControlID(control.domID) ? control.domID : nil
             if let window = target.windowFrame { e.rect = NoteAnchor.fractions(of: control.frame, in: window) }
         }
         guard let index = append(e) else { return }
