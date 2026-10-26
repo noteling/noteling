@@ -34,6 +34,9 @@ final class ShowTour {
     static let pageWait: TimeInterval = 45
     /// How long a browser whose address can't be read is given before the page the way starts on is opened all the same.
     nonisolated static let entryPatience: TimeInterval = 3
+    /// How long a control found out of view is given to come into it, once asked, before it is looked for again: one
+    /// that never shows (not on the page after all) must not hold the tour.
+    nonisolated static let offscreenPatience: TimeInterval = 4
     /// How far outside the ring a click still counts as clicking the control.
     static let slack: CGFloat = 10
 
@@ -58,6 +61,8 @@ final class ShowTour {
     private var stepPatience = ShowTour.patience
     /// Whether the tour has taken the person to where the way starts; once at most, so a wrong guess costs one tab.
     private var opened = false
+    /// Since when the step's control has been out of view.
+    private var offscreenSince: Date?
     /// While the page in front can't be read yet: since when, and when the browser was last told again.
     private var unreadableSince: Date?
     private var lastNudge = Date.distantPast
@@ -137,6 +142,7 @@ final class ShowTour {
             let now = ScreenHitTester.axFrame(of: element, primaryMaxY: Self.primaryMaxY).flatMap { $0.width >= 2 && $0.height >= 2 ? $0 : nil }
             let inView = now.map { now in visibleArea.map { $0.intersects(now) } ?? true } ?? false
             if let now, inView {
+                offscreenSince = nil
                 if progress.state == .offscreen {
                     frame = now
                     overlay.ring(now)
@@ -149,7 +155,14 @@ final class ShowTour {
             } else if progress.state == .showing {
                 frame = nil
                 overlay.unring()
+                offscreenSince = Date()
                 set(.offscreen)
+            } else if Self.staysOutOfView(since: offscreenSince) {
+                // It never came into view: not on this page after all, or nowhere it can be brought. Look again with
+                // the patience the step has left, so a better match on the now-loaded page takes its place, or the
+                // card says it can't be seen.
+                Log.info("show: step \(progress.current + 1) stayed out of view; looking again")
+                lose(afresh: false)
             }
         case .looking:
             if Date() > lookingSince.addingTimeInterval(stepPatience), finding == nil {
@@ -162,12 +175,21 @@ final class ShowTour {
         }
     }
 
-    private func lose() {
+    /// The control is gone, or never showed: back to looking. `afresh` starts the step's patience over, as when the
+    /// page changed under it; not when the control merely stayed out of view, so a step can't hold the tour for ever.
+    private func lose(afresh: Bool = true) {
         element = nil
         frame = nil
+        offscreenSince = nil
         overlay.unring()
-        lookingSince = Date()
+        if afresh { lookingSince = Date() }
         set(.looking)
+    }
+
+    /// Whether a control out of view since `since` has had its chance to come into it.
+    nonisolated static func staysOutOfView(since: Date?, now: Date = Date()) -> Bool {
+        guard let since else { return false }
+        return now > since.addingTimeInterval(offscreenPatience)
     }
 
     /// Looks for the current step off the main thread, and for the one after it too, in case the person went ahead.
@@ -339,6 +361,7 @@ final class ShowTour {
             // On the page but out of view: bring it into view, the way a person scrolls to it, then ring it.
             frame = nil
             overlay.unring()
+            offscreenSince = Date()
             set(.offscreen)
             let element = result.element
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in

@@ -83,6 +83,57 @@ struct ShowMeTests {
         #expect(Self.find(ShowStep(say: "", label: "Waxwing App collection settings")) == nil)
     }
 
+    @Test func aStepFromAPageIsNeverTheBrowsersOwnToolbar() throws {
+        // Chrome's toolbar sits in the window beside the page; the page is still loading, so its area is empty.
+        let searchTabs = FakeNode("AXButton", ["AXDescription": "Search tabs"], frame: CGRect(x: 92, y: 39, width: 28, height: 28))
+        let toolbar = FakeNode("AXToolbar", [:], frame: CGRect(x: 0, y: 0, width: 1_200, height: 80), [searchTabs])
+        let page = FakeNode("AXWebArea", ["AXURL": "https://app.example.com/search/by-id"], frame: CGRect(x: 0, y: 80, width: 1_200, height: 820))
+        let window = FakeNode("AXWindow", [:], frame: Self.window, [toolbar, page])
+        let step = ShowStep(say: "Click SEARCH", role: "AXButton", label: "SEARCH", url: "https://app.example.com/search/by-id")
+        // Looked for in the whole window it would be taken, by part of its name.
+        #expect(ShowFinder.find(step, in: window, visibleArea: Self.window, windowFrame: Self.window)?.how == .partOfName)
+        // A step from a page is looked for on the page only, and an empty page has nothing to find yet.
+        let scopes = ShowFinder.scopes(for: step, window: window, page: page, inBrowser: true)
+        #expect(scopes.map(\.role) == ["AXWebArea"])
+        #expect(ShowFinder.find(step, in: scopes[0], visibleArea: Self.window, windowFrame: Self.window) == nil)
+        #expect(ShowFinder.scopes(for: step, window: window, page: nil, inBrowser: true).isEmpty)
+        // One named for the screen now: the page first, then the rest of the window. In another app, the window.
+        #expect(ShowFinder.scopes(for: ShowStep(say: "", label: "SEARCH"), window: window, page: page, inBrowser: true).map(\.role) == ["AXWebArea", "AXWindow"])
+        #expect(ShowFinder.scopes(for: step, window: window, page: nil, inBrowser: false).map(\.role) == ["AXWindow"])
+        // A control that stays out of view after being asked in is looked for again.
+        let t = Date()
+        #expect(!ShowTour.staysOutOfView(since: nil, now: t) && !ShowTour.staysOutOfView(since: t, now: t.addingTimeInterval(3)))
+        #expect(ShowTour.staysOutOfView(since: t, now: t.addingTimeInterval(ShowTour.offscreenPatience + 0.1)))
+    }
+
+    @Test func aClickOnACardIsTheCardNotThePageAroundIt() throws {
+        // A card built from plain divs: the text clicked, the card, the list and the page's root, under the web area.
+        let text = FakeNode("AXStaticText", ["AXValue": "Ingestion Portal"], frame: CGRect(x: 40, y: 200, width: 120, height: 18))
+        let card = FakeNode("AXGroup", [:], frame: CGRect(x: 20, y: 180, width: 280, height: 160), [text])
+        let list = FakeNode("AXGroup", [:], frame: CGRect(x: 0, y: 120, width: 900, height: 600), [card])
+        let root = FakeNode("AXGroup", ["AXDOMIdentifier": "app"], frame: CGRect(x: 0, y: 100, width: 1_190, height: 790), [list])
+        let page = CGRect(x: 0, y: 100, width: 1_200, height: 800)
+        let picked = try #require(ShowFinder.pick([text, card, list, root], around: page, rootChild: true))
+        #expect(picked.node.role == "AXStaticText" && picked.label == "Ingestion Portal")
+        // Clicked on the card's padding: the card itself, to be found by where it is. On the page's background: nothing.
+        let padding = try #require(ShowFinder.pick([card, list, root], around: page, rootChild: true))
+        #expect(padding.node.role == "AXGroup" && padding.node.frame == card.frame && padding.label == nil)
+        #expect(ShowFinder.pick([root], around: page, rootChild: true) == nil)
+        // The text inside a button is still the button.
+        let inner = FakeNode("AXStaticText", ["AXValue": "Save"], frame: CGRect(x: 50, y: 206, width: 40, height: 18))
+        let button = FakeNode("AXButton", ["AXTitle": "Save"], frame: CGRect(x: 40, y: 200, width: 80, height: 30), [inner])
+        let inButton = try #require(ShowFinder.pick([inner, button, list, root], around: page, rootChild: true))
+        #expect(inButton.node.role == "AXButton" && inButton.label == "Save")
+        // The page's root never names a step, and a step once recorded as the root rings nothing, not the whole page.
+        #expect(!ShowFinder.isControlID("app") && !ShowFinder.isControlID("__next") && ShowFinder.isControlID("footer-settings"))
+        let tree = FakeNode("AXWindow", [:], frame: Self.window, [FakeNode("AXWebArea", [:], frame: Self.window, [root])])
+        let old = ShowStep(say: "Open Ingestion Portal", role: "AXGroup", domID: "app", rect: [0, 0.1194, 0.9913, 0.8806])
+        #expect(ShowFinder.find(old, in: tree, visibleArea: Self.window, windowFrame: Self.window) == nil)
+        // The card recorded as itself is found again by where it is: the group of about that size at that spot.
+        let kept = ShowStep(say: "Open Ingestion Portal", role: "AXGroup", rect: [20.0 / 1_200, 180.0 / 900, 280.0 / 1_200, 160.0 / 900])
+        #expect(ShowFinder.find(kept, in: tree, visibleArea: Self.window, windowFrame: Self.window)?.frame == card.frame)
+    }
+
     @Test func anEmptyPageIsNotReadableYet() {
         let empty = FakeNode("AXWebArea", [:], frame: Self.window, [FakeNode("AXGroup", ["AXSubrole": "AXEmptyGroup"])])
         #expect(!ShowFinder.hasContent(empty))

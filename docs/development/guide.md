@@ -138,8 +138,12 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    way the recording folder is deleted, as it is when you clear the pad or quit; anything left behind by a crash is swept
    after 7 days. The pen and control are off while it watches.
    Each click also keeps what finds its control again later: the control around what was clicked (the text inside a
-   button stands for the button), its Accessibility role, the page's own id for it when that id is steady, and its frame
-   as fractions of the window. The write-up returns a `path` (the clicks that make up the task, in order, with a line to
+   button stands for the button; a card built from plain groups is the clicked text, or the card itself, never the
+   page's root or anything that fills most of the page: `ShowFinder.pick`), its Accessibility role, the page's own id
+   for it when that id is steady and not a document root's such as `app` (`ShowFinder.isControlID`), and its frame as
+   fractions of the window. When taught, a step from a web page is looked for inside the page's own area only
+   (`ShowFinder.scopes`), never in the browser's toolbar, and a control that stays out of view for 4 s is dropped and
+   looked for again. The write-up returns a `path` (the clicks that make up the task, in order, with a line to
    say at each), and **Keep it** writes it as `paths/<task>.json` beside `docs/workflows/<task>.md`. The way starts at
    the first click on the tool: leading clicks on the trip there (a search engine, a new tab, a sign-in page;
    `ShowStep.isOnTheWayThere`) are dropped when the path is kept and again when it is read back

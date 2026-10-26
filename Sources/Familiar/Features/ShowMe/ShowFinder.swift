@@ -32,12 +32,13 @@ enum ShowFinder {
                                   budget: Int = 8_000, seconds: TimeInterval = 1.5, now: () -> Date = Date.init) -> Found<N>? {
         let deadline = now().addingTimeInterval(seconds)
         let want = NoteAnchor.norm(step.label)
-        let wantID = NoteAnchor.isSteadyID(step.domID) ? step.domID : nil
-        // Where it was, for a control without a name, and to choose between two with the same name.
-        let was: CGPoint? = {
-            guard let r = step.rect, r.count == 4, let w = windowFrame else { return nil }
-            return CGPoint(x: w.minX + w.width * (r[0] + r[2] / 2), y: w.minY + w.height * (r[1] + r[3] / 2))
+        let wantID = isControlID(step.domID) ? step.domID : nil
+        // Where it was and how big, for a control without a name, and to choose between two with the same name.
+        let wasRect: CGRect? = {
+            guard let r = step.rect, r.count == 4, let w = windowFrame, r[2] > 0, r[3] > 0 else { return nil }
+            return CGRect(x: w.minX + w.width * r[0], y: w.minY + w.height * r[1], width: w.width * r[2], height: w.height * r[3])
         }()
+        let was = wasRect.map { CGPoint(x: $0.midX, y: $0.midY) }
         var best: (found: Found<N>, rank: Double)?
         var stack: [(N, N?)] = [(window, nil)]
         var visited = 0
@@ -46,7 +47,7 @@ enum ShowFinder {
             visited += 1
             let role = node.string(kAXRoleAttribute) ?? ""
             let isControl = controls.contains(role)
-            if let how = match(node, role: role, want: want, wantRole: step.role, wantID: wantID, was: was, isControl: isControl) {
+            if let how = match(node, role: role, want: want, wantRole: step.role, wantID: wantID, was: wasRect, isControl: isControl) {
                 // The text inside a control stands for it, unless the "control" is a whole row of a table.
                 var target = node, targetIsControl = isControl
                 if !isControl, let owner, let frame = owner.frame, let inner = node.frame,
@@ -55,6 +56,11 @@ enum ShowFinder {
                     targetIsControl = true
                 }
                 let frame = target.frame.flatMap { $0.width >= 2 && $0.height >= 2 ? $0 : nil }
+                // A spot is never the page around it: a click once recorded as the page's root must find nothing.
+                if how == .place, let frame, let visibleArea, frame.width * frame.height > visibleArea.width * visibleArea.height * 0.4 {
+                    stack.append(contentsOf: node.children.reversed().map { ($0, isControl ? node : owner) })
+                    continue
+                }
                 let visible = frame.map { frame in visibleArea.map { $0.intersects(frame) } ?? true } ?? false
                 var rank = Double(how.rawValue) * 10 + (visible ? 5 : 0) + (targetIsControl ? 2 : 0) + (frame == nil ? -1 : 0)
                 if let was, let frame { rank -= min(3, hypot(frame.midX - was.x, frame.midY - was.y) / 400) }
@@ -69,8 +75,19 @@ enum ShowFinder {
         return best?.found
     }
 
+    /// Ids that name the page, not a control: a React or Vue mount, Next's root, the document's main. A step never
+    /// goes by one, so a click once recorded as the page's root can't ring the whole page.
+    static let rootIDs: Set<String> = ["app", "root", "__next", "__nuxt", "main", "body", "content", "page", "wrapper",
+                                       "container", "layout", "application", "react-root", "root-container", "site"]
+
+    /// A page's own id for a control that will be the same next time, and is a control's: see `rootIDs`.
+    static func isControlID(_ id: String?) -> Bool {
+        guard let id, NoteAnchor.isSteadyID(id) else { return false }
+        return !rootIDs.contains(id.lowercased())
+    }
+
     private static func match<N: PageNode>(_ node: N, role: String, want: String?, wantRole: String?, wantID: String?,
-                                           was: CGPoint?, isControl: Bool) -> How? {
+                                           was: CGRect?, isControl: Bool) -> How? {
         if let wantID, node.string("AXDOMIdentifier") == wantID { return .id }
         if let want, let have = NoteAnchor.norm(name(node, role: role)) {
             if have == want { return role == wantRole ? .kindAndName : .name }
@@ -83,8 +100,12 @@ enum ShowFinder {
                 return .partOfName
             }
         }
-        // A control without a name is found by where it was, and only then.
-        if want == nil, isControl, let was, let frame = node.frame, frame.contains(was) { return .place }
+        // A control without a name is found by where it was, and only then: the one at that spot of about that size,
+        // so a card built from plain groups is the card again, not a group around it or inside it.
+        if want == nil, isControl || role == wantRole, let was, let frame = node.frame, frame.contains(CGPoint(x: was.midX, y: was.midY)) {
+            let area = frame.width * frame.height, wasArea = was.width * was.height
+            if area >= wasArea / 4, area <= wasArea * 4 { return .place }
+        }
         return nil
     }
 
@@ -136,19 +157,56 @@ enum ShowFinder {
         AXUIElementSetMessagingTimeout(system, 0.3)
         var hit: AXUIElement?
         guard AXUIElementCopyElementAtPosition(system, Float(point.x), Float(primaryMaxY - point.y), &hit) == .success,
-              var element = hit else { return nil }
-        for _ in 0..<5 {
-            let role = AX.string(element, kAXRoleAttribute) ?? ""
-            if controls.contains(role) { break }
-            guard let parent = AX.element(element, kAXParentAttribute),
-                  ![kAXWindowRole, "AXWebArea", kAXApplicationRole].contains(AX.string(parent, kAXRoleAttribute) ?? "") else { break }
+              let hit else { return nil }
+        // The climb from what was clicked up to the page (or window) around it, where it ends.
+        var chain = [AXPageNode(element: hit)]
+        var around: CGRect?
+        var rootChild = false
+        var element = hit
+        for _ in 0..<12 {
+            guard let parent = AX.element(element, kAXParentAttribute) else { break }
+            let role = AX.string(parent, kAXRoleAttribute) ?? ""
+            if role == kAXApplicationRole { break }
+            if role == kAXWindowRole || role == "AXWebArea" {
+                around = AXPageNode(element: parent).frame
+                rootChild = true
+                break
+            }
+            chain.append(AXPageNode(element: parent))
             element = parent
         }
-        let node = AXPageNode(element: element)
-        let role = node.string(kAXRoleAttribute) ?? "AXUnknown"
-        guard let frame = ScreenHitTester.axFrame(of: element, primaryMaxY: primaryMaxY) else { return nil }
-        return Control(role: role, name: name(node, role: role), domID: node.string("AXDOMIdentifier").flatMap { $0.isEmpty ? nil : $0 },
-                       frame: frame)
+        guard let picked = pick(chain, around: around, rootChild: rootChild),
+              let frame = ScreenHitTester.axFrame(of: picked.node.element, primaryMaxY: primaryMaxY) else { return nil }
+        let id = picked.node.string("AXDOMIdentifier").flatMap { $0.isEmpty ? nil : $0 }
+        return Control(role: picked.node.string(kAXRoleAttribute) ?? "AXUnknown", name: picked.label, domID: isControlID(id) ? id : nil, frame: frame)
+    }
+
+    /// Which element on the climb from what was clicked stands for the control, and what to call it: the first with a
+    /// control's role; else, for something built from plain groups (a card), the nearest named thing around the click
+    /// that is still small next to the page, such as the clicked text itself; else what was clicked, found again by
+    /// where it was. Never the page's root or anything that fills most of the page: a click on a card is the card,
+    /// not the page around it, and a click on the page's background is no control at all. `around` is the page's (or
+    /// window's) frame; `rootChild` says the chain's last element sits right under it.
+    static func pick<N: PageNode>(_ chain: [N], around: CGRect?, rootChild: Bool) -> (node: N, label: String?)? {
+        guard let hit = chain.first else { return nil }
+        let pageArea = around.map { $0.width * $0.height }
+        let hitArea = hit.frame.map { $0.width * $0.height } ?? 0
+        func fillsThePage(_ n: N) -> Bool {
+            guard let f = n.frame, let pageArea else { return false }
+            return f.width * f.height > pageArea * 0.4
+        }
+        guard !fillsThePage(hit) else { return nil }
+        for node in chain {
+            if fillsThePage(node) { break }
+            let role = node.string(kAXRoleAttribute) ?? ""
+            if controls.contains(role) { return (node, name(node, role: role)) }
+        }
+        for (i, node) in chain.enumerated() {
+            if fillsThePage(node) || (rootChild && chain.count > 1 && i == chain.count - 1) { break }
+            if let f = node.frame, f.width * f.height > max(hitArea * 25, 20_000) { break }
+            if let label = name(node, role: node.string(kAXRoleAttribute) ?? "") { return (node, label) }
+        }
+        return (hit, nil)
     }
 
     /// The window a step is looked for in: the focused window of the app in front, or of `fallback` (the app the person
@@ -173,9 +231,23 @@ enum ShowFinder {
         // A browser's page: what shows is the page's own area, not the window with its toolbars.
         let page = PageWalk.page(among: PageWalk.webAreas(under: root, limit: 800).areas)
         let visible = page?.frame.flatMap { area in frame.map { $0.intersection(area) } ?? area } ?? frame
-        guard var found = find(step, in: root, visibleArea: visible, windowFrame: frame) else { return nil }
-        found.area = visible
-        return found
+        let inBrowser = ContextWatcher.browserBundles.contains(app.bundleIdentifier ?? "")
+        for scope in scopes(for: step, window: root, page: page, inBrowser: inBrowser) {
+            guard var found = find(step, in: scope, visibleArea: visible, windowFrame: frame) else { continue }
+            found.area = visible
+            return found
+        }
+        return nil
+    }
+
+    /// Where a step is looked for, in order. One recorded on a web page is on the page: the browser's own tab strip and
+    /// toolbar are never it (a "Search tabs" button is not the page's "Search"), and a page still loading has nothing
+    /// to find yet. One named for the screen now is looked for on the page first, then in the rest of the window. In
+    /// any other app, the window.
+    static func scopes<N: PageNode>(for step: ShowStep, window: N, page: N?, inBrowser: Bool) -> [N] {
+        guard inBrowser else { return [window] }
+        if step.url != nil { return page.map { [$0] } ?? [] }
+        return [page, window].compactMap { $0 }
     }
 
     /// Whether the window in front shows the page (or window) a step was recorded on: its address without the part after
