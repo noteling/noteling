@@ -29,10 +29,11 @@ import QuartzCore
     /// Morning Files opened, not already open: the app looks for a newer copy of the team's tools.
     var onOpen: (() -> Void)?
 
-    /// Only the little folder is shown at launch. Opening a file is always an explicit action.
+    /// Nothing opens at launch: the little folder sits on the screen only when `showLauncher` asks for it, and opening
+    /// a file is always an explicit action.
     init(store: MorningStore, hideFromScreenShare: Bool, calendarSources: CalendarStore? = nil,
          calendarRunner: CalendarCollectionRunner? = nil, cardGeneration: CardGenerationService? = nil,
-         attention: AttentionLedger? = nil, jobs: JobsSetup = JobsSetup(), showLauncher: Bool = true,
+         attention: AttentionLedger? = nil, jobs: JobsSetup = JobsSetup(), showLauncher: Bool = false,
          folderJobs: FolderJobsPanel? = nil) {
         self.store = store
         launcherShown = showLauncher
@@ -110,8 +111,8 @@ import QuartzCore
         openContents(nil)
     }
 
-    /// Whether the little Morning folder sits on the screen. Hidden, Morning Files still opens from the menu bar.
-    private(set) var launcherShown = true
+    /// Whether the little Morning folder sits on the screen. Off, Morning Files still opens from the menu bar.
+    private(set) var launcherShown = false
     /// The person hid or showed the folder: the app remembers it.
     var onLauncherShownChanged: ((Bool) -> Void)?
 

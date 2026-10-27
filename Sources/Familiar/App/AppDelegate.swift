@@ -245,10 +245,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         morningPanel = MorningPanelController(store: morning, hideFromScreenShare: config.hideFromScreenShare,
                                              calendarSources: calendarSources, calendarRunner: calendarReader, cardGeneration: cardGeneration,
                                              attention: attention, jobs: jobsSetup,
-                                             showLauncher: config.showMorningFolder, folderJobs: folderJobs?.panel)
+                                             showLauncher: config.morningFolderOnScreen, folderJobs: folderJobs?.panel)
         morningPanel.onLauncherShownChanged = { [weak self] shown in
             guard let self else { return }
-            self.config.showMorningFolder = shown
+            self.config.morningFolderOnScreen = shown
             self.config.save()
         }
         morningPanel.onDiscussCard = { [weak self] card in
@@ -789,7 +789,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.control.preciseClicks = self.config.backgroundDirectClicks
             self.control.asksFirst = self.config.backgroundAsksFirst
             self.wand.hideFromScreenShare = self.config.hideFromScreenShare
-            self.morningPanel.setLauncherShown(self.config.showMorningFolder, notify: false)
+            self.morningPanel.setLauncherShown(self.config.morningFolderOnScreen, notify: false)
             if self.config.notesShortcut { self.notesShortcut.start() } else { self.notesShortcut.stop() }
             self.morningTasks.wake()
             self.cardGeneration?.start()

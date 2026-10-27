@@ -21,7 +21,7 @@ struct Config: Codable {
     var screenshotReuseSeconds: Double = 0   // >0: reuse the last screenshot for follow-ups on the same screen within this window
     var hideFromScreenShare: Bool = false    // true = bubble invisible in screenshots, screen shares and recordings
     var notesShortcut: Bool = true           // press Option twice to show or hide the notes on the screen in front
-    var showMorningFolder: Bool = true       // the little Morning folder on the screen; hidden, Morning Files opens from the menu bar
+    var morningFolderOnScreen: Bool = false  // the little Morning folder on the screen; off, Morning Files and Jobs open from the menu bar. A new key, because `load` rewrites every key on every launch, so every install had the old `showMorningFolder` on disk as true and a changed default would never have reached it; the old key is ignored
     var toolsDir: String = ""                // empty = ~/.noteling/tools
     var toolsRepo: String = ""               // the team's tools repository on GitHub; empty = not linked (its token is kept with the secrets)
     var toolsRepoBranch: String = "main"     // the branch of it Noteling keeps a copy of
@@ -134,7 +134,7 @@ struct Config: Codable {
         screenshotReuseSeconds = try c.decodeIfPresent(Double.self, forKey: .screenshotReuseSeconds) ?? d.screenshotReuseSeconds
         hideFromScreenShare = try c.decodeIfPresent(Bool.self, forKey: .hideFromScreenShare) ?? d.hideFromScreenShare
         notesShortcut = try c.decodeIfPresent(Bool.self, forKey: .notesShortcut) ?? d.notesShortcut
-        showMorningFolder = try c.decodeIfPresent(Bool.self, forKey: .showMorningFolder) ?? d.showMorningFolder
+        morningFolderOnScreen = try c.decodeIfPresent(Bool.self, forKey: .morningFolderOnScreen) ?? d.morningFolderOnScreen
         toolsDir = try c.decodeIfPresent(String.self, forKey: .toolsDir) ?? d.toolsDir
         toolsRepo = try c.decodeIfPresent(String.self, forKey: .toolsRepo) ?? d.toolsRepo
         toolsRepoBranch = try c.decodeIfPresent(String.self, forKey: .toolsRepoBranch) ?? d.toolsRepoBranch

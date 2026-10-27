@@ -195,7 +195,8 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    Headless: `--record-synthetic <dir>` (a fake recording from the current screen) and
    `--summarize-recording <dir> ["purpose"] [--tools-root <dir>] [--keep] [--claude-cli]` (prints the draft JSON; keeps into a temp folder by default).
 
-10. **Morning Files**: a small folder in the upper-left opens categorized folders and a spread of files. Choose any file
+10. **Morning Files**: opened from the menu bar's pencil icon or from chat (a small folder in the upper-left opens it
+   too, when Settings puts one on the screen), it shows categorized folders and a spread of files. Choose any file
    to see its three parts: what it is, what it means for you, and one to three options, best first (hover an option for its
    exact instruction). **Show original** shows what Noteling read. **Ignore** files it away, **I'll do it**
    keeps it yours, and handing it to Noteling saves the action before the file flies to the background task screen.
@@ -654,6 +655,7 @@ and `CardFilesView.swift` for its Files section) and `Features/FolderJobs/Folder
 | screenshotMode | auto | `auto`: attach a screenshot when the question sounds screen-related, otherwise the model may call `look_at_screen`; `always`; `never` |
 | screenshotReuseSeconds | 0 | if > 0, quick follow-ups on the same screen reuse the last screenshot within this window |
 | hideFromScreenShare | false | true makes the bubble invisible in screenshots, screen shares and recordings |
+| morningFolderOnScreen | false | the little Morning folder on the screen (Settings → Show the Morning folder on the screen); off, Morning Files and Jobs open from the menu bar's pencil icon and from chat. A new key: the old `showMorningFolder` was rewritten as true on every launch, so it is ignored |
 | toolsDir | "" | override tool packs folder |
 | docsStuffLimitChars | 24000 | how much doc text to paste before switching to read_file |
 | uvPath | "" | override the uv binary |
