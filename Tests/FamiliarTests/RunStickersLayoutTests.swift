@@ -3,8 +3,8 @@ import Foundation
 import Testing
 @testable import Familiar
 
-/// Where the stickers' panel goes beside the orb, and the small words on a sticker. Pure frames and words; no panel
-/// is made.
+/// Where the stickers' panel goes beside the orb, when it is on the screen at all, and the small words on a sticker.
+/// Pure frames and words; no panel is made.
 @Suite struct RunStickersLayoutTests {
     private let visible = NSRect(x: 0, y: 0, width: 1440, height: 875)
     private let width = RunStickersPanel.width
@@ -39,6 +39,17 @@ import Testing
         let wide = NSRect(x: 100, y: 0, width: 400, height: 875)   // a screen narrower than the orb and its panel
         let squeezed = RunStickersPanel.frame(contentHeight: 100, orb: NSRect(x: 110, y: 24, width: 380, height: 84), visible: wide)
         #expect(squeezed.minX == wide.maxX - width)
+    }
+
+    /// Beside the orb only while the bubble is collapsed and fully there, no crane is flying, and a job has something
+    /// to show.
+    @Test func theStickersShowOnlyBesideACollapsedBubbleThatIsThere() {
+        #expect(RunStickersPanel.shows(bubbleVisible: true, alpha: 1, expanded: false, flying: false, count: 1))
+        #expect(!RunStickersPanel.shows(bubbleVisible: false, alpha: 1, expanded: false, flying: false, count: 1))   // hidden bubble
+        #expect(!RunStickersPanel.shows(bubbleVisible: true, alpha: 0.4, expanded: false, flying: false, count: 1))  // flying off to the menu bar
+        #expect(!RunStickersPanel.shows(bubbleVisible: true, alpha: 1, expanded: true, flying: false, count: 1))     // the pad is open
+        #expect(!RunStickersPanel.shows(bubbleVisible: true, alpha: 1, expanded: false, flying: true, count: 1))     // the crane is out
+        #expect(!RunStickersPanel.shows(bubbleVisible: true, alpha: 1, expanded: false, flying: false, count: 0))    // nothing to show
     }
 
     @Test func aStickerSaysWhoSharedItAndWhen() {

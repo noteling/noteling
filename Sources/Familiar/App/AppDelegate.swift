@@ -632,10 +632,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 ))
             }
             self.panel.orderFrontRegardless()
+            self.placeRunStickers()
             Log.info("origami: returned home")
         }
         if started {
             panel.orderOut(nil)
+            placeRunStickers()
             Log.info("origami: folding for a flight")
         }
     }
@@ -689,6 +691,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }, completionHandler: { [weak self] in
             guard let self else { return }
             self.panel.orderOut(nil)
+            self.stickersPanel?.orderOut(nil)
             self.panel.alphaValue = 1
             self.panel.setFrame(start, display: false)
             self.hideHint.show(under: target) { [weak self] in self?.showBubble() }
@@ -946,7 +949,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                          more: { [weak self] in self?.morningPanel.showJobs() },
                                          putAway: { [weak model] id in model?.putAway(id) })
         model.$stickers
-            .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.placeRunStickers() }
             .store(in: &cancellables)
@@ -965,7 +967,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Beside the orb while the bubble is collapsed and on the screen and a job has something to show; away otherwise.
     private func placeRunStickers() {
         guard let stickersPanel, let runStickers else { return }
-        let shown = panel.isVisible && panel.alphaValue == 1 && !shell.expanded && !origami.isFlying && !runStickers.stickers.isEmpty
+        let shown = RunStickersPanel.shows(bubbleVisible: panel.isVisible, alpha: panel.alphaValue, expanded: shell.expanded,
+                                           flying: origami.isFlying, count: runStickers.stickers.count)
         guard shown else { stickersPanel.orderOut(nil); return }
         stickersPanel.place(besideOrb: panel.frame, on: panel.screen)
         stickersPanel.orderFrontRegardless()

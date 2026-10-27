@@ -195,7 +195,7 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    Headless: `--record-synthetic <dir>` (a fake recording from the current screen) and
    `--summarize-recording <dir> ["purpose"] [--tools-root <dir>] [--keep] [--claude-cli]` (prints the draft JSON; keeps into a temp folder by default).
 
-10. **Morning Files**: opened from the menu bar's pencil icon or from chat (a small folder in the upper-left opens it
+10. **Morning Files**: opened from the menu bar's pencil icon, or at its Jobs page from chat's Open Jobs tab (a small folder in the upper-left opens it
    too, when Settings puts one on the screen), it shows categorized folders and a spread of files. Choose any file
    to see its three parts: what it is, what it means for you, and one to three options, best first (hover an option for its
    exact instruction). **Show original** shows what Noteling read. **Ignore** files it away, **I'll do it**

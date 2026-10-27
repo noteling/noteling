@@ -324,7 +324,7 @@ final class FolderJobsFeature {
         buttons.importPaths = importPaths
         runner.cards = FolderJobCards(root: inbox)
         runner.onNews = { [weak notifier] job in
-            notifier?.post(job: job.id, title: job.name, body: job.state.said ?? "Its preview has something new.")
+            notifier?.post(job: job.id, title: job.name, body: job.state.said ?? FolderJobWords.somethingNew)
         }
         let conversation = FolderJobConversation(store: store, runner: runner)
         conversation.notificationLine = { [weak notifier] in await notifier?.line() ?? "on" }

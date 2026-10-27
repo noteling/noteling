@@ -4,8 +4,8 @@ import Testing
 @testable import Familiar
 
 /// A job's latest finding is a sticky note beside the bubble: one per job whose latest output has a preview, newest
-/// first, written as from whoever shared the job. Putting one away remembers what it was about, so it comes back only
-/// when the job finds something else, even after a relaunch.
+/// finding first, written as from whoever shared the job. Putting one away remembers what it was about, so it comes
+/// back only when the job finds something else, even after a relaunch.
 @Suite @MainActor
 struct RunStickersTests {
     private let at = Date(timeIntervalSince1970: 1_790_000_000)
@@ -39,7 +39,7 @@ struct RunStickersTests {
         #expect(sticker.said == "2 of 8 prices wrong" && sticker.at == at && sticker.digest == "d1")
 
         let own = try #require(RunStickers.sticker(for: job("Pages up", said: nil), at: at))
-        #expect(own.byline == nil && own.said == "Its preview has something new.")   // the notification's words
+        #expect(own.byline == nil && own.said == FolderJobWords.somethingNew)   // the notification's words
 
         #expect(RunStickers.sticker(for: job("Quiet", preview: nil), at: at) == nil)
     }
@@ -56,6 +56,22 @@ struct RunStickersTests {
         let model = RunStickers(file: nil)
         model.update([job("Older", ran: -600), job("Newest", ran: 60), job("Beta"), job("Alpha"), job("Quiet", preview: nil)], at: at)
         #expect(model.stickers.map(\.jobName) == ["Newest", "Alpha", "Beta", "Older"])
+    }
+
+    /// A job that keeps finding the same thing keeps its sticker's date, so a five-minute job's old finding doesn't
+    /// push an hourly job's new one away from the bubble, and the byline says when it was found.
+    @Test func aFindingKeepsTheDateItWasFirstSeen() {
+        let model = RunStickers(file: nil)
+        model.update([job("Every 5 min", ran: 60), job("Hourly", preview: "h1", ran: 0)], at: at)
+        #expect(model.stickers.map(\.jobName) == ["Every 5 min", "Hourly"])
+
+        model.update([job("Every 5 min", ran: 600), job("Hourly", preview: "h2", ran: 300)], at: at.addingTimeInterval(600))
+        #expect(model.stickers.map(\.jobName) == ["Hourly", "Every 5 min"])
+        #expect(model.stickers.map(\.at) == [at.addingTimeInterval(300), at.addingTimeInterval(60)])
+
+        model.update([job("Every 5 min", preview: "d2", ran: 900), job("Hourly", preview: "h2", ran: 300)], at: at.addingTimeInterval(900))
+        #expect(model.stickers.map(\.jobName) == ["Every 5 min", "Hourly"])
+        #expect(model.stickers.first?.at == at.addingTimeInterval(900))
     }
 
     @Test func puttingOneAwayHidesItUntilTheJobFindsSomethingElse() {
@@ -81,12 +97,15 @@ struct RunStickersTests {
         let file = folder().appendingPathComponent("job-results/stickers.json")
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent().deletingLastPathComponent()) }
         let jobs = [job("GM", by: ["Yang"]), job("Pages up")]
+        let gm = job("GM").id.uuidString
 
         let first = RunStickers(file: file)
         first.update(jobs, at: at)
         first.putAway(job("GM").id)
-        let written = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: String]
-        #expect(written == [job("GM").id.uuidString: "d1"])
+        let written = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        #expect(written["away"] as? [String: String] == [gm: "d1"])
+        let found = try #require(written["found"] as? [String: [String: Any]])
+        #expect(found[gm]?["digest"] as? String == "d1" && found.count == 2)
 
         let again = RunStickers(file: file)
         again.update(jobs, at: at)
@@ -96,11 +115,43 @@ struct RunStickersTests {
 
         // A put-away for a job that is gone is forgotten; a missing file is nothing put away.
         again.update([job("Pages up")], at: at)
-        let left = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: String]
-        #expect(left == [:])
+        let left = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        #expect(left["away"] as? [String: String] == [:])
         let fresh = RunStickers(file: file.deletingLastPathComponent().appendingPathComponent("none.json"))
         fresh.update(jobs, at: at)
         #expect(fresh.stickers.count == 2)
+    }
+
+    @Test func anUnreadableFileIsNothingPutAway() throws {
+        let home = folder()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let jobs = [job("GM"), job("Pages up")]
+        for bytes in ["not json", "[1]", "{\"away\": 3, \"found\": [\"x\"]}"] {
+            let file = home.appendingPathComponent("stickers-\(bytes.count).json")
+            try Data(bytes.utf8).write(to: file)
+            let model = RunStickers(file: file)
+            model.update(jobs, at: at)
+            #expect(model.stickers.count == 2)
+        }
+    }
+
+    @Test func theFileIsWrittenOnlyWhenSomethingChanged() throws {
+        let file = folder().appendingPathComponent("stickers.json")
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let jobs = [job("GM"), job("Pages up")]
+        let model = RunStickers(file: file)
+        model.update(jobs, at: at)
+        let after = try String(contentsOf: file, encoding: .utf8)   // the findings' first sight is kept
+
+        try "stale".write(to: file, atomically: true, encoding: .utf8)
+        model.update(jobs, at: at.addingTimeInterval(30))
+        model.update(jobs, at: at.addingTimeInterval(60))
+        let untouched = try String(contentsOf: file, encoding: .utf8)
+        #expect(untouched == "stale")   // the same jobs again write nothing
+
+        model.putAway(job("GM").id)
+        let changed = try String(contentsOf: file, encoding: .utf8)
+        #expect(changed != "stale" && changed != after)
     }
 
     @Test func threeSitBesideTheBubbleAndTheRestAreMore() {
@@ -114,7 +165,7 @@ struct RunStickersTests {
         #expect(model.shown.count == 2 && model.more == 0)
     }
 
-    @Test func theSameJobsTwicePublishOnce() {
+    @Test func theSameJobsTwicePublishOnceAndALateClickChangesNothing() {
         let model = RunStickers(file: nil)
         var published = 0
         let watching = model.objectWillChange.sink { published += 1 }
@@ -125,6 +176,9 @@ struct RunStickersTests {
         model.update(jobs, at: at)
         model.update(jobs, at: at.addingTimeInterval(30))
         #expect(published == 1)
+
+        model.putAway(UUID())   // a sticker that already left
+        #expect(published == 1 && model.stickers.count == 2)
 
         model.update([job("GM")], at: at)
         #expect(published == 2)

@@ -612,19 +612,25 @@ struct InkLine: Shape {
     }
 }
 
-/// A suggestion as a small paper tab stuck to the note's bottom edge: its top is tucked under the sheet.
+/// A suggestion as a small paper tab stuck to the note's bottom edge: its top is tucked under the sheet. Hanging from
+/// the top edge instead, its bottom is tucked under, for a tab that peeks out above a sticker.
 struct PaperTabStyle: ButtonStyle {
+    var hangsFromTop = false
     @Environment(\.isEnabled) private var enabled
+    init(hangsFromTop: Bool = false) { self.hangsFromTop = hangsFromTop }
     func makeBody(configuration: Configuration) -> some View {
+        let shape = hangsFromTop
+            ? UnevenRoundedRectangle(topLeadingRadius: 6, topTrailingRadius: 6)
+            : UnevenRoundedRectangle(bottomLeadingRadius: 6, bottomTrailingRadius: 6)
         configuration.label
             .font(.system(size: 12.5, weight: .medium))
             .foregroundStyle(Pad.ink)
             .lineLimit(1)
-            .padding(.horizontal, 10).padding(.top, 13).padding(.bottom, 7)
+            .padding(.horizontal, 10).padding(.top, hangsFromTop ? 7 : 13).padding(.bottom, hangsFromTop ? 13 : 7)
             .background(
-                UnevenRoundedRectangle(bottomLeadingRadius: 6, bottomTrailingRadius: 6)
+                shape
                     .fill(configuration.isPressed ? Pad.paperBottom : Pad.tabPaper)
-                    .overlay(UnevenRoundedRectangle(bottomLeadingRadius: 6, bottomTrailingRadius: 6).strokeBorder(Pad.tabEdge.opacity(0.9), lineWidth: 0.8))
+                    .overlay(shape.strokeBorder(Pad.tabEdge.opacity(0.9), lineWidth: 0.8))
                     .shadow(color: .black.opacity(0.22), radius: 2.5, y: 2)
             )
             .opacity(enabled ? 1 : 0.55)

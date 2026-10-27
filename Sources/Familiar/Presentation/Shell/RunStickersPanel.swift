@@ -15,11 +15,9 @@ struct RunStickersView: View {
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
             if model.more > 0 {
-                // The tab style hangs under a sheet; turned round, it peeks out above the top sticker, its tucked
-                // part under the paper. The words turn back so they read.
-                Button(action: more) { Text(Self.moreWords(model.more)).rotationEffect(.degrees(180)) }
-                    .buttonStyle(PaperTabStyle())
-                    .rotationEffect(.degrees(180))
+                // A tab hanging from the top edge peeks out above the top sticker, its tucked part under the paper.
+                Button(action: more) { Text(Self.moreWords(model.more)) }
+                    .buttonStyle(PaperTabStyle(hangsFromTop: true))
                     .padding(.trailing, 14).padding(.bottom, -13)
                     .zIndex(-1)
                     .help("Open Jobs")
@@ -103,19 +101,18 @@ struct RunStickerView: View {
     nonisolated static func tilt(_ index: Int) -> Double { tilts[((index % tilts.count) + tilts.count) % tilts.count] }
 }
 
-/// Takes the first click even though Noteling isn't the active app, so one click on a sticker acts.
-final class RunStickersHost: NSHostingView<RunStickersView> {
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-}
-
 /// The panel that holds them, beside the orb; the app places it and shows or hides it.
 final class RunStickersPanel: NSPanel {
     nonisolated static let width: CGFloat = 216
-    private let host: RunStickersHost
+    private let host: FirstClickHost<RunStickersView>
+    /// Where the orb was when the panel was last placed, for the shrink that waits for a leaving sticker.
+    private var orb = NSRect.zero
+    private weak var screenHint: NSScreen?
+    private var shrink: DispatchWorkItem?
 
     init(model: RunStickers, hideFromScreenShare: Bool, open: @escaping (UUID) -> Void, more: @escaping () -> Void,
          putAway: @escaping (UUID) -> Void) {
-        host = RunStickersHost(rootView: RunStickersView(model: model, open: open, more: more, putAway: putAway))
+        host = FirstClickHost(rootView: RunStickersView(model: model, open: open, more: more, putAway: putAway))
         super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 2 * RunStickersView.margin),
                    styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView],
                    backing: .buffered, defer: false)
@@ -135,6 +132,12 @@ final class RunStickersPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    /// Whether the stickers are on the screen: the bubble is collapsed and fully shown, no crane is flying, and a job
+    /// has something to show.
+    nonisolated static func shows(bubbleVisible: Bool, alpha: CGFloat, expanded: Bool, flying: Bool, count: Int) -> Bool {
+        bubbleVisible && alpha == 1 && !expanded && !flying && count > 0
+    }
+
     /// Where the panel goes beside the orb: to its left, bottom edges level, growing upward; to its right when the left
     /// would leave the screen; always within the visible frame.
     nonisolated static func frame(contentHeight: CGFloat, orb: NSRect, visible: NSRect) -> NSRect {
@@ -145,12 +148,27 @@ final class RunStickersPanel: NSPanel {
         return NSRect(x: x, y: y, width: width, height: contentHeight)
     }
 
-    /// Measures the stack, then puts the panel beside the orb on `screen` (or the orb's own, or the main one).
-    func place(besideOrb orb: NSRect, on screen: NSScreen?) {
+    /// Measures the stack, then puts the panel beside the orb on `screen` (or the orb's own, or the main one). A
+    /// panel that would shrink keeps its height for a moment first, so a sticker on its way out isn't cut off.
+    func place(besideOrb orb: NSRect, on screen: NSScreen?, settled: Bool = false) {
+        self.orb = orb
+        screenHint = screen
+        shrink?.cancel()
+        shrink = nil
         host.layoutSubtreeIfNeeded()
         let height = max(host.fittingSize.height, 2 * RunStickersView.margin)
         let visible = (screen ?? NSScreen.screens.first { $0.frame.intersects(orb) } ?? NSScreen.main)?.visibleFrame
             ?? NSRect(x: orb.minX - Self.width - 4, y: orb.minY, width: Self.width + 4 + orb.width, height: max(height, orb.height))
-        setFrame(Self.frame(contentHeight: height, orb: orb, visible: visible), display: true)
+        var target = Self.frame(contentHeight: height, orb: orb, visible: visible)
+        if !settled, isVisible, target.height < frame.height {
+            target = Self.frame(contentHeight: frame.height, orb: orb, visible: visible)
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.place(besideOrb: self.orb, on: self.screenHint, settled: true)
+            }
+            shrink = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
+        }
+        setFrame(target, display: true)
     }
 }

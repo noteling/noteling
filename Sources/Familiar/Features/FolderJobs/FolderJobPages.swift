@@ -5,6 +5,9 @@ import SwiftUI
 /// when it starts or ends, and how its last run went.
 @MainActor
 enum FolderJobWords {
+    /// What a job's notification and its sticker say when its run said nothing in words.
+    static let somethingNew = "Its preview has something new."
+
     /// "every 15 minutes", "every hour", "every 2 hours", "every day", or "when you run it".
     static func every(_ job: FolderJob) -> String {
         guard let minutes = job.everyMinutes else { return "when you run it" }
