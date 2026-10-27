@@ -21,6 +21,8 @@ struct AXSnapshot: Equatable {
     var windowCount: Int = 0
     var cropGrey: [UInt8]?             // 16x12 grey samples of the crop around the point
     var windowGrey: [UInt8]?           // 64x40 grey samples of the whole window: a press usually changes things elsewhere
+    var textDigest: Int?               // a hash of the window's visible text: a counter or a status line that changed
+                                       // far from the click is too small for the grey grids but not for this
 }
 
 enum ActionVerifier {
@@ -147,6 +149,7 @@ enum ActionVerifier {
         s.appFocusedElementID = AX.element(app, kAXFocusedUIElementAttribute).map(describe)
         s.windowTitle = AX.string(target.axWindow, kAXTitleAttribute)
         s.windowCount = elements(app, kAXWindowsAttribute).count
+        s.textDigest = textDigest(under: target.axWindow)
         let greys = await screenGreys(target: target, aroundCG: cropAroundCG)
         s.windowGrey = greys.window
         s.cropGrey = greys.crop
@@ -180,7 +183,36 @@ enum ActionVerifier {
         if a.appFocusedElementID != b.appFocusedElementID { out.append("focus moved to \(b.appFocusedElementID ?? "nothing")") }
         if a.windowTitle != b.windowTitle { out.append("window title is now \(quote(b.windowTitle))") }
         if a.windowCount != b.windowCount { out.append("windows \(a.windowCount) → \(b.windowCount)") }
+        if let x = a.textDigest, let y = b.textDigest, x != y { out.append("the window's text changed") }
         return out
+    }
+
+    /// The text roles whose values make up the digest; labels of controls are left out, they rarely change.
+    static let digestRoles: Set<String> = ["AXStaticText", "AXTextField", "AXTextArea", "AXHeading", "AXLink", "AXValueIndicator", "AXMenuItem"]
+
+    /// Pure. One hash over the texts in document order; nil when there is nothing to digest.
+    static func digest(_ texts: [String]) -> Int? {
+        guard !texts.isEmpty else { return nil }
+        var h = Hasher()
+        for t in texts { h.combine(t) }
+        return h.finalize()
+    }
+
+    /// Breadth-first over the window, at most `budget` nodes, collecting the values of text-bearing elements. A
+    /// bounded walk keeps a snapshot cheap in a deep web page, where the first few hundred nodes hold the visible text.
+    private static func textDigest(under root: AXUIElement, budget: Int = 300) -> Int? {
+        var queue: [AXUIElement] = [root]
+        var visited = 0
+        var texts: [String] = []
+        while !queue.isEmpty, visited < budget {
+            let el = queue.removeFirst()
+            visited += 1
+            if let role = AX.string(el, kAXRoleAttribute), digestRoles.contains(role), let v = valueString(el), !v.isEmpty {
+                texts.append(v)
+            }
+            queue.append(contentsOf: AX.children(el))
+        }
+        return digest(texts)
     }
 
     /// The crop around the point, or the whole window, moved. Nil when neither side has anything to compare.

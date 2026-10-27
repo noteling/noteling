@@ -33,7 +33,7 @@ struct Config: Codable {
     var allowControl: Bool = false           // let Noteling move the mouse and type when asked to do something
     var controlInBackground: Bool = true     // do things in the window you asked from, keeping your mouse and keyboard yours
     var backgroundVirtualDisplay: Bool = false // opt in to moving the task window onto a separate display while it runs
-    var backgroundPreciseClicks: Bool = false // experimental: click exact spots in a background window through a private macOS path
+    var backgroundPreciseClicks: Bool = true  // click exact spots in a background window through the SkyLight path (proven on Calculator and Chrome 2026-10-26)
     var backgroundAsksFirst: Bool = false    // stop for a yes before sending, submitting, deleting or paying, and before borrowing the mouse
     var backgroundHintsShown: Int = 0        // the "working behind you" callout shows on the first background jobs
     var env: [String: String] = [:]          // non-secret variables handed to every script (secrets go to the Keychain)

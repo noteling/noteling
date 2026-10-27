@@ -78,6 +78,9 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    ("type the sum formula for me") and it does it through Claude's computer toolset. By default it works **in the
    background**: it drives the window you were in when you asked through Accessibility and events sent to that app, so
    your mouse and keyboard stay yours and you can carry on elsewhere. A purple ghost cursor shows what it presses.
+   The display is held awake while a background job runs (`StayAwake`, the public prevent-idle-display-sleep
+   assertion): events posted to one process are no activity to macOS, so without it a long job would end with the
+   screen locking under it.
    Once desktop execution begins, the instruction moves from chat to a compact **background task screen** in the top-right.
    Expand it for a live window preview, approvals and the result; **Stop** or ⌃⌥Space ends the work. Collapsing or hiding
    the task screen keeps execution running, and completion respects that choice. Reopen it through the menu bar's
@@ -328,6 +331,7 @@ context to your configured Claude connection. Creating and editing Morning Files
 .build/release/Familiar --render-morning /tmp/morning      # native folder, files, people and queue with fictional local data
 .build/release/Familiar --render-pen /tmp/pen               # the pen overlay over a fake page: stickers and the note editor, as a PNG
 build/Noteling.app/Contents/MacOS/Noteling --ask "question" [url] [--shot] [--control] [--claude-cli]   # headless Claude call, real tool loop
+build/Noteling.app/Contents/MacOS/Noteling --background-click com.apple.calculator --label "7" [--title part] [--say word] [--trust]   # one SkyLight coordinate click in that app's window while another app stays in front; PASS/FAIL per promise; --say prints what the window then says, --trust skips the self-test
 ```
 First launch creates `~/.noteling/` (or `$NOTELING_HOME`) with `config.json`, `tools/` (example packs copied in) and `noteling.log`. If you used the app before it was renamed, an existing `~/.familiar` is moved there on first launch, and `$FAMILIAR_HOME` still works.
 Right-click the bubble → **Settings…** to choose the Claude connection, enter pack secrets, and set the hotkey, hold time and start-at-login.
@@ -668,7 +672,7 @@ and `CardFilesView.swift` for its Files section) and `Features/FolderJobs/Folder
 | hotkey | control+option+space | pen hotkey, e.g. `cmd+shift+k` |
 | allowControl | false | let Noteling move the mouse and type when asked |
 | controlInBackground | true | do things in the window you asked from, keeping your mouse and keyboard (the hand icon on the pad) |
-| backgroundPreciseClicks | false | experimental: click exact spots in a background window through a private macOS path (self-tested at first use) |
+| backgroundPreciseClicks | true | click exact spots in a background window through the SkyLight path; a record round trip is checked once per launch, each click is verified on the target |
 | backgroundVirtualDisplay | false | experimental: move task windows onto a temporary virtual monitor; return them on stop/completion |
 | env | {} | non-secret variables handed to every script |
 | bubbleX / bubbleY | | remembered bubble position |

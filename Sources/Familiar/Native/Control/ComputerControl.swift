@@ -102,6 +102,7 @@ final class ComputerController {
     private var taskActivation = BackgroundTaskActivation()
     private var virtualWorkspace: VirtualDisplayWorkspace?
     private var workspaceAwaitingInputReturn: VirtualDisplayWorkspace?
+    private var awake: StayAwake.Lease?                 // the display stays on while the background lane works
     private let actionApproval = BackgroundActionApproval()
     private var pendingNotice: String?                  // told to the model on its next action
     private var pendingGrantNotice: String?             // a recoverable hand-back, separate from a task failure
@@ -179,6 +180,8 @@ final class ComputerController {
         active = true
         stopped = false
         beganAt = Date()
+        // Posted events are no activity to macOS: without this the display idles, the screen locks and the job dies.
+        awake = StayAwake.shared.hold("Noteling is working in \(t.appName) in the background")
         var target = t
         userApp = NSWorkspace.shared.frontmostApplication
         target.sharedWithHuman = Self.humanInAnotherWindow(of: target)
@@ -333,6 +336,7 @@ final class ComputerController {
         actionApproval.cancel()
         let wasActive = active
         active = false
+        awake?.end(); awake = nil
         grantRevoked = false; pendingGrantNotice = nil
         if let t = ladder?.target, SkyLightClick.shared.recordOutstanding { SkyLightClick.shared.abortRecord(target: t) }
         finishWorkspaceAfterInputReturns()

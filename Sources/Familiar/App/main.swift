@@ -58,6 +58,15 @@ if CommandLine.arguments.contains("--record-synthetic") {
     MainActor.assumeIsolated { runFindStep() }
 } else if CommandLine.arguments.contains("--show-me") {
     MainActor.assumeIsolated { runShowMe() }
+} else if CommandLine.arguments.contains("--background-click") {
+    // The SkyLight self-test posts a click to a panel of our own and waits for its mouseDown, which only the app's
+    // event loop delivers; an accessory app doesn't come to the front by running it.
+    Task { @MainActor in
+        let code = await runBackgroundClick()
+        exit(code)
+    }
+    MainActor.assumeIsolated { NSApplication.shared.setActivationPolicy(.accessory) }
+    NSApp.run()
 } else if CommandLine.arguments.contains("--render-pen") {
     MainActor.assumeIsolated { runRenderPen() }
 } else if CommandLine.arguments.contains("--ask") {

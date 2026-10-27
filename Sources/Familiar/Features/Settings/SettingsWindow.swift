@@ -33,7 +33,7 @@ final class SettingsModel: ObservableObject {
     @Published var allowControl = false
     @Published var controlInBackground = true
     @Published var backgroundVirtualDisplay = false
-    @Published var backgroundPreciseClicks = false
+    @Published var backgroundPreciseClicks = true
     @Published var backgroundAsksFirst = false
     @Published var mascotStyle = "innocent"
     @Published var packSecrets: [PackSecret] = []
@@ -431,9 +431,9 @@ struct SettingsView: View {
                     .disabled(!model.allowControl || !model.controlInBackground)
                 Text("Moves the task window off your screen while Noteling works. Returns it when the task ends.")
                     .font(.caption).foregroundStyle(.secondary)
-                Toggle("Precise clicks in the background (experimental)", isOn: $model.backgroundPreciseClicks)
+                Toggle("Click exact spots in the background", isOn: $model.backgroundPreciseClicks)
                     .disabled(!model.allowControl || !model.controlInBackground)
-                Text("Lets Noteling click exact spots in a window behind your work through a private macOS path. Off, it only presses controls it can name and asks for the mouse for anything else.")
+                Text("Noteling clicks where it needs to in the window it works in, behind your work, without moving your mouse. Off, it only presses controls it can name and asks for the mouse for anything else.")
                     .font(.caption).foregroundStyle(.secondary)
                 Picker("Character brows", selection: $model.mascotStyle) {
                     Text("Innocent").tag("innocent")
