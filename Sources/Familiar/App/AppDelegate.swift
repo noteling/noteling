@@ -142,7 +142,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         control.maxLongEdge = config.maxImageLongEdge
         control.hideFromScreenShare = config.hideFromScreenShare
         control.preciseClicks = config.backgroundDirectClicks
-        control.virtualDisplayEnabled = config.backgroundVirtualDisplay
         control.asksFirst = config.backgroundAsksFirst
         control.onCaption = { [weak self] c in
             guard let self else { return }
@@ -553,13 +552,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         cardGeneration?.stop()
         calendarReader?.shutdown()
         morningTasks?.shutdown()
-        guard control.isBorrowingOffscreenInput else { return .terminateNow }
-        execution.cancel()
-        Task { @MainActor in
-            await control.endAfterInputReturns()
-            sender.reply(toApplicationShouldTerminate: true)
-        }
-        return .terminateLater
+        if control.active { control.stop(reason: "Noteling is quitting"); control.end() }   // withdraws an outstanding activation record
+        return .terminateNow
     }
 
     /// Quitting mid-recording leaves nothing behind: the unfinished recording and any draft still under review go.
@@ -781,7 +775,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.control.maxLongEdge = self.config.maxImageLongEdge
             self.control.hideFromScreenShare = self.config.hideFromScreenShare
             self.control.preciseClicks = self.config.backgroundDirectClicks
-            self.control.virtualDisplayEnabled = self.config.backgroundVirtualDisplay
             self.control.asksFirst = self.config.backgroundAsksFirst
             self.wand.hideFromScreenShare = self.config.hideFromScreenShare
             self.morningPanel.setLauncherShown(self.config.showMorningFolder, notify: false)

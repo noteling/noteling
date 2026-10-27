@@ -32,7 +32,6 @@ final class SettingsModel: ObservableObject {
     @Published var startAtLogin = false
     @Published var allowControl = false
     @Published var controlInBackground = true
-    @Published var backgroundVirtualDisplay = false
     @Published var backgroundDirectClicks = true
     @Published var backgroundAsksFirst = false
     @Published var mascotStyle = "innocent"
@@ -197,7 +196,6 @@ final class SettingsModel: ObservableObject {
         startAtLogin = SMAppService.mainApp.status == .enabled
         allowControl = config.allowControl
         controlInBackground = config.controlInBackground
-        backgroundVirtualDisplay = config.backgroundVirtualDisplay
         backgroundDirectClicks = config.backgroundDirectClicks
         backgroundAsksFirst = config.backgroundAsksFirst
         mascotStyle = config.mascotStyle
@@ -266,7 +264,6 @@ final class SettingsModel: ObservableObject {
         c.showMorningFolder = showMorningFolder
         c.allowControl = allowControl
         c.controlInBackground = controlInBackground
-        c.backgroundVirtualDisplay = backgroundVirtualDisplay
         c.backgroundDirectClicks = backgroundDirectClicks
         c.backgroundAsksFirst = backgroundAsksFirst
         c.mascotStyle = mascotStyle
@@ -426,10 +423,6 @@ struct SettingsView: View {
                 Toggle("Ask before sending, deleting or paying in the background", isOn: $model.backgroundAsksFirst)
                     .disabled(!model.allowControl || !model.controlInBackground)
                 Text("Off, Noteling finishes the job without stopping to ask, and says what it pressed. It still never types into password fields, quits apps or closes windows.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Toggle("Use a separate display for background tasks (experimental)", isOn: $model.backgroundVirtualDisplay)
-                    .disabled(!model.allowControl || !model.controlInBackground)
-                Text("Moves the task window off your screen while Noteling works. Returns it when the task ends.")
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Click exact spots in the background", isOn: $model.backgroundDirectClicks)
                     .disabled(!model.allowControl || !model.controlInBackground)

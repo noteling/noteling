@@ -30,9 +30,7 @@ import AppKit
     }
 
     static func screen(for frame: NSRect, fallback: NSScreen? = nil) -> NSScreen? {
-        let screens = NSScreen.screens.filter {
-            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value != VirtualDisplayWorkspace.activeDisplayID
-        }
+        let screens = NSScreen.screens
         // Greatest overlap chooses the monitor the person actually dragged onto.
         let overlaps = screens.map { screen -> (NSScreen, CGFloat) in
             let intersection = screen.visibleFrame.intersection(frame)

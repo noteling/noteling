@@ -15,19 +15,9 @@ let package = Package(
             dependencies: ["FamiliarContracts"],
             path: "Sources/FamiliarRuntime"
         ),
-        .target(
-            name: "FamiliarVirtualDisplayBridge",
-            path: "Sources/FamiliarVirtualDisplayBridge",
-            publicHeadersPath: "include",
-            cSettings: [.unsafeFlags(["-fobjc-arc"])],
-            linkerSettings: [
-                .linkedFramework("Foundation"),
-                .linkedFramework("CoreGraphics"),
-            ]
-        ),
         .executableTarget(
             name: "Familiar",
-            dependencies: ["FamiliarContracts", "FamiliarRuntime", "FamiliarVirtualDisplayBridge", "CSQLite"],
+            dependencies: ["FamiliarContracts", "FamiliarRuntime", "CSQLite"],
             path: "Sources/Familiar",
             linkerSettings: [
                 .linkedFramework("AppKit"),

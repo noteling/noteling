@@ -268,10 +268,7 @@ import QuartzCore
     /// The flight is a receipt: callers reach this only after the local save has succeeded.
     private func animateHandoff() {
         guard !hiddenForForegroundGrant, let destination = handoffDestination?() else { return }
-        let physicalScreens = NSScreen.screens.filter {
-            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value != VirtualDisplayWorkspace.activeDisplayID
-        }
-        guard physicalScreens.contains(where: { $0.frame.intersects(destination) }) else { return }
+        guard NSScreen.screens.contains(where: { $0.frame.intersects(destination) }) else { return }
         flight?.orderOut(nil)
         flight?.close()
         let start = NSRect(x: panel.frame.midX - 56, y: panel.frame.midY - 38, width: 112, height: 76)

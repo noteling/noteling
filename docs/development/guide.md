@@ -89,16 +89,15 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    answers stay in chat. One desktop task runs at a time. Chat waits for its current request to finish; Morning Files can
    hand off several actions to a saved queue, which runs them one at a time.
    Background `read_screen` and `look_at_screen` read only the selected target window and fail if no target is available.
-   When something needs the real mouse (a drag, a context menu, a ⌘ shortcut) it asks on the task screen first.
-   Without the separate display, this explicitly asks to use your screen, mouse and keyboard, and **Go ahead** begins
-   the desktop handoff with a shimmer border. Pause your own input during that step; typing (including ⌘Tab), clicking,
-   scrolling or moving the cursor takes control back.
+   When something needs the real mouse (a drag, a context menu, a ⌘ shortcut) it asks on the task screen first:
+   to use your screen, mouse and keyboard, and **Go ahead** begins the desktop handoff with a shimmer border. Pause
+   your own input during that step; typing (including ⌘Tab), clicking, scrolling or moving the cursor takes control back.
    The hand icon on the pad, next to the
    eye, turns background mode off; then it takes the mouse as before (the shimmer border, a caption per step, moving the
    mouse or pressing Esc stops it). **Smooth by default** (`backgroundAsksFirst` off, Settings → "Ask before sending,
    deleting or paying in the background"): the background lane finishes the job without stopping for a yes. Guarded
    presses and `send_message` go ahead (the draft and recipient are still checked) and the caption says what was pressed;
-   `ask_for_the_mouse` is granted on its own, at once on a separate task display, else once the person's hands have been
+   `ask_for_the_mouse` is granted on its own once the person's hands have been
    still for 1.5 s (`ComputerController.waitForPause`, up to 20 s, then it asks); the prompt's control and background
    rules swap their ask-first lines for "finish what they asked, never beyond it" (`Prompt.control(smooth:)`,
    `Prompt.background(smooth:)`). The person clicking in the target window or switching to its app no longer ends the
@@ -110,22 +109,12 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    in the background it presses them by id with `click_element`.
    Chat composers that send with Return can use `send_message`: the task screen shows the recipient, observed
    app/window/composer context and complete typed draft for one-action approval. Noteling rechecks the focused
-   composer and exact draft, then presses Return once. Input permission is separate and must still be active for
-   a separate-display send. Unreadable or changed drafts are not sent; uncertain delivery is inspected without
-   automatically retrying. The offscreen input runner still rejects raw Return; send approval is handled by this dedicated tool.
+   composer and exact draft, then presses Return once. Unreadable or changed drafts are not sent; uncertain delivery
+   is inspected without automatically retrying.
 
-   **Separate display (experimental, off by default):** Settings → "Use a separate display for background tasks"
-   lets Noteling move the selected task window onto a temporary virtual monitor when the first action begins.
-   The task card stays on your physical screen. If background input needs help, approving the mouse-and-keyboard
-   request keeps the task window on its separate display. Noteling borrows input for each short action and returns
-   it between steps, before the model thinks or inspects another screenshot. Typing or mouse input interrupts a
-   borrowed action. Stop, completion and quitting return borrowed windows. Opening the live preview returns the window and stops
-   the background task. Read-only questions never create a display or move a window.
-   This uses private macOS display APIs. Input borrowing is in `Sources/Familiar/Native/Control/Background/OffscreenInputBorrow.swift`;
-   see [its scope and verification status](../architecture/offscreen-input-borrow.md).
-   It keeps existing app logins and uses native Accessibility/process-event controls, with temporary input borrowing
-   when approved. It does not create a separate desktop session or guarantee every app's text input. Full-screen windows and mirrored-display
-   arrangements are not supported by this first version; setup failures stop before task input.
+   The separate-display experiment of September 27 (the task window moved onto a temporary virtual monitor, input
+   borrowed per action) was removed on October 27, 2026, once direct clicks in the background were proven; its record
+   is in the git history (`docs/architecture/virtual-display-experiment.md` and `offscreen-input-borrow.md`).
 
 8. **Watch me**: menu bar → **Watch Me** (or the eye on the pad). Do the task the way you normally do, then press ⌃⌥Space or
    **Stop Watching**. Noteling records clicks (with the real labels of what you clicked, via Accessibility), a crop around each
@@ -673,7 +662,6 @@ and `CardFilesView.swift` for its Files section) and `Features/FolderJobs/Folder
 | allowControl | false | let Noteling move the mouse and type when asked |
 | controlInBackground | true | do things in the window you asked from, keeping your mouse and keyboard (the hand icon on the pad) |
 | backgroundDirectClicks | true | click exact spots in a background window through the SkyLight path; a record round trip is checked once per launch, each click is verified on the target |
-| backgroundVirtualDisplay | false | experimental: move task windows onto a temporary virtual monitor; return them on stop/completion |
 | env | {} | non-secret variables handed to every script |
 | bubbleX / bubbleY | | remembered bubble position |
 | watcherEnabled / watcherIntervalSeconds | true / 2 | context polling |
