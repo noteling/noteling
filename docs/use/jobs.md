@@ -40,8 +40,9 @@ Click a job to open its page:
 
 While a job's latest result has something to show you, it leaves a sticky note beside Noteling's note on your screen:
 the job's name, what it found, who shared it, and when it first found it. Click the sticker to open the job's page;
-the small × that appears when you point at it puts it away until the job finds something else. Up to three stickers sit there, newest nearest the note,
-and **and 2 more** above them opens Jobs. They step aside while the chat is open, and come back with it.
+the small × that appears when you point at it puts it away until the job finds something else. Up to three stickers
+sit there, newest nearest the note, and **and 2 more** above them opens Jobs. They step aside while the chat is open,
+and come back with it.
 
 The job also keeps one card in the Morning folder, in a folder named after the job. The card shows the same tables and
 files, and **Open job**.

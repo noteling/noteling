@@ -30,7 +30,9 @@ struct RunStickersView: View {
             }
         }
         .padding(Self.margin)
-        .frame(width: RunStickersPanel.width, alignment: .bottomTrailing)
+        // Pinned to the bottom edge, so a panel held taller than the stack for a moment keeps the stickers beside the orb.
+        .frame(width: RunStickersPanel.width)
+        .frame(maxHeight: .infinity, alignment: .bottomTrailing)
         .animation(.spring(response: 0.4, dampingFraction: 0.7), value: model.stickers.map(\.id))
         .environment(\.colorScheme, .light)
     }

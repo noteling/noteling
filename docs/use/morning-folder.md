@@ -2,8 +2,8 @@
 
 The Morning folder is where things that need you wait: one card each, in folders. It isn't on the screen: open it
 whenever you like from the pencil icon in the menu bar (**Morning Files…**), or turn on **Settings → Show the Morning
-folder on the screen** to keep a small folder there. Chat's **Open Jobs** tab opens its Jobs page. Reading a card never
-decides anything for you.
+folder on the screen** to keep a small folder there. When chat turns on or runs a job for you, the **Open Jobs** tab
+under its reply opens the Jobs page. Reading a card never decides anything for you.
 
 ## Cards
 
