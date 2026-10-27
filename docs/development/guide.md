@@ -316,6 +316,7 @@ context to your configured Claude connection. Creating and editing Morning Files
 .build/release/Familiar --render-mascot /tmp/mascot [--style innocent|innocentV1|innocentV3|innocentV4|sharp]   # renders every mood, the quill cursor and the app-icon source as PNGs
 .build/release/Familiar --render-origami /tmp/origami [--style innocentV4]   # folding stages and crane wing poses as PNGs
 .build/release/Familiar --render-card /tmp/card [--states]   # the pad with a pick, a note sticker and answers, as PNGs
+.build/release/Familiar --render-stickers /tmp/stickers       # the run stickers beside the bubble: one, three and five jobs' findings, as PNGs
 .build/release/Familiar --render-background-task /tmp/tasks # task screen states, fabricated content, no model or desktop capture
 .build/release/Familiar --render-morning /tmp/morning      # native folder, files, people and queue with fictional local data
 .build/release/Familiar --render-pen /tmp/pen               # the pen overlay over a fake page: stickers and the note editor, as a PNG
