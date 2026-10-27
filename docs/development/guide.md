@@ -530,6 +530,12 @@ in [Keeping a team's tools](../team/README.md); here is how the app keeps it.
   `job-results/<own|team>/<path>/output/` in one step; one that fails keeps the last output and says why on the row.
 - **Showing them** (`FolderJobPages`): a job's page and its card show the output's `preview/` files as they are
   (csv/tsv as a table, txt as text, capped) and every output file with Open, Save as… and Show in Finder (`FileRow`).
+- **Stickers** (`RunStickers`, `RunStickersPanel`): while the latest output has a preview, the job's finding is a sticky
+  note beside the bubble, from whoever shared the job: its name, what `run()` said and the time. Up to three sit there,
+  newest nearest the orb; "and N more" opens Jobs; a click opens the job's page; the × puts one away until the preview's
+  digest changes (`job-results/stickers.json`). The app delegate places the panel beside the orb and hides it while the
+  pad is open, the bubble is away or a foreground task runs. The Morning folder icon is off the screen unless
+  `morningFolderOnScreen` is on.
 - **Cards and notifications** (`FolderJobCards`, `JobNotifier`): while the latest output has a preview, the job has one
   card, `cards/inbox/job-<own|team>-<path>/job.json`, whose one part is the preview's digest; a change of digest
   reopens a card the person resolved and posts one notification. Cards the job's script writes go to

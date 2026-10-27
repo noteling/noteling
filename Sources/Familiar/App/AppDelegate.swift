@@ -783,6 +783,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.panel.sharingType = self.config.hideFromScreenShare ? .none : .readOnly
             self.taskPanel.updateSharing(self.config.hideFromScreenShare)
             self.morningPanel.updateSharing(self.config.hideFromScreenShare)
+            self.stickersPanel?.sharingType = self.config.hideFromScreenShare ? .none : .readOnly
             self.watchDraftWindow.updateSharing(self.config.hideFromScreenShare)
             self.control.maxLongEdge = self.config.maxImageLongEdge
             self.control.hideFromScreenShare = self.config.hideFromScreenShare
