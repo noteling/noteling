@@ -141,7 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         runner.extraEnv = config.env
         control.maxLongEdge = config.maxImageLongEdge
         control.hideFromScreenShare = config.hideFromScreenShare
-        control.preciseClicks = config.backgroundPreciseClicks
+        control.preciseClicks = config.backgroundDirectClicks
         control.virtualDisplayEnabled = config.backgroundVirtualDisplay
         control.asksFirst = config.backgroundAsksFirst
         control.onCaption = { [weak self] c in
@@ -780,7 +780,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.watchDraftWindow.updateSharing(self.config.hideFromScreenShare)
             self.control.maxLongEdge = self.config.maxImageLongEdge
             self.control.hideFromScreenShare = self.config.hideFromScreenShare
-            self.control.preciseClicks = self.config.backgroundPreciseClicks
+            self.control.preciseClicks = self.config.backgroundDirectClicks
             self.control.virtualDisplayEnabled = self.config.backgroundVirtualDisplay
             self.control.asksFirst = self.config.backgroundAsksFirst
             self.wand.hideFromScreenShare = self.config.hideFromScreenShare

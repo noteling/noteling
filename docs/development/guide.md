@@ -672,7 +672,7 @@ and `CardFilesView.swift` for its Files section) and `Features/FolderJobs/Folder
 | hotkey | control+option+space | pen hotkey, e.g. `cmd+shift+k` |
 | allowControl | false | let Noteling move the mouse and type when asked |
 | controlInBackground | true | do things in the window you asked from, keeping your mouse and keyboard (the hand icon on the pad) |
-| backgroundPreciseClicks | true | click exact spots in a background window through the SkyLight path; a record round trip is checked once per launch, each click is verified on the target |
+| backgroundDirectClicks | true | click exact spots in a background window through the SkyLight path; a record round trip is checked once per launch, each click is verified on the target |
 | backgroundVirtualDisplay | false | experimental: move task windows onto a temporary virtual monitor; return them on stop/completion |
 | env | {} | non-secret variables handed to every script |
 | bubbleX / bubbleY | | remembered bubble position |

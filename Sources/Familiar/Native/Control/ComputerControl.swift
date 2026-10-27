@@ -48,7 +48,7 @@ final class ComputerController {
     var hudEnabled = true
     var ghostEnabled = true                  // the purple cursor overlay in the background lane (off headless)
     var hideFromScreenShare = false
-    var preciseClicks = false                // Config.backgroundPreciseClicks; the SkyLight rung still needs its self-test
+    var preciseClicks = false                // Config.backgroundDirectClicks; the SkyLight rung still needs its self-test
     /// Config.backgroundAsksFirst. Off (the app's default), the background lane finishes the job without stopping for a
     /// yes: guarded presses and sends go ahead and say so, and the mouse is borrowed as soon as the person pauses.
     /// On here so a controller built directly keeps the careful behaviour.

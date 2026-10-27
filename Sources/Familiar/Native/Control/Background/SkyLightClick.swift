@@ -3,7 +3,7 @@ import AppKit
 /// Coordinate clicks in a background window. A mouse event posted to a process is dropped unless AppKit believes
 /// the app is active, so each click is bracketed by a SkyLight "application activated" / "deactivated" event record
 /// that only the target sees: the human's frontmost app never changes. Private SkyLight SPI resolved with dlsym
-/// (this is the only file allowed to); behind Config.backgroundPreciseClicks and an in-process self-test.
+/// (this is the only file allowed to); behind Config.backgroundDirectClicks and an in-process self-test.
 @MainActor final class SkyLightClick {
     static let shared = SkyLightClick()
     enum State: Equatable { case untested, ready, disabled(String) }
@@ -44,6 +44,18 @@ import AppKit
     func prepare(flagOn: Bool) async -> Bool {
         guard flagOn else { return false }
         guard state == .untested else { return state == .ready }
+        // The warm-up at the start of a job and the first click can ask at the same time; one round trip serves both.
+        if let preparing { return await preparing.value }
+        let task = Task { @MainActor [self] in await roundTripOnce() }
+        preparing = task
+        let ready = await task.value
+        preparing = nil
+        return ready
+    }
+
+    private var preparing: Task<Bool, Never>?
+
+    private func roundTripOnce() async -> Bool {
         let v = ProcessInfo.processInfo.operatingSystemVersion
         guard Self.supportedOS(v) else { return disable("macOS \(v.majorVersion).\(v.minorVersion) is outside the tested range") }
         guard Self.symbolsAvailable else { return disable("SkyLight symbols missing") }

@@ -6,13 +6,23 @@ import Testing
 struct BackgroundDisplayConfigTests {
     @Test func separateDisplayIsOptInForNewAndExistingConfigurations() throws {
         #expect(!Config().backgroundVirtualDisplay)
-        let existing = Data(#"{"allowControl":true,"controlInBackground":true,"backgroundPreciseClicks":true}"#.utf8)
+        let existing = Data(#"{"allowControl":true,"controlInBackground":true,"backgroundDirectClicks":false}"#.utf8)
         let restored = try JSONDecoder().decode(Config.self, from: existing)
 
         #expect(!restored.backgroundVirtualDisplay)
         #expect(restored.allowControl)
         #expect(restored.controlInBackground)
-        #expect(restored.backgroundPreciseClicks)
+        #expect(!restored.backgroundDirectClicks)
+    }
+
+    /// Settings saved while direct clicks were experimental wrote `backgroundPreciseClicks: false` into every file; that
+    /// old key must not keep the proven path off now that it is the default.
+    @Test func directClicksStayOnDespiteTheOldExperimentalKey() throws {
+        #expect(Config().backgroundDirectClicks)
+        let old = Data(#"{"allowControl":true,"controlInBackground":true,"backgroundPreciseClicks":false,"backgroundVirtualDisplay":true}"#.utf8)
+        let restored = try JSONDecoder().decode(Config.self, from: old)
+        #expect(restored.backgroundDirectClicks)
+        #expect(restored.backgroundVirtualDisplay)
     }
 
     @Test(arguments: [false, true])
