@@ -37,6 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let watchDraftWindow = WatchDraftWindowController()
     private var folderJobs: FolderJobsFeature?
     private var cardInbox: CardInbox?
+    private var runStickers: RunStickers?
+    private var stickersPanel: RunStickersPanel?
+    private var stickersScreenObserver: NSObjectProtocol?
     private var savedBubbleFrame: NSRect?
     private var dragOffset: NSPoint?     // cursor position relative to the panel origin while dragging
     private let control = ComputerController()
@@ -97,11 +100,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 let o = self.dragOffset!
                 self.panel.setFrameOrigin(NSPoint(x: mouse.x - o.x, y: mouse.y - o.y))
+                self.placeRunStickers()
             case .ended:
                 self.dragOffset = nil
                 self.config.bubbleX = self.panel.frame.origin.x
                 self.config.bubbleY = self.panel.frame.origin.y
                 self.config.save()
+                self.placeRunStickers()
             }
         }
         shell.onOpenSettings = { [weak self] in self?.openSettings() }
@@ -163,6 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.bubbleWasVisibleBeforeControl = self.panel.isVisible
             self.shell.expanded = false
             self.panel.orderOut(nil)          // keep our own windows out of the way of clicks
+            self.placeRunStickers()
         }
         control.onEnd = { [weak self] in
             guard let self else { return }
@@ -173,6 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             if self.bubbleWasVisibleBeforeControl { self.panel.orderFrontRegardless() }
             self.shell.expanded = true
+            self.placeRunStickers()
         }
         control.onGrant = { [weak self] entering in
             guard let self else { return }
@@ -184,6 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else {
                 if self.bubbleWasVisibleBeforeControl { self.panel.orderFrontRegardless() }
             }
+            self.placeRunStickers()
         }
 
         setupEditMenu()
@@ -258,6 +266,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupWatcher()
         setupWand()
         setupCardInbox()
+        setupRunStickers()
         requestPermissionsOnFirstRun()
         Task {
             runner.networkEnv = await ScriptNetwork.current()   // before the first script: the Mac's proxy and certificates
@@ -342,6 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if expanded {
                     if self.shell.consumeQuietExpand() { self.panel.orderFrontRegardless() } else { self.panel.makeKeyAndOrderFront(nil) }
                 } else { self.panel.orderFrontRegardless(); self.panel.resignKey() }
+                self.placeRunStickers()
             }
             .store(in: &cancellables)
 
@@ -666,6 +676,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         origami.cancel()
         shell.expanded = false
         wand.deactivate()
+        stickersPanel?.orderOut(nil)
         guard let target = statusItemRect else { panel.orderOut(nil); return }
         let start = panel.frame
         savedBubbleFrame = start
@@ -704,6 +715,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             panel.setFrame(dest, display: true)
             panel.orderFrontRegardless()
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in self?.placeRunStickers() }
     }
 
     private func pulseStatusItem(remaining: Int) {
@@ -921,6 +933,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The menu bar's Jobs…: every job, the reading jobs and those kept as folders, in one list.
     @objc private func menuShowJobs() { morningPanel.showJobs() }
 
+    // MARK: run stickers
+
+    /// A job's latest finding as a sticky note beside the bubble, from whoever shared the job: the stickers follow the
+    /// orb, step aside while the pad is open or the bubble is away, and a click opens the job's page.
+    private func setupRunStickers() {
+        let model = RunStickers(file: Config.dir.appendingPathComponent("job-results/stickers.json"))
+        runStickers = model
+        stickersPanel = RunStickersPanel(model: model, hideFromScreenShare: config.hideFromScreenShare,
+                                         open: { [weak self] id in self?.morningPanel.showFolderJob(id: id) },
+                                         more: { [weak self] in self?.morningPanel.showJobs() },
+                                         putAway: { [weak model] id in model?.putAway(id) })
+        model.$stickers
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.placeRunStickers() }
+            .store(in: &cancellables)
+        stickersScreenObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.placeRunStickers() } }
+        refreshRunStickers()
+    }
+
+    /// The jobs as they stand: at launch, at each tick and after each run.
+    private func refreshRunStickers() {
+        guard let jobs = folderJobs?.store.jobs else { return }
+        runStickers?.update(jobs)
+    }
+
+    /// Beside the orb while the bubble is collapsed and on the screen and a job has something to show; away otherwise.
+    private func placeRunStickers() {
+        guard let stickersPanel, let runStickers else { return }
+        let shown = panel.isVisible && panel.alphaValue == 1 && !shell.expanded && !origami.isFlying && !runStickers.stickers.isEmpty
+        guard shown else { stickersPanel.orderOut(nil); return }
+        stickersPanel.place(besideOrb: panel.frame, on: panel.screen)
+        stickersPanel.orderFrontRegardless()
+    }
+
     // MARK: cards inbox
 
     /// Cards that scripts and jobs write into `cards/inbox/`, picked up into Morning Files at the jobs' tick, after each
@@ -932,8 +981,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let inbox = CardInbox(store: morning)
         inbox.folderName = { [weak self] source in self?.folderJobs?.cardFolderName(source) }
         inbox.held = { [weak self] source in self?.folderJobs?.holds(source) ?? false }
-        folderJobs?.runner.onTick = { [weak inbox] in inbox?.scan() }
-        folderJobs?.runner.onCardsChanged = { [weak inbox] in inbox?.scan() }
+        folderJobs?.runner.onTick = { [weak inbox, weak self] in inbox?.scan(); self?.refreshRunStickers() }
+        folderJobs?.runner.onCardsChanged = { [weak inbox, weak self] in inbox?.scan(); self?.refreshRunStickers() }
         // A card's button that runs its job's code: what it came to stays on the card, and the card follows its file.
         folderJobs?.buttons.onCardsChanged = { [weak inbox] in inbox?.scan() }
         folderJobs?.buttons.record = { [weak self] id, press in
