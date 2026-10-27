@@ -240,11 +240,10 @@ final class ComputerController {
             }
         }
         if preciseClicks {
-            Task { [weak self, weak l] in
-                let ready = await SkyLightClick.shared.prepare(flagOn: true)
-                guard let self, let l, self.active, !self.stopped, self.ladder === l else { return }
-                l.preciseClicks = ready
-            }
+            // The rung is the ladder's to use; the readiness check is warmed here and repeated at the first click if
+            // it was deferred (Noteling active at this moment, as right after a request typed into it).
+            l.preciseClicks = true
+            Task { _ = await SkyLightClick.shared.prepare(flagOn: true) }
         }
         onBegin?()
         Log.info("control: began background on \(target.appName) “\(target.title.prefix(60))” \(Int(target.frameCG.width))x\(Int(target.frameCG.height))pt \(target.toolkit.rawValue)\(target.sharedWithHuman ? " shared-with-human" : "")")
