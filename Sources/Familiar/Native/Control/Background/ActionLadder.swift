@@ -291,9 +291,13 @@ final class ActionLadder {
         return Self.needsForeground(count == 1 ? "nothing pressable at [\(mx), \(my)]" : "a \(count == 2 ? "double" : "triple") click")
     }
 
-    /// Rung S: the SkyLight coordinate click. Nil when the rung is unavailable or provably did nothing.
+    /// Rung S: the SkyLight coordinate click. Nil when the rung is unavailable or provably did nothing. The readiness
+    /// check runs here when it hasn't yet: at the start of a job it is deferred while Noteling itself is active, and
+    /// by the time a click is wanted the person has usually moved on.
     private func coordinateClick(at cg: CGPoint, count: Int, flags: CGEventFlags) async -> ToolResult? {
-        guard preciseClicks, !target.sharedWithHuman, SkyLightClick.shared.state == .ready else { return nil }
+        guard preciseClicks, !target.sharedWithHuman else { return nil }
+        if SkyLightClick.shared.state == .untested { _ = await SkyLightClick.shared.prepare(flagOn: true) }
+        guard SkyLightClick.shared.state == .ready else { return nil }
         guard await clear() else { return busyResult }
         let before = await snapshot(element: nil, cropAroundCG: cg)
         let ok = await SkyLightClick.shared.click(target: target, globalCG: cg, local: space.local(fromCG: cg), button: .left, count: count, flags: flags)

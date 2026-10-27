@@ -3,7 +3,7 @@ import AppKit
 /// Coordinate clicks in a background window. A mouse event posted to a process is dropped unless AppKit believes
 /// the app is active, so each click is bracketed by a SkyLight "application activated" / "deactivated" event record
 /// that only the target sees: the human's frontmost app never changes. Private SkyLight SPI resolved with dlsym
-/// (this is the only file allowed to); behind Config.backgroundPreciseClicks and an in-process self-test.
+/// (this is the only file allowed to); behind Config.backgroundDirectClicks and an in-process self-test.
 @MainActor final class SkyLightClick {
     static let shared = SkyLightClick()
     enum State: Equatable { case untested, ready, disabled(String) }
@@ -33,12 +33,29 @@ import AppKit
     /// dlsym(RTLD_DEFAULT) for SLPSPostEventRecordTo (SkyLight), GetProcessForPID, CGEventSetWindowLocation.
     nonisolated static var symbolsAvailable: Bool { SPI.symbols != nil }
 
-    /// Runs once per launch when `flagOn`: OS gate, symbols, then the in-process self-test. Sets `state`; logs one
-    /// line "skylight: …". Returns state == .ready. With the flag off nothing runs and `state` stays untested so a
-    /// later call (the user turned it on in Settings) still tests.
+    /// Runs once per launch when `flagOn`: OS gate, symbols, then the record round trip on our own process. Sets
+    /// `state`; logs one line "skylight: …". Returns state == .ready. With the flag off nothing runs and `state` stays
+    /// untested so a later call (the user turned it on in Settings) still tests.
+    ///
+    /// The round trip is the one thing worth proving up front: a record that activates but will not deactivate would
+    /// leave an app believing it is active. Whether a click lands is proven per click, on the real target, by the
+    /// ladder's verification; an earlier version also posted a click to a panel of our own and failed there in a
+    /// process that had never been active, while the same clicks landed in Calculator and Chrome.
     func prepare(flagOn: Bool) async -> Bool {
         guard flagOn else { return false }
         guard state == .untested else { return state == .ready }
+        // The warm-up at the start of a job and the first click can ask at the same time; one round trip serves both.
+        if let preparing { return await preparing.value }
+        let task = Task { @MainActor [self] in await roundTripOnce() }
+        preparing = task
+        let ready = await task.value
+        preparing = nil
+        return ready
+    }
+
+    private var preparing: Task<Bool, Never>?
+
+    private func roundTripOnce() async -> Bool {
         let v = ProcessInfo.processInfo.operatingSystemVersion
         guard Self.supportedOS(v) else { return disable("macOS \(v.majorVersion).\(v.minorVersion) is outside the tested range") }
         guard Self.symbolsAvailable else { return disable("SkyLight symbols missing") }
@@ -48,9 +65,9 @@ import AppKit
             return false
         }
         let t0 = Date()
-        if let failure = await selfTest() { return disable(failure) }
+        if let failure = await recordRoundTrip() { return disable(failure) }
         state = .ready
-        Log.info("skylight: ready (self-test passed in \(Int(Date().timeIntervalSince(t0) * 1000)) ms)")
+        Log.info("skylight: ready (record round trip passed in \(Int(Date().timeIntervalSince(t0) * 1000)) ms)")
         return true
     }
 
@@ -85,6 +102,13 @@ import AppKit
             }
         }
         return completed
+    }
+
+    /// Harness only (`--background-click --trust`): skip the self-test so a click on a real target can be tried even
+    /// while the self-test itself is in doubt. Never called by the app.
+    func assumeReady() {
+        state = .ready
+        Log.info("skylight: assumed ready without the self-test (harness)")
     }
 
     /// Post the deactivation record now (called by the conflict monitor on a human keyDown).
@@ -195,68 +219,26 @@ import AppKit
 
     // MARK: private: self-test
 
-    /// A 1x1 pt non-activating panel at alpha 0.01 whose view refuses first mouse, like a text view. Post the
-    /// activation record to our own pid/window, a stamped primer click and a click via postToPid(getpid()); pass when
-    /// mouseDown arrives with isKeyWindow within 150 ms, the frontmost app is unchanged, and NSApp.isActive returns
-    /// to false within 100 ms of the deactivation record. Returns the failure reason, nil on pass.
-    private func selfTest() async -> String? {
-        let front0 = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        let screen = NSScreen.main ?? NSScreen.screens.first
-        let origin = screen.map { NSPoint(x: $0.visibleFrame.minX + 2, y: $0.visibleFrame.minY + 2) } ?? NSPoint(x: 2, y: 2)
-        let panel = ProbePanel(contentRect: NSRect(origin: origin, size: NSSize(width: 1, height: 1)),
-                               styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.level = .floating
-        panel.alphaValue = 0.01
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
-        panel.hidesOnDeactivate = false
-        panel.isReleasedWhenClosed = false
-        panel.sharingType = .none
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
-        let view = ProbeView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
-        panel.contentView = view
-        let hit = Hit()
-        view.onMouseDown = { key in hit.mouseDown = true; hit.wasKey = key }
-        panel.orderFrontRegardless()
-        defer {
-            panel.orderOut(nil)
-            panel.close()
-            if NSApplication.shared.isActive, let wid = hit.windowID { _ = postRecord(pid: getpid(), windowID: wid, activate: false) }
-        }
-        await sleep(ms: 50)   // let the window server register the panel
-        let wid = CGWindowID(panel.windowNumber)
-        hit.windowID = wid
-        guard panel.windowNumber > 0 else { return "self-test panel has no window number" }
-        let globalCG = CaptureSpace.cg(NSPoint(x: panel.frame.midX, y: panel.frame.midY))
-        let local = CGPoint(x: 0.5, y: 0.5)
+    /// Posts the activation record to our own process (window id 0: no window of ours is involved) and expects
+    /// NSApp.isActive to turn true within 150 ms, then the deactivation record and expects it back to false within
+    /// 150 ms, with the frontmost app unchanged throughout. Returns the failure reason, nil on pass. Should the
+    /// deactivation be ignored, a last one is posted anyway so we never stay "active" in our own eyes.
+    private func recordRoundTrip() async -> String? {
         let pid = getpid()
-
-        guard postRecord(pid: pid, windowID: wid, activate: true) else { return "activation record refused" }
-        await sleep(ms: 30)
-        func send(_ type: CGEventType, _ state: Int) {
-            mouse(type, pid: pid, windowID: wid, globalCG: globalCG, local: local, button: .left, clickState: state, flags: [])
-        }
-        send(.mouseMoved, 0)
-        await sleep(ms: 20)
-        send(.leftMouseDown, 1)       // primer: swallowed by acceptsFirstMouse == false, makes the panel key
-        await sleep(ms: 40)
-        send(.leftMouseUp, 1)
-        await sleep(ms: 40)
-        send(.leftMouseDown, 1)
-        await sleep(ms: 40)
-        send(.leftMouseUp, 1)
-        let deadline = Date().addingTimeInterval(0.15)
-        while !hit.mouseDown, Date() < deadline { await sleep(ms: 10) }
+        let front0 = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        guard postRecord(pid: pid, windowID: 0, activate: true) else { return "activation record refused" }
+        var deadline = Date().addingTimeInterval(0.15)
+        while !NSApplication.shared.isActive, Date() < deadline { await sleep(ms: 10) }
         var failure: String?
-        if !hit.mouseDown { failure = "click did not arrive" }
-        else if !hit.wasKey { failure = "click arrived without key window" }
+        if !NSApplication.shared.isActive { failure = "activation record ignored" }
         if NSWorkspace.shared.frontmostApplication?.processIdentifier != front0 { failure = failure ?? "frontmost app changed" }
-
-        _ = postRecord(pid: pid, windowID: wid, activate: false)
-        let off = Date().addingTimeInterval(0.1)
-        while NSApplication.shared.isActive, Date() < off { await sleep(ms: 10) }
-        if NSApplication.shared.isActive { failure = failure ?? "deactivation record ignored" }
+        _ = postRecord(pid: pid, windowID: 0, activate: false)
+        deadline = Date().addingTimeInterval(0.15)
+        while NSApplication.shared.isActive, Date() < deadline { await sleep(ms: 10) }
+        if NSApplication.shared.isActive {
+            failure = failure ?? "deactivation record ignored"
+            _ = postRecord(pid: pid, windowID: 0, activate: false)
+        }
         return failure
     }
 
@@ -271,23 +253,4 @@ import AppKit
     private func sleep(ms: Int) async {
         try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
     }
-}
-
-/// Borderless panels refuse key status by default; the self-test needs the panel to take it without activating us.
-private final class ProbePanel: NSPanel {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-}
-
-private final class ProbeView: NSView {
-    var onMouseDown: ((Bool) -> Void)?
-    /// Like NSTextView: a click into a non-key window is swallowed, which is exactly what the primer click is for.
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { false }
-    override func mouseDown(with event: NSEvent) { onMouseDown?(window?.isKeyWindow ?? false) }
-}
-
-private final class Hit {
-    var mouseDown = false
-    var wasKey = false
-    var windowID: CGWindowID?
 }

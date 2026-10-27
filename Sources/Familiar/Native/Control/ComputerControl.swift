@@ -48,7 +48,7 @@ final class ComputerController {
     var hudEnabled = true
     var ghostEnabled = true                  // the purple cursor overlay in the background lane (off headless)
     var hideFromScreenShare = false
-    var preciseClicks = false                // Config.backgroundPreciseClicks; the SkyLight rung still needs its self-test
+    var preciseClicks = false                // Config.backgroundDirectClicks; the SkyLight rung still needs its self-test
     /// Config.backgroundAsksFirst. Off (the app's default), the background lane finishes the job without stopping for a
     /// yes: guarded presses and sends go ahead and say so, and the mouse is borrowed as soon as the person pauses.
     /// On here so a controller built directly keeps the careful behaviour.
@@ -102,6 +102,7 @@ final class ComputerController {
     private var taskActivation = BackgroundTaskActivation()
     private var virtualWorkspace: VirtualDisplayWorkspace?
     private var workspaceAwaitingInputReturn: VirtualDisplayWorkspace?
+    private var awake: StayAwake.Lease?                 // the display stays on while the background lane works
     private let actionApproval = BackgroundActionApproval()
     private var pendingNotice: String?                  // told to the model on its next action
     private var pendingGrantNotice: String?             // a recoverable hand-back, separate from a task failure
@@ -179,6 +180,8 @@ final class ComputerController {
         active = true
         stopped = false
         beganAt = Date()
+        // Posted events are no activity to macOS: without this the display idles, the screen locks and the job dies.
+        awake = StayAwake.shared.hold("Noteling is working in \(t.appName) in the background")
         var target = t
         userApp = NSWorkspace.shared.frontmostApplication
         target.sharedWithHuman = Self.humanInAnotherWindow(of: target)
@@ -237,11 +240,10 @@ final class ComputerController {
             }
         }
         if preciseClicks {
-            Task { [weak self, weak l] in
-                let ready = await SkyLightClick.shared.prepare(flagOn: true)
-                guard let self, let l, self.active, !self.stopped, self.ladder === l else { return }
-                l.preciseClicks = ready
-            }
+            // The rung is the ladder's to use; the readiness check is warmed here and repeated at the first click if
+            // it was deferred (Noteling active at this moment, as right after a request typed into it).
+            l.preciseClicks = true
+            Task { _ = await SkyLightClick.shared.prepare(flagOn: true) }
         }
         onBegin?()
         Log.info("control: began background on \(target.appName) “\(target.title.prefix(60))” \(Int(target.frameCG.width))x\(Int(target.frameCG.height))pt \(target.toolkit.rawValue)\(target.sharedWithHuman ? " shared-with-human" : "")")
@@ -333,6 +335,7 @@ final class ComputerController {
         actionApproval.cancel()
         let wasActive = active
         active = false
+        awake?.end(); awake = nil
         grantRevoked = false; pendingGrantNotice = nil
         if let t = ladder?.target, SkyLightClick.shared.recordOutstanding { SkyLightClick.shared.abortRecord(target: t) }
         finishWorkspaceAfterInputReturns()

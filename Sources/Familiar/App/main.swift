@@ -58,6 +58,15 @@ if CommandLine.arguments.contains("--record-synthetic") {
     MainActor.assumeIsolated { runFindStep() }
 } else if CommandLine.arguments.contains("--show-me") {
     MainActor.assumeIsolated { runShowMe() }
+} else if CommandLine.arguments.contains("--background-click") {
+    // The direct-click rung proves itself with an activation record posted to our own process, which only the app's
+    // event loop answers; an accessory app doesn't come to the front by running it.
+    Task { @MainActor in
+        let code = await runBackgroundClick()
+        exit(code)
+    }
+    MainActor.assumeIsolated { NSApplication.shared.setActivationPolicy(.accessory) }
+    NSApp.run()
 } else if CommandLine.arguments.contains("--render-pen") {
     MainActor.assumeIsolated { runRenderPen() }
 } else if CommandLine.arguments.contains("--ask") {
@@ -65,8 +74,10 @@ if CommandLine.arguments.contains("--record-synthetic") {
         await runHeadlessAsk()
         exit(0)
     }
-    if CommandLine.arguments.contains("--show") {
-        // A tour hears clicks and Esc through event monitors, which only the app's own event loop feeds.
+    if CommandLine.arguments.contains("--show") || CommandLine.arguments.contains("--control") {
+        // A tour hears clicks and Esc through event monitors, and the direct-click rung's record round trip is
+        // answered by our own event loop; only the app's run loop feeds either. Without it the rung reads
+        // "activation record ignored" and switches itself off, which the app never does.
         MainActor.assumeIsolated { NSApplication.shared.setActivationPolicy(.accessory) }
         NSApp.run()
     }

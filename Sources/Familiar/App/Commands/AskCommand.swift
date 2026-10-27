@@ -33,12 +33,31 @@ func runHeadlessAsk() async {
     await registry.reload()
     let title = args.firstIndex(of: "--title").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } ?? (url.contains("4310") ? "Waxwing" : "New Report - Concur")
     var ctx = ScreenContext(appName: "Google Chrome", bundleID: "com.google.Chrome", windowTitle: title, url: url, focused: nil, timestamp: Date())
-    // --background describes the real window it will work in, not the synthetic Chrome scene.
+    // --background describes the real window it will work in, not the synthetic Chrome scene: the frontmost window, or
+    // with --target <bundle-id> [--window <title part>] that app's window, so the check can run from a Terminal in front.
     let backgroundOn = args.contains("--control") && args.contains("--background")
     var backgroundTarget: TargetWindow?
-    if backgroundOn, case .success(let t) = await TargetWindow.resolveFrontmost() {
-        backgroundTarget = t
-        ctx = ScreenContext(appName: t.appName, bundleID: t.bundleID, windowTitle: t.title, url: nil, focused: nil, timestamp: Date())
+    if backgroundOn {
+        func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
+        if let bundle = value("--target") {
+            let part = value("--window")?.lowercased()
+            let candidates = TargetWindow.list().filter { d in
+                d.bundleID == bundle && (part.map { d.title.lowercased().contains($0) } ?? true)
+            }
+            guard let d = candidates.sorted(by: { $0.isOnScreen && !$1.isOnScreen }).first else {
+                let titles = TargetWindow.list().filter { $0.bundleID == bundle }.map { "“\($0.title.prefix(50))”" }
+                print("no window of \(bundle)\(part.map { " titled like “\($0)”" } ?? ""); its windows: \(titles.joined(separator: ", "))"); exit(1)
+            }
+            switch await TargetWindow.resolve(windowID: CGWindowID(d.id)) {
+            case .success(let t): backgroundTarget = t
+            case .failure(let error): print("window \(d.id) “\(d.title.prefix(50))” could not be used: \(error)"); exit(1)
+            }
+        } else if case .success(let t) = await TargetWindow.resolveFrontmost() {
+            backgroundTarget = t
+        }
+        if let t = backgroundTarget {
+            ctx = ScreenContext(appName: t.appName, bundleID: t.bundleID, windowTitle: t.title, url: nil, focused: nil, timestamp: Date())
+        }
     }
     let packContext = PackContextProvider.context(for: ctx, registry: registry, docsLimit: config.docsStuffLimitChars,
                                                    includeMissingRequirements: false)
@@ -63,7 +82,7 @@ func runHeadlessAsk() async {
     control.hudEnabled = false
     control.ghostEnabled = false
     control.maxLongEdge = config.maxImageLongEdge
-    control.preciseClicks = config.backgroundPreciseClicks
+    control.preciseClicks = config.backgroundDirectClicks
     control.virtualDisplayEnabled = config.backgroundVirtualDisplay
     control.onCaption = { print("  [control] \($0)") }
     if let target = backgroundTarget {
