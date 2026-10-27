@@ -24,7 +24,7 @@ final class ComputerController {
     ]
     static let sendMessageDefinition: [String: Any] = [
         "name": "send_message",
-        "description": "Send an already typed chat message by pressing Return exactly once, when the app uses Return to send and has no usable Send button. Focus the composer and verify the conversation first. Provide the recipient name as shown in the composer/window and the exact complete draft. Shows the draft and observed context for one-action approval in the task screen, then rechecks them before Return. Separate-display tasks need ask_for_the_mouse input permission first; send approval does not grant input permission. Refuses unreadable or changed drafts/context. After dispatch inspect the conversation to verify delivery; never automatically retry an uncertain send. Not for forms, dialogs, terminals, or keyboard shortcuts.",
+        "description": "Send an already typed chat message by pressing Return exactly once, when the app uses Return to send and has no usable Send button. Focus the composer and verify the conversation first. Provide the recipient name as shown in the composer/window and the exact complete draft. Shows the draft and observed context for one-action approval in the task screen, then rechecks them before Return. Refuses unreadable or changed drafts/context. After dispatch inspect the conversation to verify delivery; never automatically retry an uncertain send. Not for forms, dialogs, terminals, or keyboard shortcuts.",
         "input_schema": ["type": "object", "properties": [
             "recipient": ["type": "string", "description": "Exact recipient or channel name visible in the window/composer label"],
             "message": ["type": "string", "description": "Exact complete text already in the focused message composer"],
@@ -32,7 +32,7 @@ final class ComputerController {
     ]
     static let askForMouseDefinition: [String: Any] = [
         "name": "ask_for_the_mouse",
-        "description": "Background lane: request input borrowing when native background actions cannot do the job. First try find_on_screen with click_element, typing, or a keyboard route. Give a one-line reason. Wait for the task-screen answer (up to 45 s). The result specifies the mode: on a separate task display, permission permits short input actions while the window stays offscreen, each action automatically returns focus/pointer, and coordinates stay window-capture pixels. Without a separate display, the user instead approves full desktop control and coordinates become whole-display pixels. Always take a fresh computer screenshot after approval and obey the returned mode. Call give_the_mouse_back when finished. Input access does not approve sending/submitting or other consequential actions.",
+        "description": "Background lane: ask to borrow the user's real mouse and keyboard when the background actions cannot do the job (a drag, a held button, a hover or context menu, a ⌘ shortcut). First try find_on_screen with click_element, clicking by coordinates, typing, or a keyboard route. Give a one-line reason. Wait for the task-screen answer (up to 45 s). Once granted you drive the real mouse and keyboard and coordinates are pixels of the whole display: always take a fresh screenshot first. Call give_the_mouse_back as soon as that part is done. The loan does not approve sending/submitting or other consequential actions.",
         "input_schema": ["type": "object", "properties": ["reason": ["type": "string"]], "required": ["reason"]],
     ]
     static let giveMouseBackDefinition: [String: Any] = [
@@ -53,7 +53,6 @@ final class ComputerController {
     /// yes: guarded presses and sends go ahead and say so, and the mouse is borrowed as soon as the person pauses.
     /// On here so a controller built directly keeps the careful behaviour.
     var asksFirst = true
-    var virtualDisplayEnabled = false       // Opt-in placement; input still uses the existing background ladder.
     var onCaption: ((String) -> Void)?
     var onBegin: (() -> Void)?
     /// Presentation adopts the request only when it attempts work, independently of native resource setup.
@@ -100,8 +99,6 @@ final class ComputerController {
     private var actionRunning = false
     private var peekTimer: Task<Void, Never>?
     private var taskActivation = BackgroundTaskActivation()
-    private var virtualWorkspace: VirtualDisplayWorkspace?
-    private var workspaceAwaitingInputReturn: VirtualDisplayWorkspace?
     private var awake: StayAwake.Lease?                 // the display stays on while the background lane works
     private let actionApproval = BackgroundActionApproval()
     private var pendingNotice: String?                  // told to the model on its next action
@@ -111,11 +108,6 @@ final class ComputerController {
     private var handoffTimeout: Task<Void, Never>?
     private var grantTask: Task<Void, Never>?
     private(set) var grantActive = false                // the human lent us the real mouse; foreground path for now
-    private(set) var offscreenInputPermission = false  // permission between actions does not own physical input
-    private var offscreenActionRunning = false
-    var isBorrowingOffscreenInput: Bool { offscreenActionRunning }
-    private var offscreenPermissionWindowID: CGWindowID?
-    var offscreenExecutor: ((String, [String: Any], TargetWindow, CGDirectDisplayID, CaptureSpace) async -> ToolResult)?
     var readMessageDraft: (TargetWindow) -> KeyboardMessageDraft? = KeyboardMessageDraft.capture
     private var messageSendPending = false
     private var grantRevoked = false
@@ -132,14 +124,13 @@ final class ComputerController {
 
     /// An already prepared, in-memory background session. Native monitors, windows,
     /// and application activation are owned by begin() in the normal app path.
-    init(backgroundSession: ActionLadder, mouseGranted: Bool, workspace: VirtualDisplayWorkspace? = nil) {
+    init(backgroundSession: ActionLadder, mouseGranted: Bool) {
         lane = .background
         target = backgroundSession.target
         ladder = backgroundSession
         space = backgroundSession.space
         active = true
         grantActive = mouseGranted
-        virtualWorkspace = workspace
         backgroundSession.isStopped = { [weak self, weak backgroundSession] in
             guard let self, let backgroundSession else { return true }
             return !self.active || self.stopped || self.ladder !== backgroundSession
@@ -150,7 +141,6 @@ final class ComputerController {
 
     func reset() {
         if grantActive { leaveGrant(reason: "New request") }
-        finishWorkspaceAfterInputReturns()
         grantRevoked = false; pendingGrantNotice = nil
         stopped = false; stopReason = ""; taskActivation.reset()
     }
@@ -306,9 +296,6 @@ final class ComputerController {
 
     private func raiseTarget() {
         guard let t = ladder?.target else { return }
-        // Opening the real window is an explicit hand-back. Do not activate an app
-        // whose window is still out of reach on the task display.
-        if virtualWorkspace != nil { stop(reason: "you opened the task window") }
         expectingActivation = true
         NSRunningApplication(processIdentifier: t.pid)?.activate()
         AXUIElementPerformAction(t.axWindow, kAXRaiseAction as CFString)
@@ -319,7 +306,7 @@ final class ComputerController {
         peekTimer?.cancel()
         peekTimer = Task { [weak self] in
             while let self, self.active, !Task.isCancelled {
-                if (self.grantActive && !self.offscreenInputPermission) || self.offscreenActionRunning {
+                if self.grantActive {
                     try? await Task.sleep(nanoseconds: 300_000_000); continue
                 }
                 guard let iv = PeekCadence.interval(phase: self.peek?.phase ?? .idle, actionRunning: self.actionRunning) else {
@@ -338,7 +325,6 @@ final class ComputerController {
         awake?.end(); awake = nil
         grantRevoked = false; pendingGrantNotice = nil
         if let t = ladder?.target, SkyLightClick.shared.recordOutstanding { SkyLightClick.shared.abortRecord(target: t) }
-        finishWorkspaceAfterInputReturns()
         guard wasActive else { return }
         if grantActive { leaveGrant(reason: "done") }
         for m in monitors { NSEvent.removeMonitor(m) }
@@ -367,32 +353,10 @@ final class ComputerController {
         stopped = true
         stopReason = reason
         if let t = ladder?.target, SkyLightClick.shared.recordOutstanding { SkyLightClick.shared.abortRecord(target: t) }
-        finishWorkspaceAfterInputReturns()
         caption("Stopped (\(reason))")
         ghost?.hide()
         resolveHandoff(false)
         Log.info("control: stop requested: \(reason)")
-    }
-
-    /// A hidden window must not reappear while its borrower still owns keyboard
-    /// focus. Stop cancellation is immediate; display teardown follows input return.
-    private func finishWorkspaceAfterInputReturns() {
-        guard let workspace = virtualWorkspace else { return }
-        virtualWorkspace = nil
-        if offscreenActionRunning { workspaceAwaitingInputReturn = workspace }
-        else { workspace.finish() }
-    }
-
-    /// App termination must let the native transaction restore focus before its
-    /// process and virtual monitor disappear. The borrower owns its short timeout.
-    func endAfterInputReturns() async {
-        stop(reason: "Noteling is quitting")
-        while offscreenActionRunning {
-            await withCheckedContinuation { continuation in
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { continuation.resume() }
-            }
-        }
-        end()
     }
 
     /// Summary for the receipt note.
@@ -426,9 +390,6 @@ final class ComputerController {
     }
 
     func humanInput(_ reason: String) {
-        // Offscreen permission is idle between actions. The per-action borrower
-        // watches human input only while it actually holds focus.
-        if offscreenInputPermission { return }
         if grantActive {
             grantRevoked = true
             pendingGrantNotice = "The user took the mouse back (\(reason)); foreground mouse and keyboard control ended. The background task is still active. The previous action may have partly run: do not repeat it automatically. Take a fresh screenshot of the task window before continuing in the background. If the remaining work needs foreground control, explain what is left."
@@ -444,29 +405,16 @@ final class ComputerController {
     func askForMouse(_ input: [String: Any]) async -> ToolResult {
         if Task.isCancelled || stopped { return .text("Stopped.", isError: true) }
         guard lane == .background, active, ladder != nil else { return .text("You already have the mouse: this is the foreground lane.", isError: true) }
-        if grantActive {
-            if offscreenInputPermission { return .text("Offscreen input permission is already active. Take a window screenshot and perform the short action; input returns automatically after each action.") }
-            return .text("You already have the mouse. Do the foreground part now, then give_the_mouse_back.", isError: true)
-        }
+        if grantActive { return .text("You already have the mouse. Do the foreground part now, then give_the_mouse_back.", isError: true) }
         guard let peek else { return .text("The user said not now (no task screen to ask on). Do what you can in the background, or stop and say what is left to do by hand.", isError: true) }
         beginBackgroundTaskIfNeeded(for: "ask_for_the_mouse")
-        if virtualDisplayEnabled || virtualWorkspace != nil {
-            if let result = await prepareBackgroundWorkspace(), result.isError || stopped { return result }
-            guard let ladder, let workspace = virtualWorkspace,
-                  (try? workspace.parkedDisplayID(for: ladder.target)) != nil else {
-                return .text("The task window is not available on its separate display. No input was borrowed.", isError: true)
-            }
-        }
         let requestWindow = ladder?.target.cgWindowID
-        peek.borrowKeepsWindowOffscreen = virtualWorkspace != nil
         let reason = (input["reason"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        // Smooth: no question. On its separate display the window is borrowed at once; on the person's own screen,
-        // as soon as they pause, so the loan doesn't land in the middle of their own clicking or typing.
+        // Smooth: no question; the loan starts as soon as they pause, so it doesn't land in the middle of their own
+        // clicking or typing.
         let unasked: Bool
         if asksFirst {
             unasked = false
-        } else if virtualWorkspace != nil {
-            unasked = true
         } else {
             caption("Borrowing the mouse when you pause…")
             unasked = await Self.waitForPause(seconds: Self.pauseBeforeBorrowing, upTo: 20) { [weak self] in
@@ -498,14 +446,7 @@ final class ComputerController {
             caption("Carrying on without the mouse")
             return .text("The user said not now. Do what you can in the background, or stop and say what is left to do by hand.", isError: true)
         }
-        do { try enterGrant() }
-        catch {
-            stop(reason: "input borrowing was unavailable")
-            return .text("I couldn't prepare input borrowing: \(error.localizedDescription). No input was sent.", isError: true)
-        }
-        if offscreenInputPermission {
-            return .text("The user approved brief mouse and keyboard borrowing for this task window on its separate display. The window stays off their screen, and coordinates remain pixels of the WINDOW capture. Take a fresh computer screenshot first. Each click, type or key action borrows input locally and restores the user's focus and pointer before returning; you do not hold their input while thinking, observing or waiting. Do not activate apps or move windows yourself. This experimental path supports short clicks, single-line typing, editing keys and scrolling. For a chat composer that sends with Return, call send_message with the exact typed draft and recipient; it asks for separate one-send approval before pressing Return once. Raw Return, form submission, drags and held inputs are not covered by this input permission. Action approvals still apply. Call give_the_mouse_back when this permission is no longer needed.")
-        }
+        enterGrant()
         return .text("The user handed you the mouse. Take a screenshot first: coordinates are now pixels of the whole display. Do the foreground part in one go, then call give_the_mouse_back.")
     }
 
@@ -526,9 +467,7 @@ final class ComputerController {
 
     func giveMouseBack() -> ToolResult {
         guard grantActive else { return .text("You don't have the mouse right now.", isError: true) }
-        let wasOffscreen = offscreenInputPermission
         leaveGrant(reason: "Back in the background")
-        if wasOffscreen { return .text("Input-borrowing permission ended. The task remains on its separate display; coordinates are still pixels of the window capture. Take a screenshot.") }
         return .text("Thanks. You're back in the background lane: coordinates are pixels of the window capture again. Take a screenshot.")
     }
 
@@ -543,29 +482,7 @@ final class ComputerController {
         c.resume(returning: allowed)
     }
 
-    private func enterGrant() throws {
-        if virtualDisplayEnabled || virtualWorkspace != nil {
-            guard let ladder, let workspace = virtualWorkspace else {
-                throw VirtualDisplayWorkspace.Failure.unavailable("The separate task display is unavailable.")
-            }
-            _ = try workspace.parkedDisplayID(for: ladder.target)
-            grantActive = true
-            offscreenInputPermission = true
-            offscreenPermissionWindowID = ladder.target.cgWindowID
-            grantRevoked = false
-            pendingGrantNotice = nil
-            space = ladder.space
-            peek?.phase = .working
-            caption("Input ready · task stays on its separate display")
-            grantTask = Task { [weak self] in
-                do { try await Task.sleep(nanoseconds: 60_000_000_000) } catch { return }
-                guard let self, self.offscreenInputPermission else { return }
-                self.pendingGrantNotice = "Permission to borrow input expired. The task window stayed on its separate display. Ask again if another brief input action is needed."
-                self.leaveGrant(reason: "Input permission expired")
-            }
-            Log.info("control: offscreen input permission began window=\(ladder.target.cgWindowID)")
-            return
-        }
+    private func enterGrant() {
         ladder?.windowPlacementChanged()
         grantActive = true
         grantRevoked = false
@@ -596,16 +513,6 @@ final class ComputerController {
     private func leaveGrant(reason: String) {
         guard grantActive else { return }
         if messageSendPending { actionApproval.cancel() }
-        if offscreenInputPermission {
-            grantActive = false
-            offscreenInputPermission = false
-            offscreenPermissionWindowID = nil
-            grantTask?.cancel(); grantTask = nil
-            if active, !stopped { peek?.phase = .working }
-            caption(reason)
-            Log.info("control: offscreen input permission ended (\(reason))")
-            return
-        }
         grantActive = false
         grantTask?.cancel(); grantTask = nil
         for m in monitors { NSEvent.removeMonitor(m) }
@@ -663,40 +570,6 @@ final class ComputerController {
         onBackgroundTaskBegin?()
     }
 
-    nonisolated static var virtualDisplayRelocationNotice: ToolResult {
-        // This is a recoverable precondition, like needs_foreground. A hard error
-        // makes the CLI adapter stop all further computer actions for the request.
-        .text("Action not performed: the task window was moved to Noteling's separate display first. Take a fresh screenshot, find the intended control again, then REPEAT the action you just requested. A requested click did NOT focus its field, so do not type until you repeat that click and confirm focus. Coordinates and element IDs from before the move are invalid. Background input and approval rules still apply.")
-    }
-
-    /// Move only once work begins, never for a read-only question. A move can change
-    /// rendering scale or layout, so the model must observe again before sending input.
-    private func prepareBackgroundWorkspace() async -> ToolResult? {
-        guard virtualDisplayEnabled, taskActivation.hasStarted, active, !stopped,
-              let currentLadder = ladder else { return nil }
-        let workspace = virtualWorkspace ?? VirtualDisplayWorkspace()
-        virtualWorkspace = workspace
-        let windowID = currentLadder.target.cgWindowID
-        do {
-            let moved = try await workspace.park(currentLadder.target)
-            guard active, !stopped, !Task.isCancelled, ladder === currentLadder,
-                  currentLadder.target.cgWindowID == windowID else {
-                workspace.finish()
-                return .text("Stopped before sending input.", isError: true)
-            }
-            guard moved else { return nil }
-            currentLadder.windowPlacementChanged()
-            target = currentLadder.target
-            space = currentLadder.space
-            caption("Working on a separate display")
-            return Self.virtualDisplayRelocationNotice
-        } catch {
-            guard active, !stopped, ladder === currentLadder else { return .text("Stopped.", isError: true) }
-            stop(reason: "the separate display was unavailable")
-            return .text("The separate task display couldn't be used: \(error.localizedDescription). The task stopped before sending input.", isError: true)
-        }
-    }
-
     /// Background built-ins observe the current task target, including a target_window switch.
     /// Reading alone must not install input monitors, show a cursor, or borrow the mouse.
     func readTargetScreen() -> ToolResult {
@@ -730,16 +603,11 @@ final class ComputerController {
         if let notice = takeGrantNotice() { return notice }
         if interrupted { return .text("Stopped.", isError: true) }
         if let n = pendingNotice { pendingNotice = nil; return .text(n, isError: true) }
-        if lane == .background, !grantActive || offscreenInputPermission {
+        if lane == .background, !grantActive {
             guard let ladder else { return .text("No target window. Call target_window to list the windows and pick one.", isError: true) }
             beginBackgroundTaskIfNeeded(for: name)
-            if let relocation = await prepareBackgroundWorkspace() { return relocation }
-            actionRunning = true
+                actionRunning = true
             defer { actionRunning = false }
-            if offscreenInputPermission,
-               !["screenshot", "zoom", "find_on_screen", "cursor_position", "mouse_move", "wait"].contains(name) {
-                return await performOffscreenBorrow(name, input, ladder: ladder)
-            }
             let r = await ladder.run(name, input)
             return stopped ? .text("Stopped.", isError: true) : r
         }
@@ -747,57 +615,6 @@ final class ComputerController {
         if stopped || Task.isCancelled { return .text("Stopped.", isError: true) }
         if let notice = takeGrantNotice() { return notice }
         return r
-    }
-
-    private func performOffscreenBorrow(_ name: String, _ input: [String: Any], ladder: ActionLadder,
-                                        approvedSendValidation: (() -> Bool)? = nil) async -> ToolResult {
-        guard offscreenPermissionWindowID == ladder.target.cgWindowID, let workspace = virtualWorkspace,
-              let displayID = try? workspace.parkedDisplayID(for: ladder.target) else {
-            return .text("Input permission no longer matches the parked task window. No input was sent.", isError: true)
-        }
-        var input = input
-        if ["left_click", "double_click", "triple_click", "right_click", "middle_click", "scroll"].contains(name), input["coordinate"] == nil {
-            let (x, y) = ladder.space.model(fromCG: ladder.ghostCG)
-            input["coordinate"] = [x, y]
-        }
-        if let refusal = ladder.borrowedInputRefusal(name, input) { return refusal }
-        if let conflict, !(await conflict.waitUntilClear(timeout: 1.5)) {
-            return .text("No input borrowed: the user is still typing or holding the mouse. Wait for a brief pause before retrying.")
-        }
-        guard active, !stopped, !Task.isCancelled, offscreenInputPermission, self.ladder === ladder else {
-            return .text("Stopped before borrowing input.", isError: true)
-        }
-        if let refusal = ladder.borrowedInputRefusal(name, input) { return refusal }
-        if name == "send_message", approvedSendValidation?() != true {
-            return .text("Not sent: the approved draft or conversation changed. Inspect it again before requesting approval.")
-        }
-        if SkyLightClick.shared.recordOutstanding { SkyLightClick.shared.abortRecord(target: ladder.target) }
-        offscreenActionRunning = true
-        expectingActivation = true
-        conflict?.remove()
-        caption("Briefly borrowing input · task stays offscreen")
-        defer {
-            offscreenActionRunning = false
-            expectingActivation = false
-            workspaceAwaitingInputReturn?.finish()
-            workspaceAwaitingInputReturn = nil
-            if active, !stopped { conflict?.install() }
-        }
-        let result: ToolResult
-        if let offscreenExecutor {
-            result = await offscreenExecutor(name, input, ladder.target, displayID, ladder.space)
-        } else {
-            result = await OffscreenInputBorrow().perform(name, input, target: ladder.target, displayID: displayID,
-                                                        space: ladder.space, cancelled: { [weak self, weak ladder] in
-                guard let self, let ladder else { return true }
-                return !self.active || self.stopped || !self.offscreenInputPermission || self.ladder !== ladder
-            }, approvedSendValidation: approvedSendValidation)
-        }
-        ladder.windowPlacementChanged()
-        space = ladder.space
-        if !active || stopped || Task.isCancelled || self.ladder !== ladder { return .text("Stopped.", isError: true) }
-        caption("Input returned · working on the separate display")
-        return result
     }
 
     private func performForeground(_ name: String, _ input: [String: Any]) async -> ToolResult {
@@ -939,12 +756,7 @@ final class ComputerController {
               let message = input["message"] as? String, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               message.count <= 16_000 else { return .text("Provide a recipient and the exact complete draft (up to 16,000 characters).") }
         beginBackgroundTaskIfNeeded(for: "send_message")
-        if let relocation = await prepareBackgroundWorkspace() { return relocation }
-        if let refusal = ladder.borrowedInputRefusal("send_message", [:]) { return refusal }
-        let offscreen = virtualDisplayEnabled || virtualWorkspace != nil
-        if offscreen, !offscreenInputPermission {
-            return .text("Not sent: ask_for_the_mouse first for brief offscreen input permission, then call send_message again for a separate one-send approval. The task stays on its separate display.")
-        }
+        if let gone = ladder.refreshTarget() { return gone }
         guard let draft = readMessageDraft(ladder.target), draft.text == message else {
             return .text("Not sent: I couldn't read the exact draft in the focused message composer. Focus it and inspect its complete text before requesting send approval.")
         }
@@ -965,25 +777,18 @@ final class ComputerController {
         guard active, !stopped, !Task.isCancelled, self.ladder === ladder else {
             return .text("Stopped before sending. No Return was pressed.", isError: true)
         }
-        if offscreen, !offscreenInputPermission {
-            return .text("Not sent: input permission expired while waiting. Ask for input permission again, then request fresh send approval.")
-        }
         guard decision == .approved else {
             return .text("Not sent: send approval was \(decision). Leave the draft unsent; do not request the same send again unless the user asks.", isError: true)
         }
         let valid: () -> Bool = { [weak self, weak ladder] in
             guard let self, let ladder, self.active, !self.stopped, !Task.isCancelled, self.ladder === ladder,
-                  (!offscreen || self.offscreenInputPermission),
-                  ladder.borrowedInputRefusal("send_message", [:]) == nil,
+                  ladder.refreshTarget() == nil,
                   let current = self.readMessageDraft(ladder.target) else { return false }
             return draft.matches(current)
         }
         guard valid() else { return .text("Not sent: the draft, composer or conversation changed while waiting. Inspect it before requesting fresh approval.") }
         actionRunning = true
         defer { actionRunning = false }
-        if offscreen {
-            return await performOffscreenBorrow("send_message", [:], ladder: ladder, approvedSendValidation: valid)
-        }
         if grantActive {
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == ladder.target.pid, valid() else {
                 return .text("Not sent: the approved conversation no longer has input focus.")
@@ -1005,7 +810,6 @@ final class ComputerController {
         guard let ladder else { return .text("No target window.", isError: true) }
         guard let id = (input["id"] as? NSNumber)?.intValue else { return .text("Missing id.", isError: true) }
         beginBackgroundTaskIfNeeded(for: "click_element")
-        if let relocation = await prepareBackgroundWorkspace() { return relocation }
         actionRunning = true
         defer { actionRunning = false }
         let r = await ladder.clickElement(id: id)
@@ -1014,7 +818,7 @@ final class ComputerController {
 
     /// Accessibility search of the working window; centers reported in screenshot pixels.
     func find(_ query: String) -> ToolResult {
-        if lane == .background, !grantActive || offscreenInputPermission {
+        if lane == .background, !grantActive {
             if target == nil, !active { return .text("No target window. Call target_window to list the windows and pick one.", isError: true) }
             if !active { begin() }
             guard let ladder else { return .text("No target window.", isError: true) }

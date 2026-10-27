@@ -15,7 +15,6 @@ import SwiftUI
     @Published var cursor: CGPoint?        // normalized 0…1 in window space, top-left origin
     @Published var highlight: CGRect?      // normalized
     @Published var pulse = 0               // increments per click
-    @Published var borrowKeepsWindowOffscreen = false
     @Published var approvalMessage: String?
     @Published var approvalContext: String?
     var startedAt: Date?
@@ -55,7 +54,6 @@ import SwiftUI
         cursor = nil
         highlight = nil
         pulse = 0
-        borrowKeepsWindowOffscreen = false
         startedAt = nil
     }
 }
@@ -215,12 +213,10 @@ struct PeekNoteView: View {
 
     private func asking(_ reason: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(feed.borrowKeepsWindowOffscreen ? "Can I borrow your mouse and keyboard?" : "Can I use your screen, mouse and keyboard?")
+            Text("Can I use your screen, mouse and keyboard?")
                 .font(HandFont.font(size: 14)).foregroundStyle(Pad.ink)
             if !reason.isEmpty { Text(reason).font(Pad.body).lineSpacing(Pad.lineSpacing).foregroundStyle(Pad.ink) }
-            Text(feed.borrowKeepsWindowOffscreen
-                 ? "The task stays on its separate display. I’ll briefly borrow input for each action and return it between steps. Your typing or mouse input interrupts a borrowed action."
-                 : "This step uses your screen. Please pause your mouse and keyboard while I work. Typing, clicking, scrolling or pressing Esc takes control back.")
+            Text("This step uses your screen. Please pause your mouse and keyboard while I work. Typing, clicking, scrolling or pressing Esc takes control back.")
                 .font(.system(size: 10.5)).foregroundStyle(Pad.inkSoft)
         }
     }

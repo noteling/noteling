@@ -162,7 +162,7 @@ struct ClaudeCodeClientTests {
     }
 
     @Test(arguments: [false, true])
-    func testRelocationRecoveryPreservesComputerToolSequence(hardFailure: Bool) async throws {
+    func testRecoverableNoticePreservesComputerToolSequence(hardFailure: Bool) async throws {
         let fixture = try FakeClaude(script: #"""
         config_file = Path(args[args.index("--mcp-config") + 1])
         server = json.loads(config_file.read_text())["mcpServers"]["noteling"]
@@ -196,7 +196,7 @@ struct ClaudeCodeClientTests {
         let client = ClaudeCodeClient(config: fixture.config)
         let definitions: [[String: Any]] = [["type": "computer_toolset_20260801"]]
         var invoked: [String] = []
-        var messages: [[String: Any]] = [["role": "user", "content": "Click the target after refreshing its relocated screenshot."]]
+        var messages: [[String: Any]] = [["role": "user", "content": "Click the target after looking again."]]
 
         let reply = try await client.converse(system: "Use the supplied computer tools.", tools: definitions, messages: &messages,
                                               executor: { name, input, toolset in
@@ -206,7 +206,7 @@ struct ClaudeCodeClientTests {
             if invoked.count == 1 {
                 #expect(name == "left_click")
                 return hardFailure ? .text("Computer action failed.", isError: true)
-                                   : ComputerController.virtualDisplayRelocationNotice
+                                   : .text("needs_foreground: a drag. Take a fresh screenshot and look again.")   // recoverable: not an error
             }
             if name == "screenshot" {
                 return .blocks([["type": "image", "source": ["type": "base64", "media_type": "image/png", "data": "c2NyZWVuc2hvdA=="]]])

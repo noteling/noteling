@@ -183,15 +183,11 @@ enum Prompt {
     windows and switches if the task needs another app.
     - Press controls by name: find_on_screen, then click_element with the #id. Clicking by coordinates presses whatever \
     control is under the point. Type into a field after clicking into it. Results say what was verified.
-    - Some menus, ⌘ shortcuts, drags, context menus and hover need borrowed input. If there is no other way, call \
-    ask_for_the_mouse with a plain one-line reason and wait. Its result tells you which mode was approved. With a \
-    separate display, the task window stays there: screenshots still show only the window and coordinates remain \
-    window-capture pixels. Prepare each action before calling its tool; Noteling briefly borrows input for that action \
-    and returns it before you think or inspect the result. Do not activate the app yourself, move the window onto the \
-    user's screen, or use a script to work around this boundary. Without a separate display, an explicitly approved \
-    desktop handoff uses whole-display screenshot coordinates; take a fresh screenshot before acting. In either mode \
-    call give_the_mouse_back when the borrowed-input part is done. If the user says not now, do what you can and say \
-    what is left. Borrowing input never supplies approval for a consequential action.
+    - Some menus, ⌘ shortcuts, drags, context menus and hover need the real mouse. If there is no other way, call \
+    ask_for_the_mouse with a plain one-line reason and wait. Once granted you drive the real mouse and keyboard and \
+    coordinates are pixels of the whole display: take a fresh screenshot before acting, do that part in one go, and \
+    call give_the_mouse_back as soon as it is done. If the user says not now, do what you can and say what is left. \
+    Borrowing the mouse never supplies approval for a consequential action.
 
     """
     private static let backgroundGuardedAskFirst = """
@@ -210,24 +206,21 @@ enum Prompt {
     """
     private static let backgroundSendAskFirst = """
     - For a chat composer that sends with Return, use send_message with recipient and message containing the exact \
-    already-typed draft. First verify the conversation and focus the composer. On a separate display, obtain input \
-    permission with ask_for_the_mouse before send_message; the send approval does not grant input permission. \
-    send_message shows the recipient, observed window/composer context and full draft on the task screen, then \
-    rechecks the readable draft and target before pressing Return once. It refuses unreadable or changed composers. \
-    If input permission expires while waiting for approval, obtain input permission again and request fresh send \
-    approval. A missing Send button is not a blocker when this guarded Return path is available. After dispatch, \
-    inspect the conversation to verify delivery. If delivery is uncertain, do not repeat the send; report the \
-    uncertainty. Never use a raw Return key, another shortcut, coordinates or a script to bypass send approval.
+    already-typed draft. First verify the conversation and focus the composer. send_message shows the recipient, \
+    observed window/composer context and full draft on the task screen, then rechecks the readable draft and target \
+    before pressing Return once. It refuses unreadable or changed composers. A missing Send button is not a blocker \
+    when this guarded Return path is available. After dispatch, inspect the conversation to verify delivery. If \
+    delivery is uncertain, do not repeat the send; report the uncertainty. Never use a raw Return key, another \
+    shortcut, coordinates or a script to bypass send approval.
 
     """
     private static let backgroundSendSmooth = """
     - For a chat composer that sends with Return, use send_message with recipient and message containing the exact \
-    already-typed draft. First verify the conversation and focus the composer. On a separate display, obtain input \
-    permission with ask_for_the_mouse before send_message. send_message rechecks the readable draft and target, then \
-    presses Return once, without an approval step. It refuses unreadable or changed composers. A missing Send button \
-    is not a blocker when this Return path is available. After dispatch, inspect the conversation to verify delivery. \
-    If delivery is uncertain, do not repeat the send; report the uncertainty. Never use a raw Return key, another \
-    shortcut, coordinates or a script instead of send_message.
+    already-typed draft. First verify the conversation and focus the composer. send_message rechecks the readable \
+    draft and target, then presses Return once, without an approval step. It refuses unreadable or changed composers. \
+    A missing Send button is not a blocker when this Return path is available. After dispatch, inspect the \
+    conversation to verify delivery. If delivery is uncertain, do not repeat the send; report the uncertainty. Never \
+    use a raw Return key, another shortcut, coordinates or a script instead of send_message.
 
     """
     private static let backgroundTail = """

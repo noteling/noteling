@@ -83,7 +83,6 @@ func runHeadlessAsk() async {
     control.ghostEnabled = false
     control.maxLongEdge = config.maxImageLongEdge
     control.preciseClicks = config.backgroundDirectClicks
-    control.virtualDisplayEnabled = config.backgroundVirtualDisplay
     control.onCaption = { print("  [control] \($0)") }
     if let target = backgroundTarget {
         print("target: \(target.appName) “\(target.title)” \(Int(target.frameCG.width))x\(Int(target.frameCG.height))pt \(target.toolkit.rawValue)")
