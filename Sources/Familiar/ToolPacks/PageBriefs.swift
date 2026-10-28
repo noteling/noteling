@@ -15,6 +15,15 @@ final class PageBriefs {
 
         /// The brief's own short answer for the pen, when its script gives one (`PageGlance`).
         var glance: PageGlance? { failed ? nil : PageGlance.parse(text) }
+
+        /// What the brief found about the page (its result's `facts`), as compact JSON for the pack's tools, so a tool
+        /// called on this page can take the thing on it without being told. Nil when the brief has none.
+        var facts: String? {
+            guard !failed, let data = text.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let facts = object["facts"], JSONSerialization.isValidJSONObject(facts) else { return nil }
+            return JSONText.compact(facts)
+        }
     }
 
     private let registry: ToolRegistry

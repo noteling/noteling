@@ -18,12 +18,15 @@ struct PackContextProviderTests {
         })
 
         #expect(context.active.map(\.dirName) == ["active"])
+        #expect(context.hooked.map(\.dirName) == ["lib"])
         #expect(context.global.map(\.dirName) == ["shared"])
         #expect(context.others.map(\.dirName) == ["other"])
-        #expect(checkedPacks == ["active", "shared"])
+        #expect(checkedPacks == ["active", "lib", "shared"])
         #expect(context.sceneNotes.map(\.id) == ["on-scene"])
-        #expect(context.promptSection.contains("Active tool pack: Expenses"))
-        #expect(context.promptSection.contains("Shared tool pack: Shared"))
+        #expect(context.promptSection.contains("Active tool pack: Expenses (leads on this page: expenses.example.test)"))
+        #expect(context.promptSection.contains("Tool pack used here: Library (by Expenses)"))
+        #expect(context.promptSection.contains("Shared tool pack: Shared (anywhere)"))
+        #expect(context.promptSection.contains("- other: Other. (for other.example.test)"))
         #expect(context.promptSection.contains("On button “Submit” on expenses.example.test: [warning] Fixture's note: \"Check the total\""))
         #expect(!context.promptSection.contains("Unrelated note"))
         #expect(!context.promptSection.contains("Other private instructions"))
@@ -57,11 +60,12 @@ struct PackContextProviderTests {
         let registry = await fixture.registry()
         let absent = PackContextProvider.context(for: nil, registry: registry, docsLimit: 0,
                                                 missingRequirements: { _ in [] })
-        #expect(absent.active.isEmpty)
+        #expect(absent.active.isEmpty && absent.hooked.isEmpty)
         #expect(absent.global.map(\.dirName) == ["shared"])
-        #expect(absent.others.map(\.dirName) == ["active", "other"])
+        #expect(absent.others.map(\.dirName) == ["active", "lib", "other"])
         #expect(absent.sceneNotes.isEmpty)
-        #expect(absent.promptSection.contains("No tool pack matched the current app/URL."))
+        #expect(absent.promptSection.contains("No tool pack matched the current app/URL: nothing could be read"))
+        #expect(absent.promptSection.contains("- lib: Library. (a library: its tools come along with a pack that uses it)"))
         #expect(absent.promptSection.contains("shared/docs/guide.md (5 chars, use read_file)"))
         #expect(!absent.promptSection.contains("<file path="))
 
@@ -89,12 +93,20 @@ struct PackContextProviderTests {
                 requires: [FIXTURE_EXPENSE_KEY]
                 match:
                   urls: [expenses.example.test]
+                uses: [lib]
                 ---
                 Expense instructions
                 """, doc: "ABCD")
+                try writePack("lib", skill: """
+                ---
+                name: Library
+                ---
+                Library instructions
+                """, doc: "Library document")
                 try writePack("shared", skill: """
                 ---
                 name: Shared
+                match: anywhere
                 ---
                 Shared instructions
                 """, doc: "EFGHI")

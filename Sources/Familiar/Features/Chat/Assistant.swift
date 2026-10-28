@@ -546,10 +546,10 @@ final class Assistant: ObservableObject {
                 seen.held = !controlsForeground
                 setSeen(seen, on: m.id)
             }
-            var brief = ""
+            var brief = "", facts: String?
             if briefing {
                 status = "Checking this page…"
-                if let b = await briefs?.brief(for: ctx, wait: 10) { brief = Prompt.brief(b) }
+                if let b = await briefs?.brief(for: ctx, wait: 10) { brief = Prompt.brief(b); facts = b.facts }
                 guard generation == captureGeneration else { finishRequest(); return }
             }
             let context = cardConversation?.card == nil
@@ -557,7 +557,7 @@ final class Assistant: ObservableObject {
             let text = context + brief + page + "\n## Question\n\(q)\n"
             content.append(["type": "text", "text": text])
             diagnoseChat(.contextReady)
-            await send(content: content, ctx: ctx, title: q, messageID: m.id, intent: intent, held: held)
+            await send(content: content, ctx: ctx, title: q, messageID: m.id, facts: facts, intent: intent, held: held)
         }
     }
 
@@ -658,10 +658,10 @@ final class Assistant: ObservableObject {
         Task {
             status = "Looking…"
             guard let ready = await pick.ready.value, pick.generation == captureGeneration else { status = ""; finishRequest(); return }
-            var brief = ""
+            var brief = "", facts: String?
             if pick.briefing {
                 status = "Checking this page…"
-                if let b = await briefs?.brief(for: pick.ctx, wait: 10) { brief = Prompt.brief(b) }
+                if let b = await briefs?.brief(for: pick.ctx, wait: 10) { brief = Prompt.brief(b); facts = b.facts }
                 guard pick.generation == captureGeneration else { status = ""; finishRequest(); return }
             }
             let target = pick.target, ctx = pick.ctx
@@ -683,7 +683,7 @@ final class Assistant: ObservableObject {
             }
             let asking = Date()
             await send(content: content, ctx: ctx, title: asked ?? target.shortLabel, allowsControl: false, packScripts: !lean,
-                       pen: true, held: ready.held, seenOn: pick.messageID)
+                       facts: facts, pen: true, held: ready.held, seenOn: pick.messageID)
             let firstWords = firstWordsAt.map { Self.seconds($0.timeIntervalSince(asking)) } ?? "none"
             Log.info("pen: picked→asked \(Self.seconds(asking.timeIntervalSince(pick.at))), asked→first words \(firstWords), "
                      + "asked→answered \(Self.seconds(Date().timeIntervalSince(asking))), brief \(lean ? "in" : "none"), pictures \(pictures.count)")
@@ -1044,12 +1044,14 @@ final class Assistant: ObservableObject {
     /// `allowsControl: false` keeps the mouse and keyboard out of a request that only reads and explains.
     /// `held` is the screen as it was when the person asked: the answer's looks use it unless the answer controls the
     /// foreground. `seenOn` is the question whose chip shows what Claude was shown (the typed question by default).
-    /// `packScripts: false` leaves the pack's tools out (their brief is already in the request), and `pen` runs the turn
-    /// on the pen's model and effort (`Config.penModel`, `penEffort`). `intent` is the verb the person pinned for this
-    /// message: it fixes the tools (Explain has neither control nor teaching, Teach only teaching, Do control) and tells
-    /// the model; nil leaves the model to judge from the words, with every tool it may have.
+    /// `packScripts: false` leaves the pack's tools out (their brief is already in the request), `facts` is what the
+    /// page's brief found, for the pack's tools (`NOTELING_FACTS`), and `pen` runs the turn on the pen's model and
+    /// effort (`Config.penModel`, `penEffort`). `intent` is the verb the person pinned for this message: it fixes the
+    /// tools (Explain has neither control nor teaching, Teach only teaching, Do control) and tells the model; nil
+    /// leaves the model to judge from the words, with every tool it may have.
     func send(content: [[String: Any]], ctx: ScreenContext?, title: String, messageID: UUID? = nil, allowsControl: Bool = true,
-              packScripts: Bool = true, pen: Bool = false, intent: Intent? = nil, held: FrozenScreen? = nil, seenOn: UUID? = nil) async {
+              packScripts: Bool = true, facts: String? = nil, pen: Bool = false, intent: Intent? = nil, held: FrozenScreen? = nil,
+              seenOn: UUID? = nil) async {
         guard let client else {
             transcript.append(ChatMessage(role: .error, text: ConversationBackend.setupMessage(config: config)))
             finishRequest()
@@ -1117,11 +1119,11 @@ final class Assistant: ObservableObject {
                 let sourceRoutes = (sourceConversation?.routes() ?? []) + (folderJobs?.routes() ?? []) + teaching
                 if controlAllowed, let desktop {
                     return try await desktop.prepare(id: id, registry: registry, context: ctx, background: background,
-                                                     title: title, systemExtra: wanted, additionalRoutes: sourceRoutes,
+                                                     title: title, systemExtra: wanted, facts: facts, additionalRoutes: sourceRoutes,
                                                      lookAtScreen: capture, readScreen: read)
                 }
                 let router = try ExecutionTools.make(registry: registry, context: ctx, control: nil, background: false,
-                                                     packScripts: packScripts, additionalRoutes: sourceRoutes,
+                                                     packScripts: packScripts, facts: facts, additionalRoutes: sourceRoutes,
                                                      lookAtScreen: capture, readScreen: read)
                 // Control is off: a request to do something is told how to turn it on, unless this turn couldn't do
                 // things anyway (a pen glance, or a pinned Explain or Teach).

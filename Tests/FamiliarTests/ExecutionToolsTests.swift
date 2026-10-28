@@ -178,13 +178,17 @@ struct ExecutionToolsTests {
         #expect(result.content as? String == "the page as asked about")
     }
 
+    /// The packs for the page, the ones they use here, and the ones for anywhere: a pack for another page and a
+    /// library nobody uses here have no tools on this turn.
     @Test
-    func onlyActiveAndGlobalPackScriptsBecomeExecutableRoutes() async throws {
+    func onlyActiveUsedAndGlobalPackScriptsBecomeExecutableRoutes() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        try fixture.writePack("active", match: "expense.example.test")
+        try fixture.writePack("active", match: "expense.example.test", uses: "lib")
         try fixture.writePack("inactive", match: "other.example.test")
-        try fixture.writePack("shared", match: nil)
+        try fixture.writePack("shared", match: "anywhere")
+        try fixture.writePack("lib", match: nil)
+        try fixture.writePack("unused-lib", match: nil)
         let registry = fixture.registry()
         await registry.reload()
         // Populate definitions after loading packs: registration needs no Python introspection or script execution.
@@ -200,11 +204,23 @@ struct ExecutionToolsTests {
         let router = try ExecutionTools.make(registry: registry, context: context, control: nil,
                                              background: false, lookAtScreen: { .text("fixture") })
         let names = Set(router.definitions.compactMap { $0["name"] as? String })
-        #expect(names == BuiltinTools.names.union(["active__inspect", "shared__inspect"]))
+        #expect(names == BuiltinTools.names.union(["active__inspect", "lib__inspect", "shared__inspect"]))
         #expect(router.accepts(name: "active__inspect"))
+        #expect(router.accepts(name: "lib__inspect"))
         #expect(router.accepts(name: "shared__inspect"))
         #expect(!router.accepts(name: "inactive__inspect"))
+        #expect(!router.accepts(name: "unused-lib__inspect"))
         #expect(!router.accepts(name: "active__inspect", toolset: "computer"))
+        let descriptions = Dictionary(uniqueKeysWithValues: router.definitions.compactMap { d in
+            (d["name"] as? String).map { ($0, d["description"] as? String ?? "") }
+        })
+        #expect(descriptions["active__inspect"] == "[active/scripts/inspect.py, for this page] Fixture inspection")
+        #expect(descriptions["lib__inspect"] == "[lib/scripts/inspect.py, used here by active] Fixture inspection")
+        #expect(descriptions["shared__inspect"] == "[shared/scripts/inspect.py, anywhere] Fixture inspection")
+
+        // Off the page, only the pack for anywhere has tools; a nil scene is the same.
+        let elsewhere = try ExecutionTools.make(registry: registry, context: nil, control: nil, background: false, lookAtScreen: { .text("fixture") })
+        #expect(Set(elsewhere.definitions.compactMap { $0["name"] as? String }) == BuiltinTools.names.union(["shared__inspect"]))
     }
 
     @MainActor
@@ -224,11 +240,13 @@ struct ExecutionToolsTests {
 
         func registry() -> ToolRegistry { ToolRegistry(root: root, runner: ScriptRunner(config: Config())) }
 
-        func writePack(_ name: String, match: String?) throws {
+        /// `match: nil` writes a pack with no rules: a library. `"anywhere"` writes one for every page.
+        func writePack(_ name: String, match: String?, uses: String? = nil) throws {
             let dir = root.appendingPathComponent(name)
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let rules = match.map { "match:\n  urls: [\($0)]\n" } ?? ""
-            try "---\nname: \(name)\n\(rules)---\nFixture pack\n"
+            let rules = match.map { $0 == "anywhere" ? "match: anywhere\n" : "match:\n  urls: [\($0)]\n" } ?? ""
+            let using = uses.map { "uses: [\($0)]\n" } ?? ""
+            try "---\nname: \(name)\n\(rules)\(using)---\nFixture pack\n"
                 .write(to: dir.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
         }
 

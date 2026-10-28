@@ -507,6 +507,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // A pack added in an update (such as Mail) reaches existing installs; edited or removed packs are left alone.
         if let bundled = Bundle.main.resourceURL?.appendingPathComponent("tools"), fm.fileExists(atPath: bundled.path) {
             for name in ToolRegistry.addMissingPacks(from: bundled, to: dir) { Log.info("added tool pack \(name) to \(dir.path)") }
+            // A bundled pack meant for every page says so now (`match: anywhere`); a copy from before says it too.
+            for name in ToolRegistry.markBundledPacksAnywhere(from: bundled, to: dir) { Log.info("tool pack \(name) now says match: anywhere") }
         }
         let legacy = Config.dir.appendingPathComponent("knowledge")
         let seededNames: Set<String> = ["expense-reports.md", "hr-portal.md", "vpn-and-access.md"]

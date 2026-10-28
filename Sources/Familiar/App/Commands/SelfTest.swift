@@ -14,7 +14,7 @@ func runSelfTest() async {
     let registry = ToolRegistry(root: root, runner: runner)
     await registry.reload()
     for p in registry.packs {
-        print("\n[\(p.dirName)] \(p.name) — \(p.description)\n  match: urls=\(p.match.urls) bundles=\(p.match.bundles) titles=\(p.match.titles) global=\(p.isGlobal)")
+        print("\n[\(p.dirName)] \(p.name) — \(p.description)\n  match: urls=\(p.match.urls) bundles=\(p.match.bundles) titles=\(p.match.titles) anywhere=\(p.isGlobal) library=\(p.isLibrary) uses=\(p.uses)")
         for d in p.docs { print("  doc: \(d.relPath) (\(d.text.count) chars)") }
         for s in p.scripts {
             let schema = (try? JSONSerialization.data(withJSONObject: s.inputSchema)).flatMap { String(data: $0, encoding: .utf8) } ?? "?"
@@ -24,7 +24,7 @@ func runSelfTest() async {
     let ctx = ScreenContext(appName: "Google Chrome", bundleID: "com.google.Chrome", windowTitle: "New Report - Concur",
                             url: "https://expenses.internal.example.com/reports/new", focused: nil, timestamp: Date())
     let sel = registry.select(for: ctx)
-    print("\nmatch for \(ctx.summaryLine): active=\(sel.active.map(\.dirName)) global=\(sel.global.map(\.dirName)) others=\(sel.others.map(\.dirName))")
+    print("\nmatch for \(ctx.summaryLine): active=\(sel.active.map(\.dirName)) hooked=\(sel.hooked.map(\.dirName)) global=\(sel.global.map(\.dirName)) others=\(sel.others.map(\.dirName))")
     for (id, input) in [("expenses__report_status", ["report_id": "2026-09 Client dinner"]), ("it-access__vpn_status", [:]), ("shared__fetch_page", ["url": "https://example.com"])] {
         guard let tool = registry.script(named: id) else { print("\nmissing \(id)"); continue }
         do { print("\n\(id) ->\n\(try await runner.run(tool, args: input, context: ctx))") }
@@ -63,7 +63,8 @@ func selfTestNotes() async {
     region.rect = NoteAnchor.fractions(of: r, in: wf)
     let back = region.screenRect(in: wf)
     check("rect anchor round-trips", region.isRegion && back.map { abs($0.minX - r.minX) < 0.5 && abs($0.minY - r.minY) < 0.5 && abs($0.width - r.width) < 0.5 && abs($0.height - r.height) < 0.5 } == true)
-    check("summary reads well", site.summary == "button “Save  page” on 127.0.0.1:4310" && region.summary == "a circled spot on 127.0.0.1:4310")
+    // A site that serves every page from its root names pages by a parameter, so the page key carries it.
+    check("summary reads well", site.summary == "button “Save  page” on 127.0.0.1:4310/?page=abc" && region.summary == "a circled spot on 127.0.0.1:4310/?page=abc")
 
     let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("familiar-notes-\(UUID().uuidString.prefix(8))")
     try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)

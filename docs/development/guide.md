@@ -10,7 +10,7 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
 
 ## How it works
 1. **Watcher** (Accessibility, no screenshots) polls the frontmost app, window title and browser URL.
-2. **Tool packs** in `~/.noteling/tools/<pack>/` match the current app/URL and supply docs plus scripts.
+2. **Tool packs** in `~/.noteling/tools/<pack>/` match the current app/URL and supply docs plus scripts; the best-fitting pack leads on a page and can use others.
 3. **Pen**: hold the note until the ring fills, or press **⌃⌥Space**. The pointer becomes a quill, the screen dims with a
    shimmering border, the element under the quill is outlined, and a click picks it: a screenshot (ringed at the click)
    plus a zoomed crop. **Drag** to circle something instead: the ink stroke goes on the screenshot, the crop is the circled
@@ -351,7 +351,7 @@ The menu bar menu shows permission status and opens the relevant System Settings
     docs/               any files, any structure (md/txt are stuffed or indexed)
     scripts/
       report_status.py  def run(report_id: str) -> dict   -> tool "expenses__report_status"
-  shared/               a pack with no match rules is always active
+  shared/               match: anywhere, so its tools are with every page
     scripts/open_url.py, copy_to_clipboard.py, fetch_page.py
 ```
 `SKILL.md` front matter:
@@ -360,12 +360,26 @@ The menu bar menu shows permission status and opens the relevant System Settings
 name: Expenses (Concur)
 description: Expense reports, receipts, cost centers, approvals.
 match:
-  urls: [expenses.internal.example.com, /concur.*reports/]   # substring, or /regex/
-  bundles: [com.example.SomeApp]
-  titles: [Concur]
+  urls: [expenses.internal.example.com, /concur.*reports/]   # host (+ subdomains) and path prefix, or /regex/
+  bundles: [com.example.SomeApp]                              # the whole bundle id
+  titles: [Concur]                                            # part of a window title
+uses: [shared]                                                # packs whose tools come along on these pages
 ---
 Free-form overview that is always included when the pack is active.
 ```
+Where a pack applies is `MatchRules` (`ToolRegistry.swift`), a rule run on the Mac, never a model's guess: the match
+decides which scripts run with which secrets on which page. `ToolRegistry.select(for:)` returns a `PackSelection`:
+`active`, the packs whose rules hit the scene, best fit first (a path beats a host, a host beats an app, an app beats a
+title; ties go to your own pack, then folder order), and the first one is the `lead` (its brief, its `pen:` taps, its
+note home); `hooked`, the packs the active ones `use` here, each once, following what those use in turn; `global`, the
+packs with `match: anywhere`; `others`, packs for other pages and libraries nobody uses here. A pack with no `match` is
+a library (`isLibrary`): nothing until a pack uses it. `offered` (active + hooked + global) is whose scripts become
+tools and whose words go in the request (`Prompt.toolPacks`): the lead's heading says the rule it hit ("leads on this
+page: orders.example.com/order/"), a hooked pack's says who uses it, a tool's description says in its brackets whether
+its pack is for this page, used here, or for anywhere; `others` are named with where they apply, their docs readable,
+their scripts not tools. A bundled pack that says `match: anywhere` says it in earlier installs' copies too
+(`markBundledPacksAnywhere`, on launch), since before this no rules meant everywhere. A brief's `facts` go to every pack
+script on that page as `NOTELING_FACTS` (`ExecutionTools.make(facts:)`).
 Two optional keys name scripts by file name (without `.py`):
 - `brief: <script>`: run as soon as a page the pack matches comes to the front, with no arguments (the script reads
   the page from `NOTELING_CONTEXT`). Its result is kept for two minutes per page address and sent with the pen's request
