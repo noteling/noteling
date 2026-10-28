@@ -377,9 +377,11 @@ a library (`isLibrary`): nothing until a pack uses it. `offered` (active + hooke
 tools and whose words go in the request (`Prompt.toolPacks`): the lead's heading says the rule it hit ("leads on this
 page: orders.example.com/order/"), a hooked pack's says who uses it, a tool's description says in its brackets whether
 its pack is for this page, used here, or for anywhere; `others` are named with where they apply, their docs readable,
-their scripts not tools. A bundled pack that says `match: anywhere` says it in earlier installs' copies too
-(`markBundledPacksAnywhere`, on launch), since before this no rules meant everywhere. A brief's `facts` go to every pack
-script on that page as `NOTELING_FACTS` (`ExecutionTools.make(facts:)`).
+their scripts not tools. Before packs said `match: anywhere`, no rules meant everywhere: the first launch since marks
+every own pack with no `match:` at all as `match: anywhere`, once, remembered by `.packs-say-where` in the tools folder
+(`markOwnPacksAnywhereOnce`); linked packs are never changed, so Settings names the team's packs that apply nowhere
+(`LinkedToolsUpdater.libraryPacks`). A brief's `facts` (an object) go to every pack script on that page as
+`NOTELING_FACTS` (`ExecutionTools.make(facts:)`).
 Two optional keys name scripts by file name (without `.py`):
 - `brief: <script>`: run as soon as a page the pack matches comes to the front, with no arguments (the script reads
   the page from `NOTELING_CONTEXT`). Its result is kept for two minutes per page address and sent with the pen's request

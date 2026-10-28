@@ -21,7 +21,7 @@ final class PageBriefs {
         var facts: String? {
             guard !failed, let data = text.data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let facts = object["facts"], JSONSerialization.isValidJSONObject(facts) else { return nil }
+                  let facts = object["facts"] as? [String: Any], !facts.isEmpty else { return nil }
             return JSONText.compact(facts)
         }
     }

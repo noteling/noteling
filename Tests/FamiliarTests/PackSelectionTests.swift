@@ -7,17 +7,19 @@ import Testing
 /// are named, never their tools.
 @Suite @MainActor
 struct PackSelectionTests {
-    private let root = FileManager.default.temporaryDirectory.appendingPathComponent("pack-selection-\(UUID().uuidString)")
+    private let home = FileManager.default.temporaryDirectory.appendingPathComponent("pack-selection-\(UUID().uuidString)")
+    private var root: URL { home.appendingPathComponent("tools") }
+    private var linkedRoot: URL { home.appendingPathComponent("linked-tools") }
 
     private func write(_ name: String, _ skill: String, linked: Bool = false) throws {
-        let dir = (linked ? root.appendingPathComponent("linked") : root).appendingPathComponent(name)
+        let dir = (linked ? linkedRoot : root).appendingPathComponent(name)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try skill.write(to: dir.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
     }
 
     private func registry(linked: Bool = false) async -> ToolRegistry {
         let registry = ToolRegistry(root: root, runner: ScriptRunner(config: Config()))
-        if linked { registry.linkedRoot = root.appendingPathComponent("linked") }
+        if linked { registry.linkedRoot = linkedRoot }
         await registry.reload()
         for pack in registry.packs {
             pack.scripts = [ScriptTool(id: "\(pack.dirName)__tool", packDir: pack.dirName, fileName: "tool.py",
@@ -32,8 +34,8 @@ struct PackSelectionTests {
     }
 
     @Test func theBestFitLeadsAndALibraryComesOnlyWithAPackThatUsesIt() async throws {
-        defer { try? FileManager.default.removeItem(at: root) }
-        try write("site", "---\nname: Site\nmatch:\n  urls: [example.com]\nuses: [orders-api]\n---\nThe site.")
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write("site", "---\nname: Site\nmatch:\n  urls: [example.com]\nuses: [orders-api, shared]\n---\nThe site.")
         try write("order-page", "---\nname: Order page\nmatch:\n  urls: [orders.example.com/order/]\nbrief: brief\npen: [Why stuck?]\n---\nAn order.")
         try write("orders-api", "---\nname: Orders API\n---\nA library.")
         try write("shared", "---\nname: Shared\nmatch: anywhere\n---\nEverywhere.")
@@ -46,7 +48,7 @@ struct PackSelectionTests {
         #expect(order.lead?.dirName == "order-page")
         #expect(order.hits["order-page"]?.rule == "orders.example.com/order/" && order.hits["site"]?.rule == "example.com")
         #expect(order.hooked.map(\.dirName) == ["orders-api"] && order.usedBy["orders-api"] == ["Site"])
-        #expect(order.global.map(\.dirName) == ["shared"])
+        #expect(order.global.map(\.dirName) == ["shared"] && order.usedBy["shared"] == nil)   // used or not, it is for anywhere
         #expect(order.others.map(\.dirName) == ["elsewhere", "unused-lib"])
         #expect(order.offered.map(\.dirName) == ["order-page", "site", "orders-api", "shared"])
         #expect(order.scope(of: order.active[0]) == "for this page" && order.scope(of: order.hooked[0]) == "used here by Site")
@@ -66,7 +68,7 @@ struct PackSelectionTests {
     }
 
     @Test func usesFollowsWhatTheUsedPacksUseOnceEachAndIgnoresNamesThatAreNotPacks() async throws {
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { try? FileManager.default.removeItem(at: home) }
         try write("page", "---\nname: Page\nmatch:\n  urls: [a.test]\nuses: [one, missing, page, two]\n---\n")
         try write("one", "---\nname: One\nuses: [two, three]\n---\n")
         try write("two", "---\nname: Two\nuses: [one]\n---\n")
@@ -84,7 +86,7 @@ struct PackSelectionTests {
     }
 
     @Test func aTieGoesToYourOwnPackThenToTheFolderName() async throws {
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { try? FileManager.default.removeItem(at: home) }
         try write("zeta", "---\nname: Zeta\nmatch:\n  urls: [a.test/x/]\n---\n")
         try write("alpha", "---\nname: Alpha\nmatch:\n  urls: [a.test/x/]\n---\n")
         try write("team", "---\nname: Team\nmatch:\n  urls: [a.test/x/]\n---\n", linked: true)
@@ -97,8 +99,8 @@ struct PackSelectionTests {
     }
 
     @Test func theRequestSaysWhoLeadsWhoIsUsedAndWhereTheRestApply() async throws {
-        defer { try? FileManager.default.removeItem(at: root) }
-        try write("order-page", "---\nname: Order page\ndescription: Orders.\nmatch:\n  urls: [orders.example.com/order/]\nuses: [orders-api]\n---\nAn order.")
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write("order-page", "---\nname: Order page\ndescription: Orders.\nmatch:\n  urls: [orders.example.com/order/]\nuses: [orders-api, shared]\n---\nAn order.")
         try write("orders-api", "---\nname: Orders API\ndescription: The API.\n---\nA library.")
         try write("shared", "---\nname: Shared\ndescription: Helpers.\nmatch: anywhere\n---\nEverywhere.")
         try write("hr", "---\nname: HR\ndescription: HR pages.\nmatch:\n  urls: [hr.example.com]\n  titles: [HR Portal]\n---\n")
@@ -106,9 +108,9 @@ struct PackSelectionTests {
         let registry = await registry()
         let page = scene("https://orders.example.com/order/4417")
         let section = Prompt.toolPacks(registry.select(for: page), scene: page, stuffLimit: 10_000)
-        #expect(section.contains("## Active tool pack: Order page (leads on this page: orders.example.com/order/)"))
+        #expect(section.contains("## Active tool pack: Order page (leads here: orders.example.com/order/)"))
         #expect(section.contains("## Tool pack used here: Orders API (by Order page)"))
-        #expect(section.contains("## Shared tool pack: Shared (anywhere)"))
+        #expect(section.contains("## Shared tool pack: Shared (anywhere)") && !section.contains("used here: Shared"))   // used, still anywhere
         #expect(section.contains("- hr: HR. HR pages. (for hr.example.com, windows titled “HR Portal”)"))
         #expect(section.contains("- spare: Spare. Unused. (a library: its tools come along with a pack that uses it)"))
         #expect(section.contains("- orders-api__tool: A tool.") && !section.contains("spare__tool"))
@@ -126,29 +128,36 @@ struct PackSelectionTests {
         let lead = try #require(selection.lead?.scripts.first)
         #expect(lead.definition(scope: selection.scope(of: selection.lead!))["description"] as? String == "[order-page/scripts/tool.py, for this page] A tool.")
         #expect(lead.definition["description"] as? String == "[order-page/scripts/tool.py] A tool.")
+        #expect(selection.scope(of: selection.global[0]) == "anywhere")
     }
 
-    @Test func aBundledPackThatNowSaysAnywhereSaysItInAnEarlierCopyToo() throws {
-        defer { try? FileManager.default.removeItem(at: root) }
-        let bundled = root.appendingPathComponent("bundled")
-        let installed = root.appendingPathComponent("installed")
-        func put(_ base: URL, _ name: String, _ text: String) throws {
-            try FileManager.default.createDirectory(at: base.appendingPathComponent(name), withIntermediateDirectories: true)
-            try text.write(to: base.appendingPathComponent(name).appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
-        }
-        try put(bundled, "shared", "---\nname: Shared\nmatch: anywhere\n---\nNew words.\n")
-        try put(bundled, "expenses", "---\nname: Expenses\nmatch:\n  urls: [expenses.internal.example.com]\n---\n")
-        try put(installed, "shared", "---\nname: Shared\ndescription: Helpers.\n---\nMy own words.\n")
-        try put(installed, "expenses", "---\nname: Expenses\n---\nRules removed on purpose.\n")
-        try put(installed, "mine", "---\nname: Mine\n---\nA library of my own.\n")
+    /// A tools folder from before packs said `match: anywhere`: its own packs with no rules applied everywhere, so
+    /// once, they say so; after that a pack left without rules is a library, as meant.
+    @Test func aFolderFromBeforeHasItsRulelessPacksSayAnywhereOnce() throws {
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write("shared", "---\nname: Shared\ndescription: Helpers.\n---\nMy own words.\n")
+        try write("mine", "---\r\nname: Mine\r\n---\r\nMy helpers, saved on Windows.\r\n")
+        try write("expenses", "---\nname: Expenses\nmatch:\n  urls: [expenses.internal.example.com]\n---\n")
+        try write("deliberate", "---\nname: Deliberate\nmatch:\n---\nA match line with nothing: left alone.\n")
+        try write("bare", "No front matter at all.\n")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("empty"), withIntermediateDirectories: true)
 
-        #expect(ToolRegistry.markBundledPacksAnywhere(from: bundled, to: installed) == ["shared"])
-        let shared = try String(contentsOf: installed.appendingPathComponent("shared/SKILL.md"), encoding: .utf8)
+        #expect(ToolRegistry.markOwnPacksAnywhereOnce(in: root) == ["mine", "shared"])
+        let shared = try String(contentsOf: root.appendingPathComponent("shared/SKILL.md"), encoding: .utf8)
         #expect(shared == "---\nname: Shared\ndescription: Helpers.\nmatch: anywhere\n---\nMy own words.\n")   // the words stay theirs
-        #expect(try String(contentsOf: installed.appendingPathComponent("expenses/SKILL.md"), encoding: .utf8).contains("Rules removed"))
-        #expect(!(try String(contentsOf: installed.appendingPathComponent("expenses/SKILL.md"), encoding: .utf8)).contains("anywhere"))
-        #expect(!(try String(contentsOf: installed.appendingPathComponent("mine/SKILL.md"), encoding: .utf8)).contains("anywhere"))
-        #expect(ToolRegistry.markBundledPacksAnywhere(from: bundled, to: installed).isEmpty)   // once
+        #expect(try String(contentsOf: root.appendingPathComponent("mine/SKILL.md"), encoding: .utf8) == "---\r\nname: Mine\r\nmatch: anywhere\r\n---\r\nMy helpers, saved on Windows.\r\n")
+        for untouched in ["expenses", "deliberate", "bare"] {
+            #expect(!(try String(contentsOf: root.appendingPathComponent("\(untouched)/SKILL.md"), encoding: .utf8)).contains("anywhere"))
+        }
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(ToolRegistry.placesAskedMarker).path))
+
+        // Once: a pack left without rules from now on is a library.
+        try write("later", "---\nname: Later\n---\nA library, as meant.\n")
+        #expect(ToolRegistry.markOwnPacksAnywhereOnce(in: root).isEmpty)
+        #expect(!(try String(contentsOf: root.appendingPathComponent("later/SKILL.md"), encoding: .utf8)).contains("anywhere"))
+        #expect(ToolRegistry.libraryPacks(in: root) == ["bare", "deliberate", "empty", "later"])
+        #expect(ToolRegistry.markOwnPacksAnywhereOnce(in: home.appendingPathComponent("nowhere")).isEmpty)   // no folder, no marker
+        #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent("nowhere").path))
     }
 
     @Test func aBriefsFactsReachTheToolsAsCompactJSON() {

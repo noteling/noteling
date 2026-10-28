@@ -23,7 +23,7 @@ struct PackContextProviderTests {
         #expect(context.others.map(\.dirName) == ["other"])
         #expect(checkedPacks == ["active", "lib", "shared"])
         #expect(context.sceneNotes.map(\.id) == ["on-scene"])
-        #expect(context.promptSection.contains("Active tool pack: Expenses (leads on this page: expenses.example.test)"))
+        #expect(context.promptSection.contains("Active tool pack: Expenses (leads here: expenses.example.test)"))
         #expect(context.promptSection.contains("Tool pack used here: Library (by Expenses)"))
         #expect(context.promptSection.contains("Shared tool pack: Shared (anywhere)"))
         #expect(context.promptSection.contains("- other: Other. (for other.example.test)"))

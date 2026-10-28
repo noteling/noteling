@@ -223,6 +223,37 @@ struct ExecutionToolsTests {
         #expect(Set(elsewhere.definitions.compactMap { $0["name"] as? String }) == BuiltinTools.names.union(["shared__inspect"]))
     }
 
+    /// What the page's brief found reaches a pack script as NOTELING_FACTS, through the real runner.
+    @Test
+    func theBriefsFactsReachAScriptAsAnEnvironmentVariable() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        try fixture.writePack("active", match: "expense.example.test")
+        let scripts = fixture.root.appendingPathComponent("active/scripts")
+        try FileManager.default.createDirectory(at: scripts, withIntermediateDirectories: true)
+        try """
+        import os
+
+        def run() -> dict:
+            \"\"\"Says what facts it was given.\"\"\"
+            return {"facts": os.environ.get("NOTELING_FACTS", "none")}
+        """.write(to: scripts.appendingPathComponent("echo.py"), atomically: true, encoding: .utf8)
+        let registry = fixture.registry()
+        await registry.reload()
+        try #require(registry.packs.first?.scripts.map(\.id) == ["active__echo"])
+        let context = ScreenContext(appName: "Fixture Browser", bundleID: "test.browser", windowTitle: "Expense",
+                                    url: "https://expense.example.test/new", focused: nil, timestamp: Date())
+
+        let told = try ExecutionTools.make(registry: registry, context: context, control: nil, background: false,
+                                           facts: "{\"order\":\"4417\"}", lookAtScreen: { .text("fixture") })
+        let answer = await told.executor("active__echo", [:], nil)
+        #expect(!answer.isError && (answer.content as? String ?? "").contains("{\\\"order\\\":\\\"4417\\\"}"))
+
+        let untold = try ExecutionTools.make(registry: registry, context: context, control: nil, background: false, lookAtScreen: { .text("fixture") })
+        let silence = await untold.executor("active__echo", [:], nil)
+        #expect(!silence.isError && (silence.content as? String ?? "").contains("\"facts\": \"none\""))
+    }
+
     @MainActor
     private struct Fixture {
         let root: URL

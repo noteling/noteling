@@ -35,12 +35,32 @@ import Testing
         #expect(MatchRules(urls: ["*.example.com/order/"]).matches(scene("https://orders.example.com/order/4417")))
     }
 
-    @Test func aRouteBehindTheHashCountsAsPathAndAStarStandsForAnything() {
+    @Test func aRouteBehindTheHashCountsAsPathAndAStarStandsForWholeParts() {
         #expect(MatchRules(urls: ["app.example.com/#/incident/"]).matches(scene("https://app.example.com/#/incident/123")))
         #expect(!MatchRules(urls: ["app.example.com/#/incident/"]).matches(scene("https://app.example.com/#/change/123")))
-        #expect(MatchRules(urls: ["shop.example.com/*/reviews"]).matches(scene("https://shop.example.com/item/9/reviews")))
-        #expect(!MatchRules(urls: ["shop.example.com/*/reviews"]).matches(scene("https://shop.example.com/item/9/questions")))
+        let reviews = MatchRules(urls: ["shop.example.com/*/reviews"])
+        #expect(reviews.matches(scene("https://shop.example.com/item/9/reviews")))
+        #expect(reviews.matches(scene("https://shop.example.com/item/9/reviews/page/2")))
+        #expect(!reviews.matches(scene("https://shop.example.com/item/9/questions")))
+        #expect(!reviews.matches(scene("https://shop.example.com/item/9/reviews-archive")))
+        #expect(!reviews.matches(scene("https://shop.example.com/item/9/reviewsXYZ/")))
         #expect(MatchRules(urls: ["shop.example.com/ip/*"]).matches(scene("https://shop.example.com/ip/Thing/123")))
+    }
+
+    @Test func aRuleThatIsOnlyAPathIsThatPathOnAnyHostAndARuleNamesNoQuery() {
+        let path = MatchRules(urls: ["/reports/new"])
+        #expect(path.matches(scene("https://expenses.internal.example.com/reports/new?x=1")))
+        #expect(path.matches(scene("https://other.test/reports/new/")))
+        #expect(!path.matches(scene("https://other.test/reports/newer")))
+        #expect(!path.matches(scene("https://other.test/")))
+        #expect(MatchRules(urls: ["example.com/?tab=orders"]).matches(scene("https://example.com/?tab=orders")))
+        #expect(MatchRules(urls: ["example.com/?tab=orders"]).matches(scene("https://example.com/")))   // the query is not a rule
+        // A rule written with care taken by nobody: spaces around it, capitals, a scheme.
+        #expect(MatchRules(urls: ["  Orders.Example.COM/Order/  "]).matches(scene("https://orders.example.com/order/1")))
+        #expect(MatchRules(urls: ["http://orders.example.com/order/"]).matches(scene("https://orders.example.com/order/1")))
+        // An address that is not one (the address bar's words when a page has no AXURL) keeps the old substring rule.
+        #expect(MatchRules(urls: ["example.com"]).matches(scene("example.com/orders")))
+        #expect(MatchRules(urls: ["example.com"]).hit(scene("example.com/orders"))?.specificity == 300)
     }
 
     @Test func aPortInTheRuleIsThatPortAndNoPortIsAnyPort() {
@@ -80,6 +100,12 @@ import Testing
         #expect(byPath.specificity > byHost.specificity && byHost.specificity == byRegex.specificity)
         #expect(byHost.specificity > byApp.specificity && byApp.specificity > byTitle.specificity)
         #expect(byPath.rule == "orders.example.com/order/" && byTitle.rule == "windows titled “Orders Admin”")
+        // Depth is parts, not letters: `/*` is as broad as no path, and a `*` part counts for nothing.
+        #expect(MatchRules(urls: ["orders.example.com/*"]).hit(page)?.specificity == byHost.specificity)
+        #expect(MatchRules(urls: ["orders.example.com/*/4417"]).hit(page)?.specificity == byPath.specificity)
+        #expect(MatchRules(urls: ["orders.example.com/order/4417"]).hit(page)?.specificity == MatchRules(urls: ["orders.example.com/or/44"]).hit(scene("https://orders.example.com/or/44"))?.specificity)
+        let route = scene("https://app.example.com/#/incident/123")
+        #expect(MatchRules(urls: ["app.example.com/#/incident/"]).hit(route)?.specificity == MatchRules(urls: ["app.example.com/incident/"]).hit(scene("https://app.example.com/incident/1"))?.specificity)
         // Several rules in one pack: the best fit is the pack's.
         let both = MatchRules(urls: ["example.com", "orders.example.com/order/"], titles: ["Orders Admin"])
         #expect(both.hit(page)?.rule == "orders.example.com/order/")
@@ -103,5 +129,34 @@ import Testing
         #expect(ToolRegistry.matchRules(ToolRegistry.parseFrontmatter(marked ?? "").0["match"]).anywhere)
         #expect(ToolRegistry.markedAnywhere("No front matter here.") == nil)
         #expect(ToolRegistry.markedAnywhere("---\nname: Open\n") == nil)
+        // A file with Windows line endings keeps them, and is read all the same.
+        let windows = ToolRegistry.markedAnywhere("---\r\nname: Shared\r\n---\r\nBody.\r\n")
+        #expect(windows == "---\r\nname: Shared\r\nmatch: anywhere\r\n---\r\nBody.\r\n")
+        let (front, body) = ToolRegistry.parseFrontmatter(windows ?? "")
+        #expect(front["name"] as? String == "Shared" && ToolRegistry.matchRules(front["match"]).anywhere && body.contains("Body."))
+    }
+
+    /// The team guide's example has a comment after each rule; copied as it is, the comment is not part of the rule.
+    @Test func aCommentAfterASpaceIsNotPartOfAValue() {
+        let (front, _) = ToolRegistry.parseFrontmatter("""
+        ---
+        name: Orders   # the name
+        description: Order #4417 pages are "#1" here
+        match:
+          urls: [orders.example.com/order/]     # a host and a path
+          bundles: [com.example.OrdersApp]      # or a Mac app's bundle id
+        pen: [Why is this stuck?, "What's #2?"]   # up to 3 questions
+        # a whole line
+        uses: [shared]
+        ---
+        """)
+        #expect(front["name"] as? String == "Orders")
+        #expect(front["description"] as? String == "Order")   // YAML's rule: a space then # starts a comment, as it does here
+        let rules = ToolRegistry.matchRules(front["match"])
+        #expect(rules.urls == ["orders.example.com/order/"] && rules.bundles == ["com.example.OrdersApp"])
+        #expect(ToolRegistry.list(front["pen"]) == ["Why is this stuck?", "What's #2?"])
+        #expect(ToolRegistry.list(front["uses"]) == ["shared"])
+        #expect(ToolRegistry.uncommented("a#b #c") == "a#b " && ToolRegistry.uncommented("'a #b' #c") == "'a #b' ")
+        #expect(ToolRegistry.uncommented("#top") == "" && ToolRegistry.uncommented("  # indented") == "  ")   // a whole line of comment
     }
 }

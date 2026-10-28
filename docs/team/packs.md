@@ -4,9 +4,10 @@ A tool pack helps on one of your team's apps or sites. When someone asks about a
 something on it, Noteling uses the pack's instructions, its knowledge and its scripts. Any top-level folder of your
 repository is a pack, except `jobs/` (and `watches/`, which is reserved).
 
-A pack says where it applies with `match`, and the pack whose rule fits the page best **leads** there: its brief runs,
-its questions are the pen's taps, its words shape the answer. A pack can also `use` other packs, whose tools then come
-along on its pages: a pack with no `match` at all is a library, and that is the only way its tools reach a page.
+A pack says where it applies with `match`, and the pack whose rule fits the page best **leads** there: its questions
+are the pen's taps, its words shape the answer, and the page's brief is the best-fitting pack's that has one. A pack
+can also `use` other packs, whose tools then come along on its pages: a pack with no `match` at all is a library, and
+that is the only way its tools reach a page.
 
 ```
 orders/
@@ -44,12 +45,15 @@ answer.
 - **`match`**: where the pack applies. A url rule is a host, its subdomains and every page under its path:
   `orders.example.com/order/` is every order page, whatever the id, the query or the part after `#`, and
   `example.com` is the whole site and never `notexample.com`. A host with a port is that port. A `*` in the path stands
-  for anything (`shop.example.com/*/reviews`), a route after `#` counts as path (`app.example.com/#/incident/`), and
-  `/…/` is a regex over the whole address. A bundle rule is the app's whole bundle id; a title rule is part of a window
-  title. Case never matters. When several packs fit a page, the one with the most specific rule leads: a path beats a
-  host, a host beats an app, an app beats a title.
-  `match: anywhere` makes a pack active on every page and in every app, as the shared helpers are. A pack with no
-  `match` is a library: it applies nowhere on its own.
+  for one or more parts (`shop.example.com/*/reviews`), a route after `#` counts as path (`app.example.com/#/incident/`),
+  a rule that is only a path (`/reports/new`) is that path on any host, a rule names no query, and `/…/` is a regex over
+  the whole address. A bundle rule is the app's whole bundle id; a title rule is part of a window title. Case never
+  matters. When several packs fit a page, the one with the most specific rule leads: a deeper path beats a shallower
+  one, a path beats a host, a host beats an app, an app beats a title.
+  `match: anywhere` sends a pack's tools and words with every page and every app, as the shared helpers go; such a
+  pack never leads. A pack with no `match` is a library: it applies nowhere on its own. Earlier versions took no
+  `match` as everywhere, so say `match: anywhere` for a pack you mean that way; Settings names the packs of yours
+  that apply nowhere.
 - **`uses`**: other packs, by folder name, whose tools come along on this pack's pages, with their words. Name a
   library here, or a pack for another page whose tools help on this one too; what those packs use comes along as well.
 - **The body** is the most important part for the quality of answers. Say who the people are and what they need, name

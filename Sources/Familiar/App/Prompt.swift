@@ -314,12 +314,12 @@ enum Prompt {
         for (i, p) in selection.offered.enumerated() {
             let heading: String
             if let hit = selection.hits[p.dirName], selection.active.contains(where: { $0 === p }) {
-                heading = i == 0 ? "Active tool pack: \(p.name) (leads on this page: \(hit.rule))"
+                heading = i == 0 ? "Active tool pack: \(p.name) (leads here: \(hit.rule))"
                                  : "Active tool pack: \(p.name) (also for this page: \(hit.rule))"
-            } else if let by = selection.usedBy[p.dirName], !by.isEmpty {
-                heading = "Tool pack used here: \(p.name) (by \(by.joined(separator: " and ")))"
-            } else {
+            } else if p.isGlobal {
                 heading = "Shared tool pack: \(p.name) (anywhere)"
+            } else {
+                heading = "Tool pack used here: \(p.name) (by \((selection.usedBy[p.dirName] ?? []).joined(separator: " and ")))"
             }
             s += "\n## \(heading)\n"
             if !p.description.isEmpty { s += "\(p.description)\n" }
@@ -433,7 +433,7 @@ enum Prompt {
     }
 
     /// A pack that knows the page knows what people there need from the pen better than the default shape does.
-    static let packShapeFirst = "If the active tool pack says how to answer when someone circles or points at something, follow the pack exactly and skip the shape below.\n"
+    static let packShapeFirst = "If the tool pack that leads here says how to answer when someone circles or points at something, follow the pack exactly and skip the shape below.\n"
 
     /// The questions the pen offers as taps once something is picked: the pack's own (SKILL.md `pen:`) for the page in
     /// front, else general ones. Tapping one asks it; nothing is sent before.

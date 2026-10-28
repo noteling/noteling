@@ -37,8 +37,9 @@ struct MatchRules {
 
     /// A url rule is a host, its subdomains, and the paths under its path: `orders.example.com/order/` is every
     /// order page, with any id, query or fragment. A host with a port is that port; without one, any port. A `*` in
-    /// the path stands for anything; `/…/` is a regex over the whole address, as before. A rule's fit is its path's
-    /// length, so `example.com/order/` outranks `example.com`.
+    /// the path stands for anything; a rule that is only a path (`/reports/new`) is that path on any host; `/…/` is a
+    /// regex over the whole address, as before. A rule's fit is how deep its path goes, so `example.com/order/`
+    /// outranks `example.com`, and `/order/4417` outranks `/order/`.
     static func urlHit(_ pattern: String, _ url: String) -> Hit? {
         let p = pattern.trimmingCharacters(in: .whitespaces)
         guard !p.isEmpty else { return nil }
@@ -49,20 +50,28 @@ struct MatchRules {
         }
         var rule = p
         if let scheme = rule.range(of: "://") { rule = String(rule[scheme.upperBound...]) }
+        if let query = rule.firstIndex(where: { $0 == "?" }) { rule = String(rule[..<query]) }   // a rule names no query
         let slash = rule.firstIndex(of: "/")
         var ruleHost = (slash.map { String(rule[..<$0]) } ?? rule).lowercased()
         let rulePath = slash.map { String(rule[$0...]) } ?? ""
         if ruleHost.hasPrefix("*.") { ruleHost.removeFirst(2) }
-        guard !ruleHost.isEmpty else { return nil }
-        if let colon = ruleHost.lastIndex(of: ":"), let port = Int(ruleHost[ruleHost.index(after: colon)...]) {
-            guard components.port == port || (components.port == nil && defaultPort(components.scheme) == port) else { return nil }
-            ruleHost = String(ruleHost[..<colon])
+        if !ruleHost.isEmpty {
+            if let colon = ruleHost.lastIndex(of: ":"), let port = Int(ruleHost[ruleHost.index(after: colon)...]) {
+                guard components.port == port || (components.port == nil && defaultPort(components.scheme) == port) else { return nil }
+                ruleHost = String(ruleHost[..<colon])
+            }
+            guard host == ruleHost || host.hasSuffix("." + ruleHost) else { return nil }
         }
-        guard host == ruleHost || host.hasSuffix("." + ruleHost) else { return nil }
-        let path = pagePath(components)
-        guard pathMatches(rulePath, path) else { return nil }
-        let depth = rulePath.trimmingCharacters(in: CharacterSet(charactersIn: "/")).count
+        let depth = pathDepth(rulePath)
+        guard !ruleHost.isEmpty || depth > 0 else { return nil }
+        guard pathMatches(rulePath, pagePath(components)) else { return nil }
         return Hit(specificity: depth == 0 ? 300 : 400 + min(depth, 99), rule: p)
+    }
+
+    /// How deep a rule's path goes: its parts, not counting a `*` or the `#` of a route, so `/*` is as broad as no
+    /// path, and `/order/4417` is deeper than `/order/`.
+    private static func pathDepth(_ rulePath: String) -> Int {
+        rulePath.split(separator: "/").filter { $0 != "*" && $0 != "#" }.count
     }
 
     /// The page's path, with an app's `#/route` as part of it, the way the notes' page key sees it.
@@ -74,14 +83,15 @@ struct MatchRules {
         return path.lowercased()
     }
 
-    /// `/order/` and `/order` both cover `/order`, `/order/123` and `/order#/x`, never `/orders`; `*` stands for anything.
+    /// `/order/` and `/order` both cover `/order`, `/order/123` and `/order#/x`, never `/orders`; `*` stands for
+    /// anything, and what follows it ends at a part's end too: `/*/reviews` is not `/9/reviews-archive`.
     private static func pathMatches(_ rulePath: String, _ path: String) -> Bool {
         var prefix = rulePath.lowercased()
         while prefix.count > 1, prefix.hasSuffix("/") { prefix.removeLast() }
         if prefix.isEmpty || prefix == "/" { return true }
         if prefix.contains("*") {
             let regex = "^" + prefix.split(separator: "*", omittingEmptySubsequences: false)
-                .map { NSRegularExpression.escapedPattern(for: String($0)) }.joined(separator: ".*")
+                .map { NSRegularExpression.escapedPattern(for: String($0)) }.joined(separator: ".*") + "(?:$|[/#])"
             return path.range(of: regex, options: .regularExpression) != nil
         }
         return path == prefix || path.hasPrefix(prefix + "/") || path.hasPrefix(prefix + "#")
@@ -197,8 +207,8 @@ struct PackSelection {
     /// Where a pack stands on this turn, for the model: beside its tools and over its words.
     func scope(of pack: ToolPack) -> String {
         if active.contains(where: { $0 === pack }) { return "for this page" }
-        if let by = usedBy[pack.dirName], !by.isEmpty { return "used here by \(by.joined(separator: " and "))" }
         if pack.isGlobal { return "anywhere" }
+        if let by = usedBy[pack.dirName], !by.isEmpty { return "used here by \(by.joined(separator: " and "))" }
         return pack.isLibrary ? "a library" : "for other pages"
     }
 }
@@ -256,7 +266,9 @@ final class ToolRegistry {
                 pack.sources = Self.list(fm["sources"])
                 pack.brief = Self.list(fm["brief"]).first
                 pack.pen = Self.list(fm["pen"]).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                pack.uses = Self.list(fm["uses"]).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && $0 != pack.dirName }
+                var used = Set<String>()
+                pack.uses = Self.list(fm["uses"]).map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty && $0 != pack.dirName && used.insert($0).inserted }
                 pack.match = Self.matchRules(fm["match"])
             }
             pack.docs = loadDocs(pack)
@@ -422,8 +434,8 @@ final class ToolRegistry {
     }
 
     /// The packs for a scene: those whose rules hit it, best fit first (a tie goes to your own pack, then by folder
-    /// name); then the packs they use here, each once, following what those use in turn; then the packs for anywhere.
-    /// With no scene, nothing is active: the packs for anywhere are all that's offered.
+    /// name: `packs` holds them in that order); then the packs they use here, each once, following what those use in
+    /// turn; then the packs for anywhere. With no scene, nothing is active: the packs for anywhere are all that's offered.
     func select(for ctx: ScreenContext?) -> PackSelection {
         var selection = PackSelection()
         var scored: [(pack: ToolPack, hit: MatchRules.Hit, order: Int)] = []
@@ -432,11 +444,7 @@ final class ToolRegistry {
             else if let ctx, let hit = p.match.hit(ctx) { scored.append((p, hit, order)) }
             else { selection.others.append(p) }
         }
-        scored.sort { a, b in
-            if a.hit.specificity != b.hit.specificity { return a.hit.specificity > b.hit.specificity }
-            if a.pack.linked != b.pack.linked { return !a.pack.linked }
-            return a.order < b.order
-        }
+        scored.sort { a, b in a.hit.specificity != b.hit.specificity ? a.hit.specificity > b.hit.specificity : a.order < b.order }
         selection.active = scored.map(\.pack)
         for s in scored { selection.hits[s.pack.dirName] = s.hit }
 
@@ -445,8 +453,9 @@ final class ToolRegistry {
         while !queue.isEmpty {
             let (user, uses) = queue.removeFirst()
             for name in uses {
-                guard let used = packs.first(where: { $0.dirName == name }) else { continue }
-                selection.usedBy[name, default: []].append(user.name)
+                // A pack for anywhere is there already, as itself: using it changes nothing.
+                guard let used = packs.first(where: { $0.dirName == name }), !used.isGlobal else { continue }
+                if !selection.usedBy[name, default: []].contains(user.name) { selection.usedBy[name, default: []].append(user.name) }
                 guard taken.insert(name).inserted else { continue }
                 selection.hooked.append(used)
                 selection.others.removeAll { $0 === used }
@@ -515,32 +524,50 @@ final class ToolRegistry {
         return added
     }
 
-    /// A bundled pack that now says `match: anywhere` (the shared helpers, mail) says it in the copies installs
-    /// already have too, when theirs still has no `match:` at all. Before, no rules meant everywhere; now it means a
-    /// library, and those packs are meant for every page. A copy someone gave rules of their own keeps them.
+    /// Written into a tools folder once its packs have been asked where they apply (`markOwnPacksAnywhereOnce`).
+    nonisolated static let placesAskedMarker = ".packs-say-where"
+
+    /// Before packs said `match: anywhere`, a pack with no rules applied everywhere. The first time a tools folder
+    /// is read since, every pack of the person's own with no rules at all is marked `match: anywhere`, once, so it
+    /// keeps applying as it did: the person's helpers, and their copies of the bundled shared helpers and mail. A
+    /// marker file remembers it was done, so a pack they later leave without rules is a library, as they mean it.
+    /// Returns the packs marked.
     @discardableResult
-    nonisolated static func markBundledPacksAnywhere(from bundled: URL, to root: URL) -> [String] {
+    nonisolated static func markOwnPacksAnywhereOnce(in root: URL) -> [String] {
         let fm = FileManager.default
+        let marker = root.appendingPathComponent(placesAskedMarker)
+        guard fm.fileExists(atPath: root.path), !fm.fileExists(atPath: marker.path) else { return [] }
         var marked: [String] = []
-        for name in (try? fm.contentsOfDirectory(atPath: bundled.path)) ?? [] {
-            let theirs = bundled.appendingPathComponent(name).appendingPathComponent("SKILL.md")
-            let ours = root.appendingPathComponent(name).appendingPathComponent("SKILL.md")
-            guard let shipped = try? String(contentsOf: theirs, encoding: .utf8), matchRules(parseFrontmatter(shipped).0["match"]).anywhere,
-                  let text = try? String(contentsOf: ours, encoding: .utf8), parseFrontmatter(text).0["match"] == nil,
-                  let updated = markedAnywhere(text) else { continue }
-            guard (try? updated.write(to: ours, atomically: true, encoding: .utf8)) != nil else { continue }
-            marked.append(name)
+        for dir in packFolders(in: root) {
+            let skill = dir.appendingPathComponent("SKILL.md")
+            // A `match:` line with nothing under it is left as it is: that pack says, in its way, nowhere.
+            guard let text = try? String(contentsOf: skill, encoding: .utf8), parseFrontmatter(text).0["match"] == nil,
+                  let updated = markedAnywhere(text), (try? updated.write(to: skill, atomically: true, encoding: .utf8)) != nil else { continue }
+            marked.append(dir.lastPathComponent)
         }
-        return marked.sorted()
+        try? "The packs here say where they apply; one with no match: is a library.\n".write(to: marker, atomically: true, encoding: .utf8)
+        return marked
     }
 
-    /// The SKILL.md text with `match: anywhere` as the last line of its front matter, or nil when it has none.
+    /// The SKILL.md text with `match: anywhere` as the last line of its front matter, or nil when it has none. A
+    /// file with Windows line endings keeps them.
     nonisolated static func markedAnywhere(_ text: String) -> String? {
+        let crlf = text.contains("\r\n")
         var lines = text.components(separatedBy: "\n")
-        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---",
-              let end = lines.dropFirst().firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "---" }) else { return nil }
-        lines.insert("match: anywhere", at: end)
+        guard lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) == "---",
+              let end = lines.dropFirst().firstIndex(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines) == "---" }) else { return nil }
+        lines.insert("match: anywhere" + (crlf ? "\r" : ""), at: end)
         return lines.joined(separator: "\n")
+    }
+
+    /// The packs of a tools folder that apply nowhere: no `match:` at all, and nothing says `anywhere`. For the
+    /// team's linked tools, which Noteling never changes, so Settings can say so.
+    nonisolated static func libraryPacks(in root: URL) -> [String] {
+        packFolders(in: root).filter { dir in
+            guard let text = try? String(contentsOf: dir.appendingPathComponent("SKILL.md"), encoding: .utf8) else { return true }
+            let rules = matchRules(parseFrontmatter(text).0["match"])
+            return rules.isEmpty && !rules.anywhere
+        }.map(\.lastPathComponent)
     }
 
     func script(named id: String) -> ScriptTool? {
@@ -561,9 +588,10 @@ final class ToolRegistry {
         return []
     }
 
-    /// Tiny YAML subset: `key: value`, `key:` + indented `sub: value`, lists as `[a, b]` or `- item` lines.
+    /// Tiny YAML subset: `key: value`, `key:` + indented `sub: value`, lists as `[a, b]` or `- item` lines, and a
+    /// comment from a `#` after a space to the end of the line, outside quotes. Windows line endings are fine.
     nonisolated static func parseFrontmatter(_ text: String) -> ([String: Any], String) {
-        var lines = text.components(separatedBy: "\n")
+        var lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return ([:], text) }
         lines.removeFirst()
         guard let end = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "---" }) else { return ([:], text) }
@@ -574,7 +602,7 @@ final class ToolRegistry {
         var currentTop: String?
         var currentSub: String?
         for raw in fmLines {
-            let line = raw.replacingOccurrences(of: "\t", with: "  ")
+            let line = uncommented(raw.replacingOccurrences(of: "\t", with: "  "))
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
             let indent = line.prefix { $0 == " " }.count
@@ -603,6 +631,19 @@ final class ToolRegistry {
             }
         }
         return (top, body)
+    }
+
+    /// The line without a comment: from a `#` that follows a space, outside quotes, as YAML has it.
+    nonisolated static func uncommented(_ line: String) -> String {
+        var quote: Character?
+        var previous: Character = " "
+        for (i, c) in line.enumerated() {
+            if let q = quote { if c == q { quote = nil } }
+            else if c == "\"" || c == "'" { quote = c }
+            else if c == "#", previous == " " { return String(line.prefix(i)) }
+            previous = c
+        }
+        return line
     }
 
     private nonisolated static func value(_ s: String) -> Any {
