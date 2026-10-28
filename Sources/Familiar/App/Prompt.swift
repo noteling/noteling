@@ -20,8 +20,10 @@ enum Prompt {
     looks, call look_at_screen to see it. When you give instructions, use short numbered steps the user can do right now.
 
     Tools you may have:
-    - Scripts from the active tool pack (names look like pack__script). Use them when they answer the question \
-    better than guessing, e.g. checking a status or looking something up. Report what they return, don't invent results.
+    - Scripts from the tool packs for this page (names look like pack__script). Each tool says in its brackets whether \
+    its pack is for this page, used here by the page's pack, or for anywhere; a pack for other pages has no tools here. \
+    Use them when they answer the question better than guessing, e.g. checking a status or looking something up. \
+    Report what they return, don't invent results.
     - read_file and grep over the tool packs' docs, for anything the stuffed docs don't cover.
     - read_screen, which returns the text of the window in front when they asked, via accessibility. Use it to read small text, \
     dropdown values or error messages precisely.
@@ -303,11 +305,23 @@ enum Prompt {
         return s
     }
 
-    static func toolPacks(active: [ToolPack], global: [ToolPack], others: [ToolPack], stuffLimit: Int) -> String {
+    /// The packs for this request: the one that leads on the page in front first, with the rule that made it the
+    /// page's, then the other packs for the page, the packs they use here, and the packs for anywhere. Packs for other
+    /// pages and libraries nobody uses here are named with where they apply, and their docs stay readable.
+    static func toolPacks(_ selection: PackSelection, scene: ScreenContext?, stuffLimit: Int) -> String {
         var s = ""
         var budget = stuffLimit
-        for p in active + global {
-            s += "\n## \(p.isGlobal ? "Shared tool pack" : "Active tool pack"): \(p.name)\n"
+        for (i, p) in selection.offered.enumerated() {
+            let heading: String
+            if let hit = selection.hits[p.dirName], selection.active.contains(where: { $0 === p }) {
+                heading = i == 0 ? "Active tool pack: \(p.name) (leads here: \(hit.rule))"
+                                 : "Active tool pack: \(p.name) (also for this page: \(hit.rule))"
+            } else if p.isGlobal {
+                heading = "Shared tool pack: \(p.name) (anywhere)"
+            } else {
+                heading = "Tool pack used here: \(p.name) (by \((selection.usedBy[p.dirName] ?? []).joined(separator: " and ")))"
+            }
+            s += "\n## \(heading)\n"
             if !p.description.isEmpty { s += "\(p.description)\n" }
             if !p.body.isEmpty { s += "\n\(p.body)\n" }
             if !p.docs.isEmpty {
@@ -327,12 +341,17 @@ enum Prompt {
             }
             if !p.paths.isEmpty { s += showPaths(p) }
         }
-        if !others.isEmpty {
-            s += "\n## Other tool packs (not active; their docs are readable with read_file / grep)\n"
-            for p in others { s += "- \(p.dirName): \(p.name). \(p.description)\n" }
+        if !selection.others.isEmpty {
+            s += "\n## Other tool packs (not for this page; their docs are readable with read_file / grep, their scripts are not tools here)\n"
+            for p in selection.others {
+                let place = p.isLibrary ? "a library: its tools come along with a pack that uses it" : "for \(p.match.words)"
+                s += "- \(p.dirName): \(p.name)." + (p.description.isEmpty ? "" : " \(p.description)") + " (\(place))\n"
+            }
         }
-        if active.isEmpty {
-            s += "\nNo tool pack matched the current app/URL. Answer from the screen, and grep the packs if the question sounds like it belongs to one.\n"
+        if selection.active.isEmpty {
+            s += scene == nil
+                ? "\nNo tool pack matched the current app/URL: nothing could be read about what is in front (Noteling itself may be in front, or Accessibility is off). Answer from the question and the screen.\n"
+                : "\nNo tool pack matched the current app/URL. Answer from the screen, and grep the packs if the question sounds like it belongs to one.\n"
         }
         return s
     }
@@ -414,7 +433,7 @@ enum Prompt {
     }
 
     /// A pack that knows the page knows what people there need from the pen better than the default shape does.
-    static let packShapeFirst = "If the active tool pack says how to answer when someone circles or points at something, follow the pack exactly and skip the shape below.\n"
+    static let packShapeFirst = "If the tool pack that leads here says how to answer when someone circles or points at something, follow the pack exactly and skip the shape below.\n"
 
     /// The questions the pen offers as taps once something is picked: the pack's own (SKILL.md `pen:`) for the page in
     /// front, else general ones. Tapping one asks it; nothing is sent before.

@@ -3,6 +3,7 @@ name: Example pages
 description: An example pack for the example.com pages — whether a page answers, and a glance at it when it comes to the front.
 match:
   urls: [example.com, example.org]
+uses: [shared]
 brief: brief
 pen: [Is this page up?, What is this page for?]
 ---

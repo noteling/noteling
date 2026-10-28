@@ -2,12 +2,15 @@ import Foundation
 
 /// The packs and scene notes used to assemble one request. Each request gets a fresh selection from the registry.
 struct PackContext {
-    let active: [ToolPack]
-    let global: [ToolPack]
-    let others: [ToolPack]
+    let selection: PackSelection
     let sceneNotes: [StickyNote]
     let missingRequirements: [(pack: ToolPack, keys: [String])]
     let promptSection: String
+
+    var active: [ToolPack] { selection.active }
+    var hooked: [ToolPack] { selection.hooked }
+    var global: [ToolPack] { selection.global }
+    var others: [ToolPack] { selection.others }
 }
 
 /// Builds the existing tool-pack context without owning a conversation, capture, or recording.
@@ -27,27 +30,24 @@ enum PackContextProvider {
         let notes = registry.notes(for: scene)
         let missing: [(pack: ToolPack, keys: [String])]
         if includeMissingRequirements {
-            let selected = selection.active + selection.global
+            let selected = selection.offered
             missing = missingRequirements?(selected) ?? registry.missingRequirements(for: selected)
         } else {
             missing = []
         }
-        let prompt = promptSection(active: selection.active, global: selection.global, others: selection.others,
-                                   notes: includeNotes ? notes : [], missingRequirements: missing, docsLimit: docsLimit)
-        return PackContext(active: selection.active, global: selection.global, others: selection.others,
-                           sceneNotes: notes, missingRequirements: missing, promptSection: prompt)
+        let prompt = promptSection(selection, scene: scene, notes: includeNotes ? notes : [], missingRequirements: missing, docsLimit: docsLimit)
+        return PackContext(selection: selection, sceneNotes: notes, missingRequirements: missing, promptSection: prompt)
     }
 
     /// Formatting uses the supplied values only; availability checks and scene selection happen above.
     static func promptSection(
-        active: [ToolPack],
-        global: [ToolPack],
-        others: [ToolPack],
+        _ selection: PackSelection,
+        scene: ScreenContext?,
         notes: [StickyNote],
         missingRequirements: [(pack: ToolPack, keys: [String])],
         docsLimit: Int
     ) -> String {
-        var section = Prompt.toolPacks(active: active, global: global, others: others, stuffLimit: docsLimit)
+        var section = Prompt.toolPacks(selection, scene: scene, stuffLimit: docsLimit)
         section += Prompt.notes(onTarget: [], elsewhere: notes)
         if !missingRequirements.isEmpty {
             section += "\n## Not configured yet\n"

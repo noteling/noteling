@@ -8,9 +8,11 @@ import FamiliarRuntime
 enum ExecutionTools {
     enum Policy { case standard, calendarRead, sourceRead, sourceFollowUp }
 
+    /// `facts` is what the page's brief found (its result's `facts`, compact JSON): every pack script on this turn gets
+    /// it as `NOTELING_FACTS`, so a tool for the page in front can default to the thing on it.
     static func make(registry: ToolRegistry, context: ScreenContext?,
                      control: ComputerController?, background: Bool,
-                     policy: Policy = .standard, packScripts: Bool = true, additionalRoutes: [ToolRoute] = [],
+                     policy: Policy = .standard, packScripts: Bool = true, facts: String? = nil, additionalRoutes: [ToolRoute] = [],
                      trackedItems: [TrackedSourceItem] = [],
                      onObservation: (() -> Void)? = nil, onNavigation: (() -> Void)? = nil,
                      lookAtScreen: @escaping () async -> ToolResult,
@@ -25,12 +27,16 @@ enum ExecutionTools {
         var routes: [ToolRoute] = []
         let selection = registry.select(for: context)
         let runner = registry.runner
-        // `packScripts: false` when the pack's brief already answered for them, so the turn needs no round trips.
-        for pack in packScripts ? selection.active + selection.global : [] {
+        let env = facts.map { ["NOTELING_FACTS": $0] } ?? [:]
+        // The packs for this page, the ones they use here, and the ones for anywhere: a library nobody uses here and a
+        // pack for other pages stay out. `packScripts: false` when the pack's brief already answered for them, so the
+        // turn needs no round trips.
+        for pack in packScripts ? selection.offered : [] {
+            let scope = selection.scope(of: pack)
             for script in pack.scripts {
                 let requirements = pack.requires
-                routes.append(ToolRoute(match: .tool(name: script.id), definition: script.definition) { _, input, _ in
-                    do { return .text(try await runner.run(script, args: input, context: context, secrets: requirements)) }
+                routes.append(ToolRoute(match: .tool(name: script.id), definition: script.definition(scope: scope)) { _, input, _ in
+                    do { return .text(try await runner.run(script, args: input, context: context, secrets: requirements, env: env)) }
                     catch { return .text(error.localizedDescription, isError: true) }
                 })
             }

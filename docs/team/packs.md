@@ -4,6 +4,11 @@ A tool pack helps on one of your team's apps or sites. When someone asks about a
 something on it, Noteling uses the pack's instructions, its knowledge and its scripts. Any top-level folder of your
 repository is a pack, except `jobs/` (and `watches/`, which is reserved).
 
+A pack says where it applies with `match`, and the pack whose rule fits the page best **leads** there: its questions
+are the pen's taps, its words shape the answer, and the page's brief is the best-fitting pack's that has one. A pack
+can also `use` other packs, whose tools then come along on its pages: a pack with no `match` at all is a library, and
+that is the only way its tools reach a page.
+
 ```
 orders/
   SKILL.md              which pages it's for, and how to answer there
@@ -25,9 +30,10 @@ Noteling puts `expenses`, `hr-portal`, `imap-mail`, `it-access`, `shared` and `w
 name: Orders
 description: Order pages in the orders admin — where an order is, and what's holding it up.
 match:
-  urls: [orders.example.com/order/]     # part of the page's address, or /a regex/
+  urls: [orders.example.com/order/]     # a host and a path: these pages, or /a regex/
   bundles: [com.example.OrdersApp]      # or a Mac app's bundle id
   titles: [Orders Admin]                # or part of a window title
+uses: [orders-api, shared]              # packs whose tools come along on these pages
 requires: [ORDERS_API_KEY]              # secrets each person enters once in Settings
 brief: brief                            # a script that runs as soon as a matching page is in front
 pen: [Why is this stuck?, Who can unblock it?]   # up to 3 questions the pen offers as taps here
@@ -36,8 +42,20 @@ Who uses these pages and what they need, how a page is put together, each tool a
 answer.
 ```
 
-- **`match`**: the pack is active when the page's address, the app or the window title matches any rule. Matching
-  ignores case. A pack with no `match` is active everywhere, so give every pack one.
+- **`match`**: where the pack applies. A url rule is a host, its subdomains and every page under its path:
+  `orders.example.com/order/` is every order page, whatever the id, the query or the part after `#`, and
+  `example.com` is the whole site and never `notexample.com`. A host with a port is that port. A `*` in the path stands
+  for one or more parts (`shop.example.com/*/reviews`), a route after `#` counts as path (`app.example.com/#/incident/`),
+  a rule that is only a path (`/reports/new`) is that path on any host, a rule names no query, and `/…/` is a regex over
+  the whole address. A bundle rule is the app's whole bundle id; a title rule is part of a window title. Case never
+  matters. When several packs fit a page, the one with the most specific rule leads: a deeper path beats a shallower
+  one, a path beats a host, a host beats an app, an app beats a title.
+  `match: anywhere` sends a pack's tools and words with every page and every app, as the shared helpers go; such a
+  pack never leads. A pack with no `match` is a library: it applies nowhere on its own. Earlier versions took no
+  `match` as everywhere, so say `match: anywhere` for a pack you mean that way; Settings names the packs of yours
+  that apply nowhere.
+- **`uses`**: other packs, by folder name, whose tools come along on this pack's pages, with their words. Name a
+  library here, or a pack for another page whose tools help on this one too; what those packs use comes along as well.
 - **The body** is the most important part for the quality of answers. Say who the people are and what they need, name
   each tool and when to use it, and give the shape of a good answer, such as: what they pointed at and whose data it
   is; why, each reason with its source; what to do, in 1–3 steps saying who or where; what couldn't be checked. When the
@@ -78,8 +96,10 @@ def run(order_id: str, include_history: bool = False) -> dict:
 - **What it returns** is sent back as JSON. To fail, raise an exception with a plain message: the person sees its first
   line.
 - **What it gets:** `NOTELING_CONTEXT`, JSON of what's in front (`appName`, `bundleID`, `windowTitle`, `url`);
-  `NOTELING_TOOL_DIR`, the pack's folder (read only: every update replaces it); `NOTELING_CARDS_DIR`, for cards it
-  writes ([Cards](cards.md)); the secrets in `requires`; and the Mac's proxy settings.
+  `NOTELING_FACTS`, what the page's brief found (its result's `facts`, see below), when the page has one, so a tool can
+  take the order on the page without being told it; `NOTELING_TOOL_DIR`, the pack's folder (read only: every update
+  replaces it); `NOTELING_CARDS_DIR`, for cards it writes ([Cards](cards.md)); the secrets in `requires`; and the Mac's
+  proxy settings.
 - **Limits:** a tool call stops after 90 seconds. Python's standard library only. Never write into the pack's folder;
   keep state in `tempfile.gettempdir()`, since several scripts may run at once.
 
@@ -103,6 +123,10 @@ picks something on the page, as written.
 `why` and `do` hold up to three lines each. A line is a string, or `{"text", "source"}`. Say what's wrong and what to do
 in the person's own terms, with the step from your playbook. When nothing is wrong, say so ("Nothing to fix"), and what's
 coming up. A question someone then asks about the pick is one quick turn: the brief is already in it.
+
+`facts` is what the brief found about the page, in your own keys. Every tool called on that page gets it as
+`NOTELING_FACTS`, so a tool of this pack, or of one it uses, can default to the thing in front: an `order_status` with
+no order id reads `json.loads(os.environ.get("NOTELING_FACTS", "{}")).get("order")`.
 
 ## Next
 

@@ -1,28 +1,134 @@
 import FamiliarContracts
 import Foundation
 
+/// Where a pack applies: its SKILL.md `match:` rules, each a page, an app or a window. A pack leads on the pages its
+/// rules name; `match: anywhere` is the explicit everywhere; a pack with no rules is a library, reached only through a
+/// pack that `uses:` it. Matching is a plain rule, run on the Mac: a rule someone wrote decides which scripts run with
+/// which secrets on which page, never a guess.
 struct MatchRules {
     var urls: [String] = []
     var bundles: [String] = []
     var titles: [String] = []
+    /// `match: anywhere`: on every page and in every app.
+    var anywhere = false
     var isEmpty: Bool { urls.isEmpty && bundles.isEmpty && titles.isEmpty }
 
-    func matches(_ ctx: ScreenContext) -> Bool {
-        if let u = ctx.url, urls.contains(where: { Self.match($0, u) }) { return true }
-        if bundles.contains(where: { Self.match($0, ctx.bundleID) }) { return true }
-        if titles.contains(where: { Self.match($0, ctx.windowTitle) }) { return true }
-        return false
+    /// How well a rule fits the scene: a page rule with a path beats one for the whole host, which beats an app,
+    /// which beats words in a window title. `rule` is the one that hit, in the author's words.
+    struct Hit: Equatable {
+        var specificity: Int
+        var rule: String
     }
+
+    func matches(_ ctx: ScreenContext) -> Bool { hit(ctx) != nil }
+
+    /// The best-fitting rule that hits the scene, if any.
+    func hit(_ ctx: ScreenContext) -> Hit? {
+        var best: Hit?
+        func consider(_ hit: Hit?) {
+            guard let hit, hit.specificity > (best?.specificity ?? -1) else { return }
+            best = hit
+        }
+        if let u = ctx.url, !u.isEmpty { for p in urls { consider(Self.urlHit(p, u)) } }
+        for p in bundles where Self.bundleMatches(p, ctx.bundleID) { consider(Hit(specificity: 200, rule: p.trimmingCharacters(in: .whitespaces))) }
+        for p in titles where Self.match(p, ctx.windowTitle) { consider(Hit(specificity: 100, rule: "windows titled “\(p.trimmingCharacters(in: .whitespaces))”")) }
+        return best
+    }
+
+    /// A url rule is a host, its subdomains, and the paths under its path: `orders.example.com/order/` is every
+    /// order page, with any id, query or fragment. A host with a port is that port; without one, any port. A `*` in
+    /// the path stands for anything; a rule that is only a path (`/reports/new`) is that path on any host; `/…/` is a
+    /// regex over the whole address, as before. A rule's fit is how deep its path goes, so `example.com/order/`
+    /// outranks `example.com`, and `/order/4417` outranks `/order/`.
+    static func urlHit(_ pattern: String, _ url: String) -> Hit? {
+        let p = pattern.trimmingCharacters(in: .whitespaces)
+        guard !p.isEmpty else { return nil }
+        if isRegex(p) { return match(p, url) ? Hit(specificity: 300, rule: p) : nil }
+        guard let components = URLComponents(string: url.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let host = components.host?.lowercased(), !host.isEmpty else {
+            return match(p, url) ? Hit(specificity: 300, rule: p) : nil   // not an address: the old substring rule
+        }
+        var rule = p
+        if let scheme = rule.range(of: "://") { rule = String(rule[scheme.upperBound...]) }
+        if let query = rule.firstIndex(where: { $0 == "?" }) { rule = String(rule[..<query]) }   // a rule names no query
+        let slash = rule.firstIndex(of: "/")
+        var ruleHost = (slash.map { String(rule[..<$0]) } ?? rule).lowercased()
+        let rulePath = slash.map { String(rule[$0...]) } ?? ""
+        if ruleHost.hasPrefix("*.") { ruleHost.removeFirst(2) }
+        if !ruleHost.isEmpty {
+            if let colon = ruleHost.lastIndex(of: ":"), let port = Int(ruleHost[ruleHost.index(after: colon)...]) {
+                guard components.port == port || (components.port == nil && defaultPort(components.scheme) == port) else { return nil }
+                ruleHost = String(ruleHost[..<colon])
+            }
+            guard host == ruleHost || host.hasSuffix("." + ruleHost) else { return nil }
+        }
+        let depth = pathDepth(rulePath)
+        guard !ruleHost.isEmpty || depth > 0 else { return nil }
+        guard pathMatches(rulePath, pagePath(components)) else { return nil }
+        return Hit(specificity: depth == 0 ? 300 : 400 + min(depth, 99), rule: p)
+    }
+
+    /// How deep a rule's path goes: its parts, not counting a `*` or the `#` of a route, so `/*` is as broad as no
+    /// path, and `/order/4417` is deeper than `/order/`.
+    private static func pathDepth(_ rulePath: String) -> Int {
+        rulePath.split(separator: "/").filter { $0 != "*" && $0 != "#" }.count
+    }
+
+    /// The page's path, with an app's `#/route` as part of it, the way the notes' page key sees it.
+    private static func pagePath(_ components: URLComponents) -> String {
+        var path = components.path.isEmpty ? "/" : components.path
+        if let fragment = components.fragment, fragment.hasPrefix("/") {
+            path += "#" + String(fragment.split(separator: "?", maxSplits: 1).first ?? "")
+        }
+        return path.lowercased()
+    }
+
+    /// `/order/` and `/order` both cover `/order`, `/order/123` and `/order#/x`, never `/orders`; `*` stands for
+    /// anything, and what follows it ends at a part's end too: `/*/reviews` is not `/9/reviews-archive`.
+    private static func pathMatches(_ rulePath: String, _ path: String) -> Bool {
+        var prefix = rulePath.lowercased()
+        while prefix.count > 1, prefix.hasSuffix("/") { prefix.removeLast() }
+        if prefix.isEmpty || prefix == "/" { return true }
+        if prefix.contains("*") {
+            let regex = "^" + prefix.split(separator: "*", omittingEmptySubsequences: false)
+                .map { NSRegularExpression.escapedPattern(for: String($0)) }.joined(separator: ".*") + "(?:$|[/#])"
+            return path.range(of: regex, options: .regularExpression) != nil
+        }
+        return path == prefix || path.hasPrefix(prefix + "/") || path.hasPrefix(prefix + "#")
+    }
+
+    private static func defaultPort(_ scheme: String?) -> Int? {
+        switch scheme?.lowercased() { case "https": return 443; case "http": return 80; default: return nil }
+    }
+
+    /// An app rule is its bundle id, whole (case doesn't matter), or `/…/` as a regex.
+    static func bundleMatches(_ pattern: String, _ bundleID: String) -> Bool {
+        let p = pattern.trimmingCharacters(in: .whitespaces)
+        guard !p.isEmpty, !bundleID.isEmpty else { return false }
+        if isRegex(p) { return match(p, bundleID) }
+        return p.caseInsensitiveCompare(bundleID) == .orderedSame
+    }
+
+    private static func isRegex(_ p: String) -> Bool { p.count > 2 && p.hasPrefix("/") && p.hasSuffix("/") }
 
     /// `/regex/` matches as a case-insensitive regex, anything else as a case-insensitive substring.
     static func match(_ pattern: String, _ s: String) -> Bool {
         let p = pattern.trimmingCharacters(in: .whitespaces)
         guard !p.isEmpty, !s.isEmpty else { return false }
-        if p.count > 2, p.hasPrefix("/"), p.hasSuffix("/") {
+        if isRegex(p) {
             let body = String(p.dropFirst().dropLast())
             return s.range(of: body, options: [.regularExpression, .caseInsensitive]) != nil
         }
         return s.range(of: p, options: .caseInsensitive) != nil
+    }
+
+    /// Where the pack applies, in a few words, for the model and for people.
+    var words: String {
+        if anywhere { return "anywhere" }
+        var parts = urls
+        parts += bundles.map { "the app \($0)" }
+        parts += titles.map { "windows titled “\($0)”" }
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -40,8 +146,13 @@ struct ScriptTool {
     var inputSchema: [String: Any]
     var dependencies: [String]
 
-    var definition: [String: Any] {
-        ["name": id, "description": "[\(packDir)/scripts/\(fileName)] \(description)", "input_schema": inputSchema]
+    var definition: [String: Any] { definition(scope: nil) }
+
+    /// The tool as the model sees it. `scope` says where its pack applies on this turn ("for this page", "anywhere",
+    /// "used here by Orders"), so a tool for the page in front reads differently from one that works everywhere.
+    func definition(scope: String?) -> [String: Any] {
+        let place = scope.map { ", \($0)" } ?? ""
+        return ["name": id, "description": "[\(packDir)/scripts/\(fileName)\(place)] \(description)", "input_schema": inputSchema]
     }
 }
 
@@ -51,6 +162,7 @@ final class ToolPack {
     var name: String
     var description: String
     var match = MatchRules()
+    var uses: [String] = []         // packs (by folder name) whose tools come along on this pack's pages (SKILL.md `uses:`)
     var requires: [String] = []     // env var names the scripts need (secrets from the Keychain)
     var irreversible: [String] = [] // control labels the background lane must confirm before pressing (SKILL.md `irreversible:`)
     var sources: [String] = []      // scripts a saved job can read through (SKILL.md `sources:`, script names without .py)
@@ -62,13 +174,42 @@ final class ToolPack {
     var notes: [StickyNote] = []    // notes.json: what people stuck to this tool's controls with the pen
     var paths: [String: ShowPath] = [:]   // paths/*.json: ways someone showed with Watch Me, to show the next person
     var linked = false              // from the team's linked tools (`LinkedTools`), which only an update changes
-    var isGlobal: Bool { match.isEmpty }
+    /// `match: anywhere`: with every page, in every app.
+    var isGlobal: Bool { match.anywhere }
+    /// No rules at all: a library, whose tools and words reach a page only through a pack that uses it.
+    var isLibrary: Bool { match.isEmpty && !match.anywhere }
 
     init(dirName: String, dir: URL) {
         self.dirName = dirName
         self.dir = dir
         self.name = dirName
         self.description = ""
+    }
+}
+
+/// The packs for one scene. `active` are the packs whose rules hit it, the best fit first: that one leads (its brief,
+/// its pen questions, its answer shape). `hooked` are the packs the active ones use here. `global` apply anywhere.
+/// `others` are packs for other pages and libraries nobody uses here: named to the model, never their tools.
+struct PackSelection {
+    var active: [ToolPack] = []
+    var hooked: [ToolPack] = []
+    var global: [ToolPack] = []
+    var others: [ToolPack] = []
+    /// The rule each active pack hit, by folder name.
+    var hits: [String: MatchRules.Hit] = [:]
+    /// Which packs use each hooked one here, by the hooked pack's folder name.
+    var usedBy: [String: [String]] = [:]
+
+    var lead: ToolPack? { active.first }
+    /// The packs whose scripts are tools and whose words go with the request.
+    var offered: [ToolPack] { active + hooked + global }
+
+    /// Where a pack stands on this turn, for the model: beside its tools and over its words.
+    func scope(of pack: ToolPack) -> String {
+        if active.contains(where: { $0 === pack }) { return "for this page" }
+        if pack.isGlobal { return "anywhere" }
+        if let by = usedBy[pack.dirName], !by.isEmpty { return "used here by \(by.joined(separator: " and "))" }
+        return pack.isLibrary ? "a library" : "for other pages"
     }
 }
 
@@ -125,11 +266,10 @@ final class ToolRegistry {
                 pack.sources = Self.list(fm["sources"])
                 pack.brief = Self.list(fm["brief"]).first
                 pack.pen = Self.list(fm["pen"]).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                if let m = fm["match"] as? [String: Any] {
-                    pack.match.urls = Self.list(m["urls"])
-                    pack.match.bundles = Self.list(m["bundles"])
-                    pack.match.titles = Self.list(m["titles"])
-                }
+                var used = Set<String>()
+                pack.uses = Self.list(fm["uses"]).map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty && $0 != pack.dirName && used.insert($0).inserted }
+                pack.match = Self.matchRules(fm["match"])
             }
             pack.docs = loadDocs(pack)
             pack.scripts = await loadScripts(pack)
@@ -143,6 +283,24 @@ final class ToolRegistry {
         let linkedCount = packs.filter(\.linked).count
         let place = root.path + (linkedCount > 0 ? " and \(linkedCount) linked in \(linkedRoot?.path ?? "")" : "")
         Log.info("tools: \(packs.count) pack(s), \(scriptCount) script(s), \(noteCount) note(s) in \(place); runtime: \(runner.summary)")
+        let libraries = packs.filter(\.isLibrary).map(\.dirName)
+        if !libraries.isEmpty {
+            Log.info("tools: libraries (no match, so used only through a pack that uses them): \(libraries.joined(separator: ", "))")
+        }
+    }
+
+    /// The `match:` value of a SKILL.md: `anywhere`, or `urls:`/`bundles:`/`titles:` lists.
+    nonisolated static func matchRules(_ value: Any?) -> MatchRules {
+        var rules = MatchRules()
+        if let m = value as? [String: Any] {
+            rules.urls = list(m["urls"])
+            rules.bundles = list(m["bundles"])
+            rules.titles = list(m["titles"])
+            if let a = m["anywhere"] as? String, ["true", "yes"].contains(a.lowercased()) { rules.anywhere = true }
+        } else if let s = value as? String, s.trimmingCharacters(in: .whitespaces).lowercased() == "anywhere" {
+            rules.anywhere = true
+        }
+        return rules
     }
 
     /// A tools folder's `watches/` held watches, which no longer run: the name stays reserved, so a folder of them left
@@ -199,8 +357,8 @@ final class ToolRegistry {
         packs.first { $0.notes.contains { $0.id == noteID } }
     }
 
-    /// The pack a new note belongs to: the first of your own packs whose match rules cover the note's scene, else one
-    /// created for it in your own tools folder.
+    /// The pack a new note belongs to: the best-fitting of your own packs whose match rules cover the note's scene,
+    /// else one created for it in your own tools folder.
     func packForNote(anchor: NoteAnchor, appName: String?) async throws -> ToolPack {
         if let p = select(for: anchor.sceneContext).active.first(where: { !$0.linked }) { return p }
         let dir = try NoteStore.ensurePack(for: anchor, appName: appName, root: root,
@@ -275,15 +433,36 @@ final class ToolRegistry {
         return out
     }
 
-    /// Packs whose match rules hit the context, plus packs with no rules (always on).
-    func select(for ctx: ScreenContext?) -> (active: [ToolPack], global: [ToolPack], others: [ToolPack]) {
-        var active: [ToolPack] = [], global: [ToolPack] = [], others: [ToolPack] = []
-        for p in packs {
-            if p.isGlobal { global.append(p) }
-            else if let ctx, p.match.matches(ctx) { active.append(p) }
-            else { others.append(p) }
+    /// The packs for a scene: those whose rules hit it, best fit first (a tie goes to your own pack, then by folder
+    /// name: `packs` holds them in that order); then the packs they use here, each once, following what those use in
+    /// turn; then the packs for anywhere. With no scene, nothing is active: the packs for anywhere are all that's offered.
+    func select(for ctx: ScreenContext?) -> PackSelection {
+        var selection = PackSelection()
+        var scored: [(pack: ToolPack, hit: MatchRules.Hit, order: Int)] = []
+        for (order, p) in packs.enumerated() {
+            if p.isGlobal { selection.global.append(p) }
+            else if let ctx, let hit = p.match.hit(ctx) { scored.append((p, hit, order)) }
+            else { selection.others.append(p) }
         }
-        return (active, global, others)
+        scored.sort { a, b in a.hit.specificity != b.hit.specificity ? a.hit.specificity > b.hit.specificity : a.order < b.order }
+        selection.active = scored.map(\.pack)
+        for s in scored { selection.hits[s.pack.dirName] = s.hit }
+
+        var taken = Set((selection.active + selection.global).map(\.dirName))
+        var queue = (selection.active + selection.global).map { (user: $0, uses: $0.uses) }
+        while !queue.isEmpty {
+            let (user, uses) = queue.removeFirst()
+            for name in uses {
+                // A pack for anywhere is there already, as itself: using it changes nothing.
+                guard let used = packs.first(where: { $0.dirName == name }), !used.isGlobal else { continue }
+                if !selection.usedBy[name, default: []].contains(user.name) { selection.usedBy[name, default: []].append(user.name) }
+                guard taken.insert(name).inserted else { continue }
+                selection.hooked.append(used)
+                selection.others.removeAll { $0 === used }
+                queue.append((used, used.uses))
+            }
+        }
+        return selection
     }
 
     /// Required secrets that are not in the Keychain, per pack.
@@ -345,6 +524,52 @@ final class ToolRegistry {
         return added
     }
 
+    /// Written into a tools folder once its packs have been asked where they apply (`markOwnPacksAnywhereOnce`).
+    nonisolated static let placesAskedMarker = ".packs-say-where"
+
+    /// Before packs said `match: anywhere`, a pack with no rules applied everywhere. The first time a tools folder
+    /// is read since, every pack of the person's own with no rules at all is marked `match: anywhere`, once, so it
+    /// keeps applying as it did: the person's helpers, and their copies of the bundled shared helpers and mail. A
+    /// marker file remembers it was done, so a pack they later leave without rules is a library, as they mean it.
+    /// Returns the packs marked.
+    @discardableResult
+    nonisolated static func markOwnPacksAnywhereOnce(in root: URL) -> [String] {
+        let fm = FileManager.default
+        let marker = root.appendingPathComponent(placesAskedMarker)
+        guard fm.fileExists(atPath: root.path), !fm.fileExists(atPath: marker.path) else { return [] }
+        var marked: [String] = []
+        for dir in packFolders(in: root) {
+            let skill = dir.appendingPathComponent("SKILL.md")
+            // A `match:` line with nothing under it is left as it is: that pack says, in its way, nowhere.
+            guard let text = try? String(contentsOf: skill, encoding: .utf8), parseFrontmatter(text).0["match"] == nil,
+                  let updated = markedAnywhere(text), (try? updated.write(to: skill, atomically: true, encoding: .utf8)) != nil else { continue }
+            marked.append(dir.lastPathComponent)
+        }
+        try? "The packs here say where they apply; one with no match: is a library.\n".write(to: marker, atomically: true, encoding: .utf8)
+        return marked
+    }
+
+    /// The SKILL.md text with `match: anywhere` as the last line of its front matter, or nil when it has none. A
+    /// file with Windows line endings keeps them.
+    nonisolated static func markedAnywhere(_ text: String) -> String? {
+        let crlf = text.contains("\r\n")
+        var lines = text.components(separatedBy: "\n")
+        guard lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) == "---",
+              let end = lines.dropFirst().firstIndex(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines) == "---" }) else { return nil }
+        lines.insert("match: anywhere" + (crlf ? "\r" : ""), at: end)
+        return lines.joined(separator: "\n")
+    }
+
+    /// The packs of a tools folder that apply nowhere: no `match:` at all, and nothing says `anywhere`. For the
+    /// team's linked tools, which Noteling never changes, so Settings can say so.
+    nonisolated static func libraryPacks(in root: URL) -> [String] {
+        packFolders(in: root).filter { dir in
+            guard let text = try? String(contentsOf: dir.appendingPathComponent("SKILL.md"), encoding: .utf8) else { return true }
+            let rules = matchRules(parseFrontmatter(text).0["match"])
+            return rules.isEmpty && !rules.anywhere
+        }.map(\.lastPathComponent)
+    }
+
     func script(named id: String) -> ScriptTool? {
         for p in packs { if let s = p.scripts.first(where: { $0.id == id }) { return s } }
         return nil
@@ -357,15 +582,16 @@ final class ToolRegistry {
         return String(String(cleaned).prefix(64))
     }
 
-    static func list(_ v: Any?) -> [String] {
+    nonisolated static func list(_ v: Any?) -> [String] {
         if let a = v as? [String] { return a }
         if let s = v as? String, !s.isEmpty { return [s] }
         return []
     }
 
-    /// Tiny YAML subset: `key: value`, `key:` + indented `sub: value`, lists as `[a, b]` or `- item` lines.
-    static func parseFrontmatter(_ text: String) -> ([String: Any], String) {
-        var lines = text.components(separatedBy: "\n")
+    /// Tiny YAML subset: `key: value`, `key:` + indented `sub: value`, lists as `[a, b]` or `- item` lines, and a
+    /// comment from a `#` after a space to the end of the line, outside quotes. Windows line endings are fine.
+    nonisolated static func parseFrontmatter(_ text: String) -> ([String: Any], String) {
+        var lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return ([:], text) }
         lines.removeFirst()
         guard let end = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "---" }) else { return ([:], text) }
@@ -376,7 +602,7 @@ final class ToolRegistry {
         var currentTop: String?
         var currentSub: String?
         for raw in fmLines {
-            let line = raw.replacingOccurrences(of: "\t", with: "  ")
+            let line = uncommented(raw.replacingOccurrences(of: "\t", with: "  "))
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
             let indent = line.prefix { $0 == " " }.count
@@ -407,7 +633,20 @@ final class ToolRegistry {
         return (top, body)
     }
 
-    private static func value(_ s: String) -> Any {
+    /// The line without a comment: from a `#` that follows a space, outside quotes, as YAML has it.
+    nonisolated static func uncommented(_ line: String) -> String {
+        var quote: Character?
+        var previous: Character = " "
+        for (i, c) in line.enumerated() {
+            if let q = quote { if c == q { quote = nil } }
+            else if c == "\"" || c == "'" { quote = c }
+            else if c == "#", previous == " " { return String(line.prefix(i)) }
+            previous = c
+        }
+        return line
+    }
+
+    private nonisolated static func value(_ s: String) -> Any {
         if s.hasPrefix("[") && s.hasSuffix("]") {
             let inner = s.dropFirst().dropLast()
             return inner.split(separator: ",").map { scalar(String($0)) }.filter { !$0.isEmpty }
@@ -415,7 +654,7 @@ final class ToolRegistry {
         return scalar(s)
     }
 
-    private static func scalar(_ s: String) -> String {
+    private nonisolated static func scalar(_ s: String) -> String {
         var t = s.trimmingCharacters(in: .whitespaces)
         if t.count >= 2, (t.hasPrefix("\"") && t.hasSuffix("\"")) || (t.hasPrefix("'") && t.hasSuffix("'")) {
             t = String(t.dropFirst().dropLast())

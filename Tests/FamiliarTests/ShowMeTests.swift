@@ -323,7 +323,10 @@ struct ShowMeTests {
         let registry = await ToolRegistry(root: root, runner: ScriptRunner(config: Config()))
         await registry.reload()
         let pack = try #require(await registry.packs.first { $0.dirName == "waxwing" })
-        let section = Prompt.toolPacks(active: [pack], global: [], others: [], stuffLimit: 10_000)
+        let scene = ScreenContext(appName: "Chrome", bundleID: "com.google.Chrome", windowTitle: "Waxwing", url: "http://127.0.0.1:4310/",
+                                  focused: nil, timestamp: Date())
+        let section = Prompt.toolPacks(await registry.select(for: scene), scene: scene, stuffLimit: 10_000)
+        #expect(section.contains("## Active tool pack: Waxwing (leads here: 127.0.0.1:4310)"))
         #expect(section.contains("### Ways you can teach (teach_the_way)"))
         #expect(section.contains("- waxwing/see-history: See the history. 2 steps: Waxwing App 24 → History (starts on “Waxwing” at http://127.0.0.1:4310/), shown 2026-10-26"))
         let conversation = await ShowMeConversation(registry: registry)
