@@ -26,7 +26,7 @@ final class SettingsModel: ObservableObject {
     @Published var screenshotMode = "auto"
     @Published var hideFromScreenShare = false
     @Published var notesShortcut = true
-    @Published var showMorningFolder = true
+    @Published var morningFolderOnScreen = false
     /// Opens a team's setup file (`.notelingsetup`); set by the app.
     var importSetup: (() -> Void)?
     @Published var startAtLogin = false
@@ -192,7 +192,7 @@ final class SettingsModel: ObservableObject {
         screenshotMode = config.screenshotMode
         hideFromScreenShare = config.hideFromScreenShare
         notesShortcut = config.notesShortcut
-        showMorningFolder = config.showMorningFolder
+        morningFolderOnScreen = config.morningFolderOnScreen
         startAtLogin = SMAppService.mainApp.status == .enabled
         allowControl = config.allowControl
         controlInBackground = config.controlInBackground
@@ -261,7 +261,7 @@ final class SettingsModel: ObservableObject {
         c.screenshotMode = screenshotMode
         c.hideFromScreenShare = hideFromScreenShare
         c.notesShortcut = notesShortcut
-        c.showMorningFolder = showMorningFolder
+        c.morningFolderOnScreen = morningFolderOnScreen
         c.allowControl = allowControl
         c.controlInBackground = controlInBackground
         c.backgroundDirectClicks = backgroundDirectClicks
@@ -415,7 +415,7 @@ struct SettingsView: View {
                 }
                 Toggle("Hide the bubble from screenshots and screen shares", isOn: $model.hideFromScreenShare)
                 Toggle("Press ⌥ Option twice to show or hide your notes on the screen", isOn: $model.notesShortcut)
-                Toggle("Show the Morning folder on the screen", isOn: $model.showMorningFolder)
+                Toggle("Show the Morning folder on the screen", isOn: $model.morningFolderOnScreen)
                 Toggle("Start Noteling at login", isOn: $model.startAtLogin)
                 Toggle("Allow Noteling to control the mouse and keyboard when asked", isOn: $model.allowControl)
                 Toggle("Do things in the window you asked from, keeping your mouse and keyboard", isOn: $model.controlInBackground)

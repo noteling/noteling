@@ -195,7 +195,8 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    Headless: `--record-synthetic <dir>` (a fake recording from the current screen) and
    `--summarize-recording <dir> ["purpose"] [--tools-root <dir>] [--keep] [--claude-cli]` (prints the draft JSON; keeps into a temp folder by default).
 
-10. **Morning Files**: a small folder in the upper-left opens categorized folders and a spread of files. Choose any file
+10. **Morning Files**: opened from the menu bar's pencil icon, or at its Jobs page from the Open Jobs tab chat offers after it ran or turned on a job (a small folder in the upper-left opens it
+   too, when Settings puts one on the screen), it shows categorized folders and a spread of files. Choose any file
    to see its three parts: what it is, what it means for you, and one to three options, best first (hover an option for its
    exact instruction). **Show original** shows what Noteling read. **Ignore** files it away, **I'll do it**
    keeps it yours, and handing it to Noteling saves the action before the file flies to the background task screen.
@@ -316,6 +317,7 @@ context to your configured Claude connection. Creating and editing Morning Files
 .build/release/Familiar --render-mascot /tmp/mascot [--style innocent|innocentV1|innocentV3|innocentV4|sharp]   # renders every mood, the quill cursor and the app-icon source as PNGs
 .build/release/Familiar --render-origami /tmp/origami [--style innocentV4]   # folding stages and crane wing poses as PNGs
 .build/release/Familiar --render-card /tmp/card [--states]   # the pad with a pick, a note sticker and answers, as PNGs
+.build/release/Familiar --render-stickers /tmp/stickers       # the run stickers beside the bubble: one, three and five jobs' findings, as PNGs
 .build/release/Familiar --render-background-task /tmp/tasks # task screen states, fabricated content, no model or desktop capture
 .build/release/Familiar --render-morning /tmp/morning      # native folder, files, people and queue with fictional local data
 .build/release/Familiar --render-pen /tmp/pen               # the pen overlay over a fake page: stickers and the note editor, as a PNG
@@ -528,6 +530,13 @@ in [Keeping a team's tools](../team/README.md); here is how the app keeps it.
   `job-results/<own|team>/<path>/output/` in one step; one that fails keeps the last output and says why on the row.
 - **Showing them** (`FolderJobPages`): a job's page and its card show the output's `preview/` files as they are
   (csv/tsv as a table, txt as text, capped) and every output file with Open, Save as… and Show in Finder (`FileRow`).
+- **Stickers** (`RunStickers`, `RunStickersPanel`): while the latest output has a preview, the job's finding is a sticky
+  note beside the bubble, from whoever shared the job: its name, what `run()` said and when it was first found. Up to
+  three sit there, newest finding nearest the orb (a job that keeps finding the same thing keeps its date); "and N more"
+  opens Jobs; a click opens the job's page; the × puts one away until the preview's digest changes.
+  `job-results/stickers.json` keeps the put-aways and each job's current finding with its first-seen date. The app delegate places the panel beside the orb and hides it while the
+  pad is open, the bubble is away or a foreground task runs. The Morning folder icon is off the screen unless
+  `morningFolderOnScreen` is on.
 - **Cards and notifications** (`FolderJobCards`, `JobNotifier`): while the latest output has a preview, the job has one
   card, `cards/inbox/job-<own|team>-<path>/job.json`, whose one part is the preview's digest; a change of digest
   reopens a card the person resolved and posts one notification. Cards the job's script writes go to
@@ -653,6 +662,7 @@ and `CardFilesView.swift` for its Files section) and `Features/FolderJobs/Folder
 | screenshotMode | auto | `auto`: attach a screenshot when the question sounds screen-related, otherwise the model may call `look_at_screen`; `always`; `never` |
 | screenshotReuseSeconds | 0 | if > 0, quick follow-ups on the same screen reuse the last screenshot within this window |
 | hideFromScreenShare | false | true makes the bubble invisible in screenshots, screen shares and recordings |
+| morningFolderOnScreen | false | the little Morning folder on the screen (Settings → Show the Morning folder on the screen); off, Morning Files opens from the menu bar's pencil icon, and its Jobs page also from the Open Jobs tab chat offers after it runs or turns on a job. A new key: the old `showMorningFolder` was rewritten as true on every launch, so it is ignored |
 | toolsDir | "" | override tool packs folder |
 | docsStuffLimitChars | 24000 | how much doc text to paste before switching to read_file |
 | uvPath | "" | override the uv binary |

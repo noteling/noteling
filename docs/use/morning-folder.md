@@ -1,7 +1,9 @@
 # The Morning folder
 
-The small folder on your screen is where things that need you wait: one card each, in folders. Open it whenever you
-like. Reading a card never decides anything for you.
+The Morning folder is where things that need you wait: one card each, in folders. It isn't on the screen: open it
+whenever you like from the pencil icon in the menu bar (**Morning Files…**), or turn on **Settings → Show the Morning
+folder on the screen** to keep a small folder there. When chat turns on or runs a job for you, the **Open Jobs** tab
+under its reply opens the Jobs page. Reading a card never decides anything for you.
 
 ## Cards
 
@@ -54,8 +56,9 @@ in Excel say, use **Save as…** first: the next run replaces the files.
   home, and comes back by itself when a card arrives.
 - **Hide a folder** you don't need: right-click it, or open it, and choose **Hide folder**. Nothing in it is deleted, and
   new cards still arrive. **Hidden folders · Show** brings it back.
-- **Hide the Morning folder itself**: right-click it and choose **Hide Morning folder**, or use **Hide Morning Folder** in
-  the menu bar. **Morning Files…** in the menu bar still opens it.
+- **The small folder on the screen** is off unless **Settings → Show the Morning folder on the screen** is on, or you
+  choose **Show Morning Folder** in the menu bar. To put it away again, right-click it and choose **Hide Morning
+  folder**, or use **Hide Morning Folder** in the menu bar. **Morning Files…** in the menu bar opens it either way.
 
 ## Who's Who
 

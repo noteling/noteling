@@ -377,3 +377,61 @@ func runRenderPen() {
     }
     exit(0)
 }
+
+/// `Noteling --render-stickers <dir>`: the sticky notes beside the bubble with fictional jobs, one, three and five of
+/// them (the last with "and 2 more"), drawn into PNGs. For eyeballing the paper without a job having run.
+@MainActor
+func runRenderStickers() {
+    let args = CommandLine.arguments
+    guard let i = args.firstIndex(of: "--render-stickers"), i + 1 < args.count else { print("usage: --render-stickers <dir>"); exit(2) }
+    let dir = URL(fileURLWithPath: args[i + 1])
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+    // Fictional jobs, each with a run that found something: the stickers come from the model the same way as in the app.
+    let now = Date(timeIntervalSince1970: 1_790_000_000)
+    func job(_ name: String, by: [String] = [], said: String?, minutesAgo: Double) -> FolderJob {
+        var job = FolderJob(id: UUID(), source: by.isEmpty ? .own : .team, path: name.lowercased().replacingOccurrences(of: " ", with: "-"),
+                            name: name, everyMinutes: 30)
+        job.contributors = by
+        let ran = now.addingTimeInterval(-minutesAgo * 60)
+        job.state = FolderJobState(lastRunAt: ran, lastSuccessAt: ran, said: said, preview: "digest-\(name)")
+        return job
+    }
+    let jobs = [job("Pages up", by: ["Yang"], said: "3 of 41 pages are down: the two checkout steps and the returns form.", minutesAgo: 2),
+                job("Holiday Oct · GM", by: ["Yang", "Ana"], said: "Two listings still show the September price.", minutesAgo: 25),
+                job("Orders stuck", said: "4 orders have waited over an hour in “Paid”.", minutesAgo: 70),
+                job("Stock-outs", by: ["Ana"], said: nil, minutesAgo: 130),
+                job("Reviews under 3 stars", by: ["Yang"], said: "One new one, about delivery.", minutesAgo: 200)]
+    let model = RunStickers(file: nil)
+
+    // The host is an off-screen window drawn into a 2x bitmap, as the pad is: the tab and the x are buttons.
+    func render(_ count: Int, _ name: String) {
+        model.update(Array(jobs.prefix(count)), at: now)
+        let view = RunStickersView(model: model, open: { _ in }, more: {}, putAway: { _ in })
+            .padding(12).background(Color(white: 0.96))
+        let hosting = NSHostingView(rootView: view)
+        hosting.layoutSubtreeIfNeeded()
+        let size = hosting.fittingSize
+        hosting.frame = NSRect(origin: .zero, size: size)
+        let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .aqua)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.contentView = hosting
+        hosting.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2), pixelsHigh: Int(size.height * 2), bitsPerSample: 8,
+                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+        else { print("rep failed: \(name)"); return }
+        rep.size = size
+        hosting.cacheDisplay(in: hosting.bounds, to: rep)
+        guard let data = rep.representation(using: .png, properties: [:]) else { print("encode failed: \(name)"); return }
+        do { try data.write(to: dir.appendingPathComponent(name)); print("wrote \(name) \(rep.pixelsWide)x\(rep.pixelsHigh)") }
+        catch { print("write failed: \(name): \(error)") }
+    }
+    print("hand font: \(HandFont.family ?? "system rounded")")
+    render(1, "stickers-1.png")
+    render(3, "stickers-3.png")
+    render(5, "stickers-5.png")
+    exit(0)
+}

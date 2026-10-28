@@ -13,8 +13,10 @@ tools check things for you, and find what needs you as cards in the little Morni
 
 1. [Download Noteling](https://github.com/noteling/noteling/releases/latest): the `.dmg` file.
 2. Open it, and drag Noteling into **Applications**.
-3. Open Noteling. A small note appears on your desktop, and a small folder sits near the top-left of your screen: that's
-   the Morning folder.
+3. Open Noteling. A small note appears on your desktop. The Morning folder, where your cards wait, isn't on the screen:
+   open it from the pencil icon in the menu bar (**Morning Files…**). When you ask chat to turn on or run a job, the
+   **Open Jobs** tab under its reply opens the Jobs page. If you'd rather have a small folder near the top-left of your
+   screen, turn on **Settings → Show the Morning folder on the screen**.
 
 ## Allow access
 
@@ -58,8 +60,9 @@ something new. You can change this later in **System Settings → Notifications 
 ## Where things are
 
 - **Chat:** double-click the note, or click Noteling in the Dock.
-- **The Morning folder:** click the small folder. **Jobs** is at the top of its home, and in its **⋯** menu. The pencil icon in the menu bar has
-  **Morning Files…**, **Jobs…**, **Settings…** and more.
+- **The Morning folder:** **Morning Files…** in the menu bar's pencil icon. **Jobs** is at the top of its home, in its
+  **⋯** menu, under the pencil icon as **Jobs…**, and under chat's reply as **Open Jobs** when it turns on or runs a
+  job. With **Settings → Show the Morning folder on the screen** on, a small folder near the top-left opens it too.
 - **Quit:** **Quit Noteling** in the menu bar's menu, or **⌘Q** while Noteling is in front.
 
 ## Read next

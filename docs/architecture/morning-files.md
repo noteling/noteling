@@ -3,7 +3,7 @@
 ## Product boundary
 
 Morning Files is an independent entry point for reviewing and handing over work.
-A small folder starts at the upper-left of a physical display. Opening it reveals
+A small folder can sit at the upper-left of a physical display, when Settings asks for it. Opening it reveals
 categories, then freely selectable paper files. Reading or closing a file does not
 make a decision. Who's Who supplies editable relationships and working context.
 Its management entry stays inside the options menu. The launcher can be dragged,

@@ -56,7 +56,7 @@ final class ShowOverlay {
     let card = ShowCardModel()
     private var screens: [(screen: NSScreen, dim: NSPanel, dimView: ShowDimView, marks: NSPanel, marksView: ShowMarksView)] = []
     private var cardPanel: NSPanel?
-    private var cardHost: ShowCardHost?
+    private var cardHost: FirstClickHost<ShowCardView>?
     private let hideFromScreenShare: Bool
     private(set) var target: NSRect?
 
@@ -80,7 +80,7 @@ final class ShowOverlay {
             if screen.frame.contains(point) { marksView.placeArrow(at: local(point, in: screen), animated: false) }
             screens.append((screen, dim, dimView, marks, marksView))
         }
-        let host = ShowCardHost(rootView: ShowCardView(model: card))
+        let host = FirstClickHost(rootView: ShowCardView(model: card))
         let panel = Self.panel(NSRect(x: 0, y: 0, width: ShowCardView.width + 2 * ShowCardView.margin, height: 160),
                                level: Self.marksLevel, content: host, shareable: !hideFromScreenShare, interactive: true)
         panel.alphaValue = 0
@@ -504,11 +504,6 @@ final class ShowCardModel: ObservableObject {
     var onRetry: () -> Void = {}
     var onGotIt: () -> Void = {}
     var onGo: () -> Void = {}
-}
-
-/// Takes the first click even though Noteling isn't the active app, so the card's buttons work on the first try.
-final class ShowCardHost: NSHostingView<ShowCardView> {
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 /// The step on a small sticky note beside the control: where we are, what to do, and a way out.
