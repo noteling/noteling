@@ -50,6 +50,14 @@ The tooling is not the bottleneck. Big tasks, hot files that every feature touch
     That's fine for today's files; a run of millions of rows needs streaming writes off the main thread. A wide CSV
     past 500 MB is refused rather than split by size. Files of resolved cards are kept forever, so `cards/files/` only
     grows.
+13. **Write down what Noteling does, feature by feature.** Added 2026-11-02, at 0.7.13. Features have shipped faster
+    than anyone can keep in mind: even the person who asked for page leads (0.7.13) no longer remembered what they
+    were. The guides in `docs/use/` and `docs/team/` say how to do a task, and what each release changed lives only on
+    GitHub Releases, so there is no one place to look a feature up. Write:
+    - a feature list or user manual: each feature in a few lines (what you see, how you start it, its setting, the
+      release it came in), for people using Noteling and, where the feature is theirs, for team authors;
+    - a `CHANGELOG.md` in the repository, gathered from the release notes since 0.5.0, with a line added at every
+      release from then on.
 
 ## Working with agents on this code
 
