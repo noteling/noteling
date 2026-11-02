@@ -80,7 +80,7 @@ struct NoteChecker {
         guard let (pack, script) = registry.packs.lazy.flatMap({ pack in pack.scripts.map { (pack, $0) } }).first(where: { $0.1.id == check.script }) else {
             return unavailable("This check isn't in your tools folder.")
         }
-        if let context, !registry.select(for: context).active.contains(where: { $0.dir == pack.dir }) {
+        if let context, !registry.select(for: context).offered.contains(where: { $0.dir == pack.dir }) {
             return unavailable("This check isn't for this page.")
         }
         if let missing = registry.missingRequirements(for: [pack]).first?.keys, !missing.isEmpty {

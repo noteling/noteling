@@ -533,6 +533,14 @@ final class LinkedToolsUpdater: ObservableObject {
         return ToolRegistry.packFolders(in: folder.root).map(\.lastPathComponent).filter(own.contains)
     }
 
+    /// Linked packs that apply nowhere (no `match:` at all), so Settings can say so: their tools come only with a
+    /// pack that uses them, and Noteling never changes the team's copy.
+    func libraryPacks() -> [String] {
+        guard FileManager.default.fileExists(atPath: folder.root.path) else { return [] }
+        let own = Set(ToolRegistry.packFolders(in: config().resolvedToolsDir).map(\.lastPathComponent))
+        return ToolRegistry.libraryPacks(in: folder.root).filter { !own.contains($0) }
+    }
+
     static func ago(_ date: Date, now: Date) -> String {
         let seconds = max(0, now.timeIntervalSince(date))
         switch seconds {

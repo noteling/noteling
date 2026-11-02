@@ -38,6 +38,7 @@ final class DesktopExecutionService {
                  systemExtra: String = "",
                  resolveFrontmost: Bool = true,
                  policy: ExecutionTools.Policy = .standard,
+                 facts: String? = nil,
                  additionalRoutes: [ToolRoute] = [],
                  trackedItems: [TrackedSourceItem] = [],
                  onObservation: (() -> Void)? = nil, onNavigation: (() -> Void)? = nil,
@@ -58,7 +59,7 @@ final class DesktopExecutionService {
         }
         // Snapshot all request capabilities and guard labels before target resolution suspends.
         let router = try ExecutionTools.make(registry: registry, context: context, control: control,
-                                             background: background, policy: policy, additionalRoutes: additionalRoutes,
+                                             background: background, policy: policy, facts: facts, additionalRoutes: additionalRoutes,
                                              trackedItems: trackedItems, onObservation: onObservation, onNavigation: onNavigation,
                                              lookAtScreen: lookAtScreen, readScreen: readScreen)
         control.lane = background ? .background : .foreground

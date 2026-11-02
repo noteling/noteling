@@ -78,6 +78,7 @@ struct DocsExamplesTests {
         let (front, body) = ToolRegistry.parseFrontmatter(skill)
         #expect(front["name"] as? String == "Example pages" && front["brief"] as? String == "brief" && !body.isEmpty)
         #expect((front["match"] as? [String: Any])?["urls"] as? [String] == ["example.com", "example.org"])
+        #expect(ToolRegistry.list(front["uses"]) == ["shared"])   // the helpers for anywhere, named so the example reads
         let scripts = try FileManager.default.contentsOfDirectory(atPath: Self.template.appendingPathComponent("example-pages/scripts").path)
         #expect(Set(scripts.filter { $0.hasSuffix(".py") }) == ["brief.py", "page_status.py", "_fetch.py"])
         #expect(try String(contentsOf: Self.template.appendingPathComponent(".gitignore"), encoding: .utf8).contains("*.notelingsetup"))

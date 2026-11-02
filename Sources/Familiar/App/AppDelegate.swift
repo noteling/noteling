@@ -508,6 +508,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let bundled = Bundle.main.resourceURL?.appendingPathComponent("tools"), fm.fileExists(atPath: bundled.path) {
             for name in ToolRegistry.addMissingPacks(from: bundled, to: dir) { Log.info("added tool pack \(name) to \(dir.path)") }
         }
+        // A pack with no rules used to apply everywhere; once, the person's own such packs say so (`match: anywhere`).
+        for name in ToolRegistry.markOwnPacksAnywhereOnce(in: dir) { Log.info("tool pack \(name) now says match: anywhere") }
         let legacy = Config.dir.appendingPathComponent("knowledge")
         let seededNames: Set<String> = ["expense-reports.md", "hr-portal.md", "vpn-and-access.md"]
         if let files = try? fm.contentsOfDirectory(atPath: legacy.path), !files.isEmpty, Set(files).isSubset(of: seededNames) {

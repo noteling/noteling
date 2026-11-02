@@ -483,6 +483,11 @@ private struct LinkedToolsRow: View {
                         Text("\(own.joined(separator: ", ")): your own folder's \(own.count == 1 ? "copy is" : "copies are") used, not the team's.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
+                    let libraries = updater.libraryPacks()
+                    if !libraries.isEmpty {
+                        Text("\(libraries.joined(separator: ", ")): no match, so \(libraries.count == 1 ? "it applies" : "they apply") nowhere until a pack uses \(libraries.count == 1 ? "it" : "them"). A pack for every page says match: anywhere.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             Spacer()

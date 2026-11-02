@@ -80,9 +80,10 @@ final class ScriptRunner {
     }
 
     /// `timeout` stops the script once it has run that long; `stopsWithCaller` stops it when the calling task is cancelled.
+    /// `env` is what this run alone gets besides, such as the page's brief facts as `NOTELING_FACTS`.
     func run(_ tool: ScriptTool, args: [String: Any], context: ScreenContext?, secrets: [String] = [],
-             timeout: TimeInterval = 90, stopsWithCaller: Bool = false) async throws -> String {
-        let json = try await execute(tool, args: args, context: context, secrets: secrets, timeout: timeout, stopsWithCaller: stopsWithCaller)
+             timeout: TimeInterval = 90, stopsWithCaller: Bool = false, env: [String: String] = [:]) async throws -> String {
+        let json = try await execute(tool, args: args, context: context, secrets: secrets, timeout: timeout, stopsWithCaller: stopsWithCaller, env: env)
         var out: [String: Any] = ["result": json["result"] ?? NSNull()]
         if let so = json["stdout"] { out["stdout"] = so }
         let s = JSONText.pretty(out, indent: "")   // a script's 19.99 stays 19.99 on its way to the model
