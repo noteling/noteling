@@ -49,7 +49,6 @@ import Testing
         "Ask/Packs/ToolRegistry.swift": ["ShowPath", "ShowPathStore"],
         "Ask/Pen/Notes.swift": ["PackWriter"],
         "Attend/FolderJobs/FolderJobRunner.swift": ["ScriptTool", "ToolRegistry"],
-        "Attend/FolderJobs/FolderJobStore.swift": ["ToolRegistry"],
         "Attend/Morning/JobsRender.swift": ["ComputerController", "NativeActivityGate", "ToolRegistry"],
         "Attend/Morning/LatestRunRender.swift": ["ComputerController", "NativeActivityGate", "ToolRegistry"],
         "Attend/Morning/MorningFilesView.swift": ["TaskResultText"],

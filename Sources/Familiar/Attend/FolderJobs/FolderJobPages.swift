@@ -5,9 +5,6 @@ import SwiftUI
 /// when it starts or ends, and how its last run went.
 @MainActor
 enum FolderJobWords {
-    /// What a job's notification and its sticker say when its run said nothing in words.
-    static let somethingNew = "Its preview has something new."
-
     /// "every 15 minutes", "every hour", "every 2 hours", "every day", or "when you run it".
     static func every(_ job: FolderJob) -> String {
         guard let minutes = job.everyMinutes else { return "when you run it" }
@@ -28,16 +25,15 @@ enum FolderJobWords {
         ([capitalized(every(job))] + [window(job, now: now)].compactMap { $0 }).joined(separator: " · ")
     }
 
-    /// "Last run 6:31 PM · checked Orders API: read 2,113, found 3", "… · 2 of 8 prices wrong", "… · something to
-    /// look at", "… · nothing to look at", "… · failed", or "Not run yet".
+    /// "Last run 6:31 PM · checked Orders API: read 2,113, found 3", "… · 2 of 8 prices wrong", "… · failed", or
+    /// "Last run 6:31 PM" when it said nothing; "Not run yet" before one.
     static func lastRun(_ job: FolderJob, now: Date) -> String {
         guard let last = job.state.lastRunAt else { return Jobs.notRunYet }
-        let how: String
+        let how: String?
         if job.state.error != nil { how = "failed" }
         else if let checked = checked(job.state) { how = lowercased(checked) }
-        else if let said = job.state.said { how = JobWords.clip(said.components(separatedBy: .newlines).first ?? said, 80) }
-        else { how = job.state.preview == nil ? "nothing to look at" : "something to look at" }
-        return "Last run " + JobWords.time(last, now: now) + " · " + how
+        else { how = job.state.said.map { JobWords.clip($0.components(separatedBy: .newlines).first ?? $0, 80) } }
+        return "Last run " + JobWords.time(last, now: now) + (how.map { " · " + $0 } ?? "")
     }
 
     /// The receipt of a run that reported findings: "Checked Orders API: read 2,113, found 3", "Read 2,113, found 3",
@@ -87,10 +83,8 @@ enum FolderJobWords {
     static func receipt(_ job: FolderJob) -> String {
         let name = "“" + JobWords.clip(job.name, 60) + "”"
         if let error = job.state.error { return "\(name) couldn't finish: " + error }
-        let said = checked(job.state).map(lowercased)
-            ?? job.state.said.map { JobWords.clip($0.components(separatedBy: .newlines).first ?? $0, 120) }
-            ?? (job.state.preview == nil ? "nothing to look at" : "something to look at")
-        let line = "\(name) ran: " + said + (said.hasSuffix(".") ? "" : ".")
+        let said = checked(job.state).map(lowercased) ?? job.state.said.map { JobWords.clip($0.components(separatedBy: .newlines).first ?? $0, 120) }
+        let line = said.map { "\(name) ran: " + $0 + ($0.hasSuffix(".") ? "" : ".") } ?? "\(name) ran."
         return [line, thanks(job, run: job.state.lastSuccessAt)].compactMap { $0 }.joined(separator: " ")
     }
 
@@ -124,22 +118,6 @@ enum FolderJobWords {
         guard let names = names(job.contributors), let run else { return nil }
         let seed = (job.path + "|" + String(Int(run.timeIntervalSince1970.rounded()))).utf8.reduce(UInt64(5_381)) { ($0 &* 33) &+ UInt64($1) }
         return thanks[Int(seed % UInt64(thanks.count))].replacingOccurrences(of: "{name}", with: names)
-    }
-
-    /// Why a job's card was put away, said on the card in place of "Its script no longer reports this": the job ended,
-    /// hasn't started, or is off. Nil while it runs, or when the card went away before the job ended (`gone`, when the
-    /// inbox found its file gone), for another reason.
-    static func putAway(_ job: FolderJob, gone: Date, now: Date) -> String? {
-        switch job.phase(at: now) {
-        case .ended:
-            guard let ends = job.ends, gone >= ends.date else { return nil }
-            return "This job ended \(ends.words), so its card was put away."
-        case .upcoming:
-            guard let starts = job.starts else { return nil }
-            return "This job starts \(starts.words); its card is put away until then."
-        case .live:
-            return job.on ? nil : "This job is off, so its card was put away."
-        }
     }
 
     private static func capitalized(_ text: String) -> String { text.prefix(1).uppercased() + text.dropFirst() }
@@ -430,32 +408,6 @@ struct FileRow: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 9).frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.65), in: RoundedRectangle(cornerRadius: 7))
-    }
-}
-
-/// The line on a job's folder in Morning Files: when it last ran and how often, Run now, and Open job.
-struct FolderJobFolderLine: View {
-    @ObservedObject var store: FolderJobStore
-    @ObservedObject var runner: FolderJobRunner
-    let jobID: UUID
-    let openJob: () -> Void
-    var now: () -> Date = Date.init
-
-    var body: some View {
-        if let job = store.job(id: jobID) {
-            HStack(spacing: 6) {
-                Image(systemName: "folder").foregroundStyle(Pad.inkSoft)
-                Text(FolderJobWords.folderLine(job, running: runner.running == job.id, now: now())).foregroundStyle(Pad.inkSoft)
-                if job.running(at: now()) && !runner.isBusy(job.id) {
-                    Text("·").foregroundStyle(Pad.inkSoft)
-                    Button("Run now") { runner.run(job.id) }
-                }
-                Text("·").foregroundStyle(Pad.inkSoft)
-                Button("Open job", action: openJob).help("Open this job’s page, with its input and its latest result")
-                Spacer(minLength: 0)
-            }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
-            if let receipt = runner.receipt, receipt.jobID == job.id { FolderJobReceiptLine(receipt: receipt, dismiss: runner.dismissReceipt) }
-        }
     }
 }
 

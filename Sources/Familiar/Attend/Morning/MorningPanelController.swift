@@ -111,6 +111,12 @@ import QuartzCore
         openContents(nil)
     }
 
+    /// A matter's page, from its sticker or its notification; Back goes to Jobs.
+    func showMatter(id: String) {
+        navigation.open(.matter(id), returningTo: .jobs)
+        openContents(nil)
+    }
+
     /// Whether the little Morning folder sits on the screen. Off, Morning Files still opens from the menu bar.
     private(set) var launcherShown = false
     /// The person hid or showed the folder: the app remembers it.
@@ -255,7 +261,7 @@ import QuartzCore
         case .card: return 470   // three parts: what it is, what it means for you, what you can do
         case .editCard, .editPerson, .sources, .sourceRuns, .sourceRun, .latestRun, .lessons: return 680
         case .attention: return 680   // the rest and the week
-        case .jobs, .sourceJob, .folderJob: return 680   // a row per job; a job's page with its results
+        case .jobs, .sourceJob, .folderJob, .matter: return 680   // a row per job; a job's or a matter's page with its findings
         }
     }
 

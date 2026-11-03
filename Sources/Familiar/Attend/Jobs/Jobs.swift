@@ -357,16 +357,10 @@ enum Jobs {
 
     // MARK: cards
 
-    /// The cards a job made, to open from its page: a job kept as a folder's preview card, whether open or resolved, and
-    /// the open cards its script wrote itself; or a reading job's open cards, those its latest run made or saw first,
-    /// then the newest.
+    /// The cards a reading job made, to open from its page: its open cards, those its latest run made or saw first, then
+    /// the newest. A job kept as a folder makes none: it reports findings.
     static func cards(for job: Job, _ input: Input) -> [MorningCard] {
-        if job.isFolderJob {
-            guard let folderJob = input.folderJobs.first(where: { $0.id == job.id }) else { return [] }
-            let id = CardInboxFormat.cardID(FolderJobCards.key(for: folderJob))
-            let own = FolderJobCards.scriptSource(for: folderJob) + "/"
-            return input.cards.filter { $0.id == id } + input.cards.filter { !$0.isResolved && $0.inbox?.key.hasPrefix(own) == true }
-        }
+        guard !job.isFolderJob else { return [] }
         let newest = latest(job.id, in: input.runs, finished: true)?.run.id
         return input.cards.filter { $0.tracking?.sourceID == job.id && !$0.isResolved }.sorted { a, b in
             let aLatest = a.tracking?.lastRunID == newest, bLatest = b.tracking?.lastRunID == newest
@@ -398,27 +392,6 @@ enum Jobs {
         own.keys.sorted().map { Unreadable(id: "own-job:" + $0, text: "The job in the “\($0)” folder can't run. \(own[$0] ?? "")",
                                            folder: directory?.appendingPathComponent($0)) }
             + team.keys.sorted().map { Unreadable(id: "team-job:" + $0, text: "Not listing your team's job \($0). \(team[$0] ?? "")") }
-    }
-
-    /// Watches no longer run: a `watches/` folder that still holds one, yours or your team's, said once each, so whoever
-    /// keeps it knows to move it to `jobs/`.
-    static func retiredWatches(own: URL?, team: URL?) -> [Unreadable] {
-        func holdsWatch(_ folder: URL?) -> Bool {
-            guard let folder, let walk = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: nil,
-                                                                       options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { return false }
-            for case let url as URL in walk.prefix(2_000) where url.lastPathComponent == "watch.json" { return true }
-            return false
-        }
-        var rows: [Unreadable] = []
-        if holdsWatch(team) {
-            rows.append(Unreadable(id: "team-watches", text: "Your team's tools still have a watches/ folder. Watches no longer run: "
-                + "whoever keeps the tools can move each one to jobs/, with a job.py that does its check."))
-        }
-        if holdsWatch(own) {
-            rows.append(Unreadable(id: "own-watches", text: "Watches no longer run, so the watches/ folder in Noteling's folder isn't read. "
-                + "A job in jobs/, with a job.py, does what a watch did.", folder: own))
-        }
-        return rows
     }
 
     /// The Jobs box on the Morning Files home, in one line: "5 jobs · 2 need attention · last run 6:31 PM". Only live

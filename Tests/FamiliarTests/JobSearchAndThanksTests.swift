@@ -131,52 +131,6 @@ struct JobSearchAndThanksTests {
 
     // MARK: a job's own cards
 
-    @Test func aJobsOwnCardsArePutAwayWhileItsOffOrOutsideItsWindowAndComeBack() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("job-held-\(UUID())")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let inbox = root.appendingPathComponent("cards/inbox")
-        let morning = MorningStore(directory: root.appendingPathComponent("morning"))
-        let scan = CardInbox(store: morning, directory: inbox)
-        var held = false
-        scan.held = { $0 == "jobcards-team-gm" && held }
-        let folder = inbox.appendingPathComponent("jobcards-team-gm")
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        try #"{"title": "Ask the seller about item 3"}"#.write(to: folder.appendingPathComponent("follow-up.json"), atomically: true, encoding: .utf8)
-        let card = CardInboxFormat.cardID("jobcards-team-gm/follow-up")
-
-        scan.scan(at: now)
-        #expect(morning.cards.first { $0.id == card }?.isResolved == false)
-        held = true                                   // the job ended, or was turned off
-        scan.scan(at: now.addingTimeInterval(60))
-        #expect(morning.cards.first { $0.id == card }?.isResolved == true)
-        #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("follow-up.json").path))   // its file stays
-        held = false                                  // its end moved later, or it was turned on again
-        scan.scan(at: now.addingTimeInterval(120))
-        #expect(morning.cards.first { $0.id == card }?.isResolved == false)
-
-        // Which folders the jobs hold: a job's own cards while it's off or outside its window; nothing else.
-        let team = root.appendingPathComponent("linked/jobs")
-        for (path, json) in [("gm", #"{"name": "GM"}"#), ("sale", #"{"name": "Sale", "ends": "2020-01-01T00:00:00Z"}"#)] {
-            let job = team.appendingPathComponent(path)
-            try FileManager.default.createDirectory(at: job, withIntermediateDirectories: true)
-            try json.write(to: job.appendingPathComponent("job.json"), atomically: true, encoding: .utf8)
-            try "def run():\n    return None\n".write(to: job.appendingPathComponent("job.py"), atomically: true, encoding: .utf8)
-        }
-        let config = Config()
-        let feature = FolderJobsFeature(registry: ToolRegistry(root: root.appendingPathComponent("tools"), runner: ScriptRunner(config: config)),
-                                        notifier: JobNotifier(),
-                                        store: FolderJobStore(directory: root.appendingPathComponent("jobs"),
-                                                              results: root.appendingPathComponent("job-results"), teamDirectory: { team }),
-                                        inbox: inbox)
-        let gm = try #require(feature.store.jobs.first { $0.path == "gm" }), sale = try #require(feature.store.jobs.first { $0.path == "sale" })
-        #expect(feature.holds(FolderJobCards.scriptSource(for: gm)))    // off
-        try feature.store.setOn(gm.id, true)
-        #expect(!feature.holds(FolderJobCards.scriptSource(for: gm)))   // on and running
-        try feature.store.setOn(sale.id, true)
-        #expect(feature.holds(FolderJobCards.scriptSource(for: sale)))  // on, but ended
-        #expect(!feature.holds(FolderJobCards.source(for: gm)) && !feature.holds("pack-shop"))
-    }
-
     @Test func aTableTooWideForThePageSaysItScrolls() {
         #expect(FolderJobTable.wideLine(columns: 6) == "Scroll sideways for all 6 columns.")
     }

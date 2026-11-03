@@ -36,22 +36,21 @@ Click a job to open its page:
   Every file has **Open**, **Save as…** and **Show in Finder**, so you can take the full results into Excel.
 - **Card**: opens the card it keeps in the Morning folder.
 
-## Its sticker, its card, and when it tells you
+## Its stickers, and when it tells you
 
-While a job's latest result has something to show you, it leaves a sticky note beside Noteling's note on your screen:
-the job's name, what it found, who shared it, and when it first found it. Click the sticker to open the job's page;
-the small × that appears when you point at it puts it away until the job finds something else. Up to three stickers
-sit there, newest nearest the note, and **and 2 more** above them opens Jobs. They step aside while the chat is open,
-and come back with it.
+A job reports what it found as rows. Noteling's minister reads what changed and decides which of it deserves your
+attention now, as a sticky note beside Noteling's note on your screen: a sentence or two in plain words, the job's name,
+who shared it and when. It shows only sure things: yours, needing you, true now, and new to you. Everything else stays
+quiet in Noteling's memory, with the reason, and you can ask about it any time.
 
-The job also keeps one card in the Morning folder, in a folder named after the job. The card shows the same tables and
-files, and **Open job**.
-
-- When what it shows changes, you get a notification, and the card comes back if you'd resolved it.
-- When there's nothing left to show, the card goes away by itself.
-- Some jobs also leave cards of their own for follow-ups, in the same folder.
-
-The first run after you turn a job on doesn't notify you: you're looking at it.
+- Up to three stickers sit there, urgent ones first, and **and 2 more** above them opens Jobs. They step aside while the
+  chat is open, and come back with it.
+- Click a sticker to open it: the words, why you're seeing it, the rows behind it, the buttons the job offers (such as
+  **Nudge the warehouse**, which asks first), and **Open page**.
+- The small × that appears when you point at a sticker puts it away. It stays away until something about it changes and
+  the minister thinks you should see it again.
+- A sticker leaves by itself when the job no longer reports what it was about.
+- An urgent sticker is also a notification. Clicking the notification opens the sticker.
 
 ## Before it starts, and after it ends
 

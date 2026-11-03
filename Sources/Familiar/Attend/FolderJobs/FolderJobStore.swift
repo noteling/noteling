@@ -80,13 +80,6 @@ final class FolderJobStore: ObservableObject {
     /// Its input folder, in its own folder.
     func input(for job: FolderJob) -> URL? { folder(for: job)?.appendingPathComponent(FolderJobFiles.input) }
 
-    /// Where watches were kept before jobs: `watches/` beside your `jobs/`, and beside your team's. Watches no longer
-    /// run; Jobs says so while one of these still holds one.
-    var retiredWatches: URL { directory.deletingLastPathComponent().appendingPathComponent(ToolRegistry.watchesFolder) }
-    func teamRetiredWatches() -> URL? {
-        teamDirectory()?.deletingLastPathComponent().appendingPathComponent(ToolRegistry.watchesFolder)
-    }
-
     /// Looks at both `jobs/` folders and takes in what changed. Returns the jobs that went away.
     @discardableResult
     func refresh() -> [UUID] {

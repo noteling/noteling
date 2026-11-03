@@ -387,27 +387,24 @@ func runRenderStickers() {
     let dir = URL(fileURLWithPath: args[i + 1])
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-    // Fictional jobs, each with a run that found something: the stickers come from the model the same way as in the app.
+    // Fictional matters, each with a sticker the minister wrote: the stickers come from the model the same way as in the app.
     let now = Date(timeIntervalSince1970: 1_790_000_000)
-    func job(_ name: String, by: [String] = [], said: String?, minutesAgo: Double) -> FolderJob {
-        var job = FolderJob(id: UUID(), source: by.isEmpty ? .own : .team, path: name.lowercased().replacingOccurrences(of: " ", with: "-"),
-                            name: name, everyMinutes: 30)
-        job.contributors = by
-        let ran = now.addingTimeInterval(-minutesAgo * 60)
-        job.state = FolderJobState(lastRunAt: ran, lastSuccessAt: ran, said: said, preview: "digest-\(name)")
-        return job
+    func matter(_ job: String, by: String? = nil, _ text: String, minutesAgo: Double, urgent: Bool = false) -> Matter {
+        let at = now.addingTimeInterval(-minutesAgo * 60)
+        return Matter(id: Matter.newID(), findings: [FindingRef(job: "team/" + job.lowercased(), id: "1")], state: .open,
+                      view: MatterView(text: text, tone: urgent ? .urgent : .calm), jobName: job, byline: by, createdAt: at, updatedAt: at)
     }
-    let jobs = [job("Pages up", by: ["Yang"], said: "3 of 41 pages are down: the two checkout steps and the returns form.", minutesAgo: 2),
-                job("Holiday Oct · GM", by: ["Yang", "Ana"], said: "Two listings still show the September price.", minutesAgo: 25),
-                job("Orders stuck", said: "4 orders have waited over an hour in “Paid”.", minutesAgo: 70),
-                job("Stock-outs", by: ["Ana"], said: nil, minutesAgo: 130),
-                job("Reviews under 3 stars", by: ["Yang"], said: "One new one, about delivery.", minutesAgo: 200)]
-    let model = RunStickers(file: nil)
+    let all = [matter("Pages up", by: "Yang", "The two checkout steps and the returns form are down; 38 other pages are fine.", minutesAgo: 2, urgent: true),
+               matter("Holiday Oct · GM", by: "Yang and Ana", "Two listings still show the September price, a day into the event.", minutesAgo: 25),
+               matter("Orders stuck", "Four orders have waited over an hour in “Paid”; the oldest is Acme's.", minutesAgo: 70),
+               matter("Stock-outs", by: "Ana", "The blue kettle is out of stock on three of the five pages that sell it.", minutesAgo: 130),
+               matter("Reviews under 3 stars", by: "Yang", "One new two-star review, about a late delivery.", minutesAgo: 200)]
 
     // The host is an off-screen window drawn into a 2x bitmap, as the pad is: the tab and the x are buttons.
     func render(_ count: Int, _ name: String) {
-        model.update(Array(jobs.prefix(count)), at: now)
-        let view = RunStickersView(model: model, open: { _ in }, more: {}, putAway: { _ in })
+        let model = Matters(directory: nil)
+        for matter in all.prefix(count) { model.save(matter) }
+        let view = StickersView(model: model, open: { _ in }, more: {}, putAway: { _ in })
             .padding(12).background(Color(white: 0.96))
         let hosting = NSHostingView(rootView: view)
         hosting.layoutSubtreeIfNeeded()

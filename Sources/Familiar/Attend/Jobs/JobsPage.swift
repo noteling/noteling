@@ -292,7 +292,6 @@ struct JobsPage: View {
         let team = (shown: shown.filter(\.isTeam).count, total: all.filter(\.isTeam).count)
         let unreadable = Jobs.unreadable(own: folderJobs?.store.unreadable ?? [:], team: folderJobs?.store.teamUnreadable ?? [:],
                                          directory: folderJobs?.store.directory)
-            + Jobs.retiredWatches(own: folderJobs?.store.retiredWatches, team: folderJobs?.store.teamRetiredWatches())
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 notices

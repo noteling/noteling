@@ -16,8 +16,9 @@ The app stores its data in `~/.noteling`, or in `$NOTELING_HOME` if you set it. 
 | Watch lists from earlier versions, which no longer run: Noteling no longer reads or writes them, and leaves them until you delete them | `watches/`, `team-watches/` |
 | Your jobs kept as folders, one folder each: what the job is (`job.json`), its script (`job.py`) and its input files (see Team jobs below) | `jobs/` |
 | What jobs kept as folders left: the latest output of each job that ran (yours and the team's you turned on), with the findings it reported as a table (`findings.csv`) and the last run's rows (`findings.json`, so the next run can tell new, changed and gone apart), how its last run went, and which of the team's jobs you turned on | `job-results/` |
-| The memory log, one file a day: each job's runs (what it checked, how many it read and how many it found) and each finding that is new, changed or gone, as the row the job reported it, with anything that looks like a secret hidden | `memory/` |
-| Cards that tool-pack scripts and jobs write for Morning Files, one file each, and the files they list (see The cards inbox below) | `cards/inbox/` |
+| The memory log, one file a day: each job's runs (what it checked, how many it read and how many it found) and each finding that is new, changed or gone, as the row the job reported it, with anything that looks like a secret hidden; the minister's verdict on each finding and why; each sticker it wrote; what you put away or pressed | `memory/` |
+| Cards that tool-pack scripts write for Morning Files, one file each, and the files they list (see The cards inbox below) | `cards/inbox/` |
+| The minister's matters, one folder each: which findings it is made of, its state (on a sticker, quiet, or over), the sticker's words, and the minister's notes on why | `matters/` |
 | A copy of the files each card carries, only those its latest card file listed (see The cards inbox below) | `cards/files/` |
 | Cards, your decisions and context, Who's Who, queued work, what the card step has already judged, and the lessons you teach | `morning/` |
 | Watch Me recordings, only while a draft is being written | `recordings/` |

@@ -3,8 +3,8 @@
 A job is a folder in your repository's `jobs/` folder holding a `job.json` and a `job.py`, at any depth. Noteling doesn't
 know what a job is for. It runs `job.py` on the schedule in `job.json`; the job reports its findings as rows of its own
 columns, and `job.json` says which column is which. Noteling keeps the findings as a table on the job's page, tells new
-ones from old, writes each run down, and offers every file the job leaves to download. The minister reads the findings
-and decides which deserve a sticker; until that ships, a job's preview still makes a card ([below](#until-080-the-preview-and-the-card)).
+ones from old, writes each run down, and offers every file the job leaves to download. The minister reads what changed
+and decides which findings deserve a sticker beside the person's note ([Findings](#findings)).
 
 ```
 jobs/
@@ -70,7 +70,6 @@ def nudge(order):
 |---|---|
 | `NOTELING_INPUT` | The job's `input/` folder. Read it; never write into it: every update replaces it. |
 | `NOTELING_OUTPUT` | A fresh, empty folder for this run. Anything the job leaves goes here: the full results, for Excel. |
-| `NOTELING_CARDS_DIR` | The job's own folder for cards it writes itself. Until 0.8.0; see [Cards](cards.md). |
 | the names in `requires` | Each secret, from the person's Keychain. |
 | `HTTP(S)_PROXY`, `NO_PROXY`, `SSL_CERT_FILE` | The Mac's proxy and trusted certificates. `urllib` uses them as they are. |
 | `PYTHONPATH` | The person's own tools folder, then your repository: `job.py` can import code kept there. |
@@ -123,8 +122,15 @@ tracks no state and never says "resolved". After a run that works:
   the same way; the file itself is the person's, as the job wrote it;
 - the job's row and page say what it came to: "Checked Orders API: read 2,113, found 3 · 9:02 AM · next 10:02 AM".
 
-The minister reads what changed and decides what deserves a sticker. Until it ships, the findings show on the job's page
-and nowhere else.
+**What the minister does with them.** After a batch of changes (about a minute, so one run of several jobs is one
+turn), the minister sorts the new and changed findings into *matters* (one thing worth attention, which may be several
+findings across jobs: the same customer seen by two jobs is one matter), and says for each whether it deserves the
+person's attention now, and why. A sure thing is all four at once: it's theirs, it needs them, it's true now, and it's new
+to them. Anything in doubt stays quiet, with the reason written in the log. For each matter that shows, it writes the
+sticker's words, picks one of your actions at most, and keeps notes on why. A finding that is gone takes its sticker down
+at once, in code. The person can put a sticker away; it stays away until the finding changes and the minister thinks they
+should see it again. Clicking a sticker opens the matter: the words, the notes, the findings as your rows, and the buttons.
+An urgent sticker is also a notification.
 
 **Limits.** Up to 500 findings a run; past that, the first 500 are kept and the page says so. A value longer than 4,000
 characters is cut. A job with more to report than that boils it down first: the job's output can still hold the whole
@@ -146,16 +152,14 @@ A button on a finding is a function of the job's own `job.py`, named in `job.jso
 | `confirm` | Asked before it runs. Give every button that changes something outside the Mac one. |
 
 Up to six. Actions belong to the job, not to a row: `nudge()` exists for every order. What runs is always the `job.py`
-of the job that reported the finding; a row can't name another file or another job. The button shows on the sticker the
-minister makes from a finding (0.8.0); until then, actions are read and checked, and shown nowhere. The words a function
-returns show where the button was pressed; an exception's first line shows in red. Noteling never presses a button by
-itself.
+of the job that reported the finding; a row can't name another file or another job. The buttons show on a matter's
+page, which a sticker opens; the minister marks the one that fits best. The words a function returns show there, and go
+to the log; an exception's first line shows in red. Noteling never presses a button by itself.
 
 ## job.md
 
-A plain-words description of what the job reports, beside `job.json`, for the minister to read when it weighs the
-findings (0.8.0): what a row is, what the columns mean, what the numbers are measured against, whom the job normally
-serves.
+A plain-words description of what the job reports, beside `job.json`, which the minister reads when it weighs the
+findings: what a row is, what the columns mean, what the numbers are measured against, whom the job normally serves.
 
 ```
 Each row is a paid order the warehouse hasn't packed. `waiting_days` counts from payment; our SLA is 48 hours.
@@ -174,19 +178,18 @@ A run that works replaces the job's output on that Mac. It lives only there, nev
 it, a value that starts with `=`, `+`, `-` or `@` and isn't a number gets a space in front, so a spreadsheet never runs
 what a row said as a formula.
 
-## Until 0.8.0: the preview and the card
+## The preview folder
 
-Files in `output/preview/` (`.csv`, `.tsv`, `.txt`) are still shown as they are on the job's page, and while the preview
-has anything in it the job keeps one card in the Morning folder, with a notification when its contents change. A job can
-also write cards of its own into `NOTELING_CARDS_DIR` ([Cards](cards.md)). Keep the preview stable: no times or run
-numbers in it. The minister's stickers replace all of this; a job that reports findings needs none of it.
+Files in `output/preview/` (`.csv`, `.tsv`, `.txt`) are shown as they are on the job's page, under the findings, for a
+job that has something to show besides its findings. They reach nobody by themselves: a job that wants attention
+reports findings. Jobs from before the findings, which wrote a preview and returned words, still run and still show their
+preview on their page; nothing else happens with them until they report findings.
 
 ## The window
 
 `starts` and `ends` are when a job deserves anyone's attention. Before its start and after its end, a job stays out of
-the way: it doesn't run, sends no notifications, has no card (nor do the cards its `job.py` wrote), and isn't counted on
-the Morning folder's home. In Jobs it waits under one line, **Upcoming (1) · Ended (2) · Show**, where it can still be
-opened, and an upcoming job can be turned on ahead of its start.
+the way: it doesn't run, and its findings' buttons can't be pressed. In Jobs it waits under one line, **Upcoming (1) ·
+Ended (2) · Show**, where it can still be opened, and an upcoming job can be turned on ahead of its start.
 
 Push a later `ends`, and the job comes back once the update reaches each Mac. Give every job for an event an `ends`, so
 it leaves people's desks when the event does.
@@ -202,9 +205,10 @@ on or off and read what one found, but never makes or changes one: jobs are your
 
 ## Credit
 
-`contributor` names whoever wrote the job and shares it. It shows as "Shared by Yang" on the job's row and page, and
-each **Run now** thanks them, in a line that changes from run to run, such as "Thanks to Yang for sharing this job."
-A list reads "Yang and Ana", or "Yang, Ana and Sam".
+`contributor` names whoever wrote the job and shares it. It shows as "Shared by Yang" on the job's row and page, under
+each sticker the minister makes of its findings ("Yang · 9:02 AM"), and each **Run now** thanks them, in a line that
+changes from run to run, such as "Thanks to Yang for sharing this job." A list reads "Yang and Ana", or "Yang, Ana and
+Sam".
 
 ## Moving a watch to a job
 

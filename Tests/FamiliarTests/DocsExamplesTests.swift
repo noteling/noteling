@@ -31,18 +31,12 @@ struct DocsExamplesTests {
         try "url,expect\n\(base)/fine,Hello from Noteling\n\(base)/plain,Hello from Noteling\n\(base)/down,Hello from Noteling\n"
             .write(to: folder.appendingPathComponent("input/pages.csv"), atomically: true, encoding: .utf8)
 
-        let inbox = root.appendingPathComponent("cards/inbox")
         let scripts = ScriptRunner(config: Config())
-        scripts.cardsRoot = inbox
         let feature = FolderJobsFeature(registry: ToolRegistry(root: root.appendingPathComponent("tools"), runner: scripts),
                                         notifier: JobNotifier(),
                                         store: FolderJobStore(directory: root.appendingPathComponent("jobs"),
                                                               results: root.appendingPathComponent("job-results")),
-                                        inbox: inbox, memory: root.appendingPathComponent("memory"))
-        let morning = MorningStore(directory: root.appendingPathComponent("morning"))
-        let cards = CardInbox(store: morning, directory: inbox)
-        cards.folderName = { feature.cardFolderName($0) }
-        feature.runner.onCardsChanged = { cards.scan() }
+                                        memory: root.appendingPathComponent("memory"))
         let job = try #require(feature.store.jobs.first)
         #expect(job.name == "Pages up" && job.everyMinutes == 60 && job.contributors == ["Your name"])
         #expect(job.map?.id == "page" && job.map?.page == "page")
@@ -65,7 +59,6 @@ struct DocsExamplesTests {
         let memory = try #require(feature.runner.memory)
         #expect(memory.lines(on: Date()).compactMap { $0["new"] as? String } == ["\(base)/plain", "\(base)/down"])
         #expect(FolderJobWords.lastRun(try #require(feature.store.job(id: job.id)), now: Date()).hasSuffix(" · checked the pages in pages.csv: read 3, found 2"))
-        #expect(morning.cards.isEmpty)   // no preview, so no card: the findings wait for the minister's stickers
 
         // The README's next step: delete the row that's wrong on purpose and run it again, and the findings are gone.
         try "url,expect\n\(base)/fine,Hello from Noteling\n".write(to: folder.appendingPathComponent("input/pages.csv"),
@@ -120,8 +113,8 @@ struct DocsExamplesTests {
                     #expect(PageGlance.parse(block) != nil, "\(place)")
                     checked["glance", default: 0] += 1
                 } else if keys.contains("title") {
-                    // As a job's script writes it: the only folder whose cards may have buttons that run something.
-                    let card = try CardInboxFormat.parse(data, source: FolderJobCards.scriptPrefix + "own-docs", id: "example", modifiedAt: Date())
+                    // As a pack's script writes it: its buttons open a page or ask in chat.
+                    let card = try CardInboxFormat.parse(data, source: "pack-docs", id: "example", modifiedAt: Date())
                     #expect(!card.title.isEmpty && card.actions.count == (object["actions"] as? [Any])?.count ?? 0, "\(place)")
                     checked["card", default: 0] += 1
                 } else {

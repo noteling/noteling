@@ -173,22 +173,6 @@ enum FolderJobFiles {
         return (Array(files.prefix(limit)), max(0, files.count - limit))
     }
 
-    /// A digest of a job's preview files, their paths and contents: a change in any of them is a change of what the
-    /// preview shows. Nil when it has none.
-    static func previewDigest(output: URL) -> String? {
-        let preview = files(in: output.appendingPathComponent(preview), limit: .max).files
-        guard !preview.isEmpty else { return nil }
-        var hash = SHA256()
-        for file in preview.sorted(by: { $0.path < $1.path }) {
-            hash.update(data: Data((file.path + "\u{0}").utf8))
-            guard let handle = try? FileHandle(forReadingFrom: file.url) else { continue }
-            while let chunk = try? handle.read(upToCount: 1 << 20), !chunk.isEmpty { hash.update(data: chunk) }
-            try? handle.close()
-            hash.update(data: Data([0]))
-        }
-        return hash.finalize().prefix(12).map { String(format: "%02x", $0) }.joined()
-    }
-
     /// What's in a job's output now: its files, preview first, and how many more there were.
     static func result(output: URL) -> FolderJobResult? {
         guard FileManager.default.fileExists(atPath: output.path) else { return nil }

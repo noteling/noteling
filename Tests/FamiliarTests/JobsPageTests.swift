@@ -8,6 +8,56 @@ import FamiliarContracts
 /// home's Jobs box, and every way in. Temp folders only; nothing reads a real source, runs a script or reaches a model.
 @Suite @MainActor
 struct JobsPageTests {
+    @Test func jobsBeforeTheirStartOrPastTheirEndWaitUnderOneLineOnlyToBeLookedAt() throws {
+        var live = folderJob("Live sale", path: "live", state: failed("Signed out"))
+        live.ends = moment(now + 3_600)
+        var soon = folderJob("Soon", path: "soon", team: true, on: false)
+        soon.starts = moment(now + 7_200)
+        var later = folderJob("Later", path: "later")
+        later.starts = moment(now + 86_400)
+        let ranBefore = now - 7_200
+        var ended = folderJob("Ended red", path: "ended", team: true, state: found("1 of 1 wrong", at: ranBefore))
+        ended.ends = moment(now - 3_600)
+        var gone = folderJob("Long gone", path: "gone", state: failed("Signed out", at: now - 2 * 86_400))
+        gone.ends = moment(now - 86_400)
+        var input = Jobs.Input(readings: [mail()], folderJobs: [live, soon, later, ended, gone], now: now)
+        input.setup.missingJobSecrets = { ["Soon", "Ended red"].contains($0.name) ? ["SHOP_API_KEY"] : [] }
+
+        // The list holds the live jobs; the rest wait, the soonest to start first and the latest to end first.
+        let jobs = Jobs.list(input)
+        #expect(jobs.filter(\.isLive).map(\.name) == ["Live sale", "Morning mail"])
+        let outside = Jobs.outside(jobs)
+        #expect(outside.upcoming.map(\.name) == ["Soon", "Later"])
+        #expect(outside.ended.map(\.name) == ["Ended red", "Long gone"])
+
+        // Nothing out of the way asks for the person: no red, no problem, never first.
+        for job in outside.upcoming + outside.ended {
+            #expect(!job.needsAttention && !job.resultIsProblem && !job.status.isProblem && job.runProblem == nil)
+        }
+        let endedRed = outside.ended[0]
+        #expect(endedRed.status == .ready && endedRed.problems.isEmpty)
+        #expect(endedRed.every == "Every 2 hours · Ended " + (ended.ends?.words ?? ""))
+        #expect(endedRed.lastRun == "Last run \(JobWords.time(ranBefore, now: now)) · 1 of 1 wrong")   // still there to look at
+        #expect(outside.ended[1].status == .ready)                                                    // its last run failed: not Failed
+        // An upcoming one still says, quietly, what it lacks, so it can be put right before it starts.
+        #expect(outside.upcoming[0].status == .off && outside.upcoming[0].problems == ["Needs SHOP_API_KEY in Settings."])
+
+        // No buttons, but an upcoming team job's switch, to turn it on ahead of its start.
+        #expect(Jobs.controls(outside.upcoming[0], canOpenSettings: true) == [.onOff])
+        #expect(Jobs.controls(outside.upcoming[1], canOpenSettings: true) == [])
+        #expect(Jobs.controls(endedRed, canOpenSettings: true) == [] && Jobs.controls(outside.ended[1], canOpenSettings: true) == [])
+
+        // One quiet line for them; the home's box counts only the live ones.
+        #expect(Jobs.outsideLine(upcoming: 2, ended: 2, showing: false) == "Upcoming (2) · Ended (2) · Show")
+        #expect(Jobs.outsideLine(upcoming: 0, ended: 1, showing: false) == "Ended (1) · Show")
+        #expect(Jobs.outsideLine(upcoming: 2, ended: 2, showing: true) == "Hide upcoming and ended jobs")
+        #expect(Jobs.outsideLine(upcoming: 1, ended: 0, showing: true) == "Hide upcoming jobs")
+        #expect(Jobs.outsideLine(upcoming: 0, ended: 0, showing: false) == nil)
+        #expect(Jobs.summary(jobs, now: now) == "2 jobs · 1 needs attention · last run \(time)")
+        #expect(Jobs.summary(outside.upcoming + outside.ended, now: now) == "No jobs running now")
+
+    }
+
     private let now = Date(timeIntervalSince1970: 1_790_000_000)
     private var time: String { JobWords.time(now, now: now) }
 
@@ -22,7 +72,7 @@ struct JobsPageTests {
 
     private func failed(_ why: String, at: Date? = nil) -> FolderJobState { FolderJobState(lastRunAt: at ?? now, error: why) }
     private func found(_ said: String, at: Date? = nil) -> FolderJobState {
-        FolderJobState(lastRunAt: at ?? now, lastSuccessAt: at ?? now, said: said, preview: "digest")
+        FolderJobState(lastRunAt: at ?? now, lastSuccessAt: at ?? now, said: said)
     }
 
     private func mail(_ name: String = "Morning mail") -> LearnedReadingSource {
@@ -218,29 +268,6 @@ struct JobsPageTests {
         #expect(reviewJob.meaning == "Notes from the class")
     }
 
-    @Test func aWatchesFolderLeftBehindIsSaidOnce() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("retired-watches-\(UUID())")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let own = root.appendingPathComponent("watches"), team = root.appendingPathComponent("linked/watches")
-        #expect(Jobs.retiredWatches(own: own, team: team).isEmpty)   // none there: nothing said
-        try FileManager.default.createDirectory(at: own.appendingPathComponent("empty"), withIntermediateDirectories: true)
-        #expect(Jobs.retiredWatches(own: own, team: team).isEmpty)   // a folder with no watch in it: nothing either
-        try FileManager.default.createDirectory(at: team.appendingPathComponent("holiday/oct/gm"), withIntermediateDirectories: true)
-        try "{}".write(to: team.appendingPathComponent("holiday/oct/gm/watch.json"), atomically: true, encoding: .utf8)
-        #expect(Jobs.retiredWatches(own: own, team: team).map(\.id) == ["team-watches"])
-        #expect(Jobs.retiredWatches(own: own, team: team)[0].folder == nil)   // the team's: only to know, not to open
-        try "{}".write(to: own.appendingPathComponent("empty/watch.json"), atomically: true, encoding: .utf8)
-        let rows = Jobs.retiredWatches(own: own, team: team)
-        #expect(rows.map(\.id) == ["team-watches", "own-watches"] && rows[1].folder == own)
-        #expect(rows[0].text.hasPrefix("Your team's tools still have a watches/ folder. Watches no longer run"))
-
-        // A store's watches/ is beside its jobs/, and the team's beside theirs.
-        let store = FolderJobStore(directory: root.appendingPathComponent("jobs"), results: root.appendingPathComponent("results"),
-                                   teamDirectory: { root.appendingPathComponent("linked/jobs") })
-        #expect(store.retiredWatches.standardizedFileURL.path == own.standardizedFileURL.path)
-        #expect(store.teamRetiredWatches()?.standardizedFileURL.path == team.standardizedFileURL.path)
-    }
-
     /// Removed jobs wait under Removed jobs. What Watch Me learned is a tool, never a job: a pack it wrote adds
     /// nothing to Jobs or to the home's count.
     @Test func theJobsPageKeepsRemovedJobsAndWhatWatchMeLearnedIsNotAJob() throws {
@@ -365,64 +392,6 @@ struct JobsPageTests {
 
     private func moment(_ date: Date) -> JobMoment { JobMoment(text: "", date: date) }
 
-    @Test func jobsBeforeTheirStartOrPastTheirEndWaitUnderOneLineOnlyToBeLookedAt() throws {
-        var live = folderJob("Live sale", path: "live", state: failed("Signed out"))
-        live.ends = moment(now + 3_600)
-        var soon = folderJob("Soon", path: "soon", team: true, on: false)
-        soon.starts = moment(now + 7_200)
-        var later = folderJob("Later", path: "later")
-        later.starts = moment(now + 86_400)
-        let ranBefore = now - 7_200
-        var ended = folderJob("Ended red", path: "ended", team: true, state: found("1 of 1 wrong", at: ranBefore))
-        ended.ends = moment(now - 3_600)
-        var gone = folderJob("Long gone", path: "gone", state: failed("Signed out", at: now - 2 * 86_400))
-        gone.ends = moment(now - 86_400)
-        var input = Jobs.Input(readings: [mail()], folderJobs: [live, soon, later, ended, gone], now: now)
-        input.setup.missingJobSecrets = { ["Soon", "Ended red"].contains($0.name) ? ["SHOP_API_KEY"] : [] }
-
-        // The list holds the live jobs; the rest wait, the soonest to start first and the latest to end first.
-        let jobs = Jobs.list(input)
-        #expect(jobs.filter(\.isLive).map(\.name) == ["Live sale", "Morning mail"])
-        let outside = Jobs.outside(jobs)
-        #expect(outside.upcoming.map(\.name) == ["Soon", "Later"])
-        #expect(outside.ended.map(\.name) == ["Ended red", "Long gone"])
-
-        // Nothing out of the way asks for the person: no red, no problem, never first.
-        for job in outside.upcoming + outside.ended {
-            #expect(!job.needsAttention && !job.resultIsProblem && !job.status.isProblem && job.runProblem == nil)
-        }
-        let endedRed = outside.ended[0]
-        #expect(endedRed.status == .ready && endedRed.problems.isEmpty)
-        #expect(endedRed.every == "Every 2 hours · Ended " + (ended.ends?.words ?? ""))
-        #expect(endedRed.lastRun == "Last run \(JobWords.time(ranBefore, now: now)) · 1 of 1 wrong")   // still there to look at
-        #expect(outside.ended[1].status == .ready)                                                    // its last run failed: not Failed
-        // An upcoming one still says, quietly, what it lacks, so it can be put right before it starts.
-        #expect(outside.upcoming[0].status == .off && outside.upcoming[0].problems == ["Needs SHOP_API_KEY in Settings."])
-
-        // No buttons, but an upcoming team job's switch, to turn it on ahead of its start.
-        #expect(Jobs.controls(outside.upcoming[0], canOpenSettings: true) == [.onOff])
-        #expect(Jobs.controls(outside.upcoming[1], canOpenSettings: true) == [])
-        #expect(Jobs.controls(endedRed, canOpenSettings: true) == [] && Jobs.controls(outside.ended[1], canOpenSettings: true) == [])
-
-        // One quiet line for them; the home's box counts only the live ones.
-        #expect(Jobs.outsideLine(upcoming: 2, ended: 2, showing: false) == "Upcoming (2) · Ended (2) · Show")
-        #expect(Jobs.outsideLine(upcoming: 0, ended: 1, showing: false) == "Ended (1) · Show")
-        #expect(Jobs.outsideLine(upcoming: 2, ended: 2, showing: true) == "Hide upcoming and ended jobs")
-        #expect(Jobs.outsideLine(upcoming: 1, ended: 0, showing: true) == "Hide upcoming jobs")
-        #expect(Jobs.outsideLine(upcoming: 0, ended: 0, showing: false) == nil)
-        #expect(Jobs.summary(jobs, now: now) == "2 jobs · 1 needs attention · last run \(time)")
-        #expect(Jobs.summary(outside.upcoming + outside.ended, now: now) == "No jobs running now")
-
-        // A card put away says why: the job ended, hasn't started, or is off.
-        #expect(FolderJobWords.putAway(ended, gone: now, now: now) == "This job ended \(ended.ends?.words ?? ""), so its card was put away.")
-        #expect(FolderJobWords.putAway(ended, gone: now - 86_400, now: now) == nil)   // it went before the job ended, for another reason
-        #expect(FolderJobWords.putAway(later, gone: now, now: now) == "This job starts \(later.starts?.words ?? ""); its card is put away until then.")
-        var off = folderJob("Off", path: "off", team: true, on: false)
-        #expect(FolderJobWords.putAway(off, gone: now, now: now) == "This job is off, so its card was put away.")
-        off.on = true
-        #expect(FolderJobWords.putAway(off, gone: now, now: now) == nil)
-    }
-
     @Test func jobsRoutesHaveTitlesHeightsAndBackLeadsToJobs() throws {
         let id = UUID()
         func title(_ route: MorningNavigation.Route) -> String {
@@ -540,36 +509,6 @@ struct JobsPageTests {
     }
 
     // MARK: a job's card
-
-    @Test func aJobsCardsAreOneTapFromItsPageAndBackReturnsThere() throws {
-        let fixture = try JobsFixture()
-        defer { fixture.remove() }
-        let own = try fixture.job("sale", #"{"name": "Sale items"}"#)
-        func job() throws -> Job { try #require(Jobs.list(fixture.input()).first) }
-        #expect(try Jobs.cards(for: job(), fixture.input()).isEmpty && Jobs.cardLabel([]) == nil)   // no card yet: no link
-
-        // Its preview card, job.json in its folder of the cards inbox, and the open cards its job.py wrote itself.
-        try fixture.card(FolderJobCards.source(for: own), "job", #"{"title": "Sale items · 9:41 AM"}"#)
-        let cardID = CardInboxFormat.cardID(FolderJobCards.key(for: own))
-        #expect(try Jobs.cards(for: job(), fixture.input()).map(\.id) == [cardID])
-        #expect(try Jobs.cardLabel(Jobs.cards(for: job(), fixture.input())) == "Card")
-        try fixture.card(FolderJobCards.scriptSource(for: own), "follow-up", #"{"title": "Ask the seller about item 3"}"#)
-        #expect(try Jobs.cards(for: job(), fixture.input()).map(\.id) == [cardID, CardInboxFormat.cardID(FolderJobCards.scriptSource(for: own) + "/follow-up")])
-        try FileManager.default.removeItem(at: fixture.root.appendingPathComponent("cards/inbox").appendingPathComponent(FolderJobCards.scriptSource(for: own)))
-        fixture.inbox.scan()   // the one it wrote went away: it resolved, so it isn't listed
-
-        // The Card link opens it, and Back from it returns to the job.
-        fixture.navigation.route = .folderJob(own.id)
-        let page = try #require(find(FolderJobPage.self, in: fixture.files().body))
-        page.openCard(cardID)
-        #expect(fixture.navigation.route == .card(cardID))
-        fixture.files().back()
-        #expect(fixture.navigation.route == .folderJob(own.id))
-
-        // Resolved, it is still its card.
-        try fixture.morning.setCardResolution(cardID: cardID, resolved: true)
-        #expect(try Jobs.cardLabel(Jobs.cards(for: job(), fixture.input())) == "Card (resolved)")
-    }
 
     @Test func aReadingJobsCardsAreOneTapFromItsPage() throws {
         let mail = mail()

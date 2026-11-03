@@ -47,22 +47,12 @@ extension MorningRender {
                   "2 of 4 items need a look. Prices were read from the live pages for zip 10001.\n")
         try write(output.appendingPathComponent("all.csv"), "item,price,checked_at\nK-1,18.99,9:47 AM\nK-2,16.99,9:47 AM\nK-3,,9:47 AM\nK-4,119.97,9:47 AM\n")
         try write(output.appendingPathComponent("raw/pages.json"), "{}\n")
-        try store.record(gm.id, FolderJobState(lastRunAt: ran, lastSuccessAt: ran, said: "2 of 4 items need a look",
-                                               preview: FolderJobFiles.previewDigest(output: output)))
+        try store.record(gm.id, FolderJobState(lastRunAt: ran, lastSuccessAt: ran, said: "2 of 4 items need a look"))
         try store.record(autumn.id, FolderJobState(lastRunAt: ran.addingTimeInterval(-4 * 86_400), lastSuccessAt: ran.addingTimeInterval(-4 * 86_400),
-                                                   said: "1 of 3 items need a look", preview: "fictional"))
+                                                   said: "1 of 3 items need a look"))
         try store.record(stuck.id, FolderJobState(lastRunAt: ran.addingTimeInterval(-3_600), error: "The orders service asked to sign in again."))
 
         let morning = MorningStore(directory: root.appendingPathComponent("morning"))
-        let inbox = root.appendingPathComponent("cards-inbox")
-        let cards = FolderJobCards(root: inbox)
-        cards.reconcile(store.jobs)
-        let scan = CardInbox(store: morning, directory: inbox)
-        scan.folderName = { source in
-            store.jobs.first { FolderJobCards.source(for: $0) == source || FolderJobCards.scriptSource(for: $0) == source }?.name
-        }
-        scan.scan()
-
         let buttons = FolderJobButtons(store: store, execute: { _ in NSNull() })
         buttons.hasSecret = { _ in true }
         let panel = FolderJobsPanel(store: store, runner: runner, notifier: JobNotifier(), buttons: buttons)
@@ -78,30 +68,6 @@ extension MorningRender {
         try save("folder-jobs.png", .jobs)
         try save("folder-job-page.png", .folderJob(gm.id), height: 1_250)
         try save("folder-job-failed.png", .folderJob(stuck.id))
-        let card = CardInboxFormat.cardID(FolderJobCards.key(for: gm))
-        if let folder = morning.cards.first(where: { $0.id == card })?.folderID { try save("folder-job-folder.png", .folder(folder)) }
-        try save("folder-job-card.png", .card(card), height: 1_000)
-
-        // A card the GM job's job.py wrote for one item, with buttons that run its own code; then one pressed.
-        try write(inbox.appendingPathComponent(FolderJobCards.scriptSource(for: gm) + "/K-1.json"), #"""
-            {"title": "K-1 shows 18.99, not the event price 16.99 (fictional)",
-             "body": "Plant pots, set of 5 – green. The page still shows the list price; the event price starts at 9 AM.",
-             "url": "https://shop.example.com/item/K-1", "severity": "high",
-             "actions": [{"label": "Set the event price", "run": "set_price", "args": {"item": "K-1", "price": 16.99},
-                          "confirm": "This sets K-1 to 16.99 on the live site, as you."},
-                         {"label": "Check K-1 again", "run": "check_item", "args": {"item": "K-1"}},
-                         {"label": "Who owns pricing?", "ask": "Who owns pricing for K-1?"}]}
-            """#)
-        scan.scan()
-        let itemCard = CardInboxFormat.cardID(FolderJobCards.scriptSource(for: gm) + "/K-1")
-        try save("folder-job-card-buttons.png", .card(itemCard), height: 760)
-        try morning.recordPress(cardID: itemCard, CardPress(label: "Check K-1 again", at: ran.addingTimeInterval(9 * 60),
-                                                           said: "Still 18.99 on the live page.", failed: false))
-        try save("folder-job-card-pressed.png", .card(itemCard), height: 760)
-        if let action = morning.cards.first(where: { $0.id == itemCard })?.inbox?.actions.first {
-            try image(CardRunConfirmRow(action: action, run: {}, cancel: {}).padding(23).foregroundStyle(Pad.ink).background(Pad.fieldPaper),
-                      size: NSSize(width: 650, height: 150), to: directory.appendingPathComponent("folder-job-card-confirm.png"))
-        }
 
         // Your team's jobs past a handful, with a search kept from last time: only those that match, and the ones on.
         for (path, name) in [("spring/shoes", "Spring · Shoes"), ("spring/garden", "Spring · Garden"), ("home/kitchen", "Kitchen"),
