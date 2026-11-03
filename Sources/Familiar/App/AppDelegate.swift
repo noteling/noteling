@@ -4,63 +4,76 @@ import Combine
 import FamiliarRuntime
 import SwiftUI
 
+/// The composition root: the one place that knows all three products and wires them to each other. Ask (the pen and
+/// the chat), Act (Teach me and Do it for me, in front of the person or in the background) and Attend (jobs, what they
+/// find, and the stickers) each set themselves up in their own file (`AppDelegate+Ask`, `+Act`, `+Attend`). This file
+/// holds what is the app's own: the launch sequence, the menus, the hotkey, Settings, a team's setup file, and the
+/// shared harness every product runs on (the scripts, the team's tools, the secrets).
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private var config = Config.load()
-    private var statusItem: NSStatusItem!
-    private var panel: BubblePanel!
-    private var taskPanel: BackgroundTaskPanelController!
-    private let morning = MorningStore()
-    private let calendarSources = CalendarStore()
-    private let attention = AttentionLedger(inBackground: true)
-    private var calendarReader: CalendarCollectionRunner!
-    private var morningPanel: MorningPanelController!
-    private var morningTasks: MorningTaskRunner!
-    private var cardGeneration: CardGenerationService!
-    private var hotKey: HotKey?
-    private let watcher = ContextWatcher()
-    private var runner: ScriptRunner!
-    private var registry: ToolRegistry!
-    private lazy var linkedTools = LinkedToolsUpdater(config: { [weak self] in self?.config ?? Config() })
-    /// Your settings with the Claude settings the team's tools set: what reaches Claude. Never saved; `config` is.
-    private var effectiveConfig: Config { config.applying(linkedTools.team.settings) }
-    private var assistant: Assistant!
-    private let shell = ShellState()
-    private let wand = WandController()
-    private let notesStore = NotesStore()
-    private var briefs: PageBriefs!
-    private let notesShortcut = NotesShortcut()
-    private let notesUsage = NotesUsageLog()
-    private let hideHint = HideHint()
-    private let origami = OrigamiFlightController()
-    private let settings = SettingsWindowController()
-    private let watchDraftWindow = WatchDraftWindowController()
-    private var folderJobs: FolderJobsFeature?
-    private var cardInbox: CardInbox?
-    private var runStickers: RunStickers?
-    private var stickersPanel: RunStickersPanel?
-    private var stickersScreenObserver: NSObjectProtocol?
-    private var savedBubbleFrame: NSRect?
-    private var dragOffset: NSPoint?     // cursor position relative to the panel origin while dragging
-    private let control = ComputerController()
-    private let activities = NativeActivityGate()
-    private lazy var desktop = DesktopExecutionService(control: control, activities: activities)
-    private let execution = ExecutionCoordinator()
-    private lazy var recorder = WatchRecorder(config: config, watcher: watcher)
-    private lazy var learning = WatchLearnComposition.make(recorder: recorder, registry: registry, activities: activities, config: { [weak self] in self?.effectiveConfig ?? Config() })
-    private var bubbleWasVisibleBeforeControl = false
-    private var cancellables = Set<AnyCancellable>()
+    var config = Config.load()
+    var statusItem: NSStatusItem!
+    var hotKey: HotKey?
+    var cancellables = Set<AnyCancellable>()
 
-    private var watcherMenuItem: NSMenuItem!
-    private var hideMenuItem: NSMenuItem!
-    private var morningFolderMenuItem: NSMenuItem!
-    private var screenPermItem: NSMenuItem!
-    private var axPermItem: NSMenuItem!
-    private var toolsMenuItem: NSMenuItem!
-    private var watchMenuItem: NSMenuItem!
-    private var stopWorkMenuItem: NSMenuItem!
-    private var tasksMenuItem: NSMenuItem!
-    private var origamiMenuItem: NSMenuItem!
+    // The harness: scripts, the team's tools, and the secrets their scripts make.
+    var runner: ScriptRunner!
+    var registry: ToolRegistry!
+    lazy var linkedTools = LinkedToolsUpdater(config: { [weak self] in self?.config ?? Config() })
+    /// Your settings with the Claude settings the team's tools set: what reaches Claude. Never saved; `config` is.
+    var effectiveConfig: Config { config.applying(linkedTools.team.settings) }
+    let settings = SettingsWindowController()
+
+    // Ask: the note on the screen, the chat, the pen and its notes.
+    var panel: BubblePanel!
+    var assistant: Assistant!
+    let shell = ShellState()
+    let watcher = ContextWatcher()
+    let wand = WandController()
+    let notesStore = NotesStore()
+    var briefs: PageBriefs!
+    let notesShortcut = NotesShortcut()
+    let notesUsage = NotesUsageLog()
+    let hideHint = HideHint()
+    let origami = OrigamiFlightController()
+    var savedBubbleFrame: NSRect?
+    var dragOffset: NSPoint?     // cursor position relative to the panel origin while dragging
+
+    // Act: mouse and keyboard control, the tasks it runs, Watch Me and Teach me.
+    let control = ComputerController()
+    let activities = NativeActivityGate()
+    lazy var desktop = DesktopExecutionService(control: control, activities: activities)
+    let execution = ExecutionCoordinator()
+    var taskPanel: BackgroundTaskPanelController!
+    lazy var recorder = WatchRecorder(config: config, watcher: watcher)
+    lazy var learning = WatchLearnComposition.make(recorder: recorder, registry: registry, activities: activities, config: { [weak self] in self?.effectiveConfig ?? Config() })
+    let watchDraftWindow = WatchDraftWindowController()
+    var bubbleWasVisibleBeforeControl = false
+
+    // Attend: the jobs, the reading jobs, Morning Files (until the minister replaces it) and the stickers.
+    let morning = MorningStore()
+    let calendarSources = CalendarStore()
+    let attention = AttentionLedger(inBackground: true)
+    var calendarReader: CalendarCollectionRunner!
+    var morningPanel: MorningPanelController!
+    var morningTasks: MorningTaskRunner!
+    var cardGeneration: CardGenerationService!
+    var folderJobs: FolderJobsFeature?
+    var cardInbox: CardInbox?
+    var runStickers: RunStickers?
+    var stickersPanel: RunStickersPanel?
+    var stickersScreenObserver: NSObjectProtocol?
+
+    var watcherMenuItem: NSMenuItem!
+    var hideMenuItem: NSMenuItem!
+    var morningFolderMenuItem: NSMenuItem!
+    var screenPermItem: NSMenuItem!
+    var axPermItem: NSMenuItem!
+    var toolsMenuItem: NSMenuItem!
+    var watchMenuItem: NSMenuItem!
+    var stopWorkMenuItem: NSMenuItem!
+    var tasksMenuItem: NSMenuItem!
+    var origamiMenuItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.info("Noteling launching (bundle: \(Bundle.main.bundleIdentifier ?? "none"), config: \(Config.file.path))")
@@ -68,199 +81,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         MascotStyle.current = MascotStyle(rawValue: config.mascotStyle) ?? .innocent
         Secrets.store = Secrets.Store(rawValue: config.secretsStore) ?? (Signing.isDeveloperID ? .keychain : .file)
         Log.info("signing: \(Signing.description); secrets: \(Secrets.store.rawValue)")
-        runner = ScriptRunner(config: config)
-        registry = ToolRegistry(root: config.resolvedToolsDir, runner: runner)
-        registry.linkedRoot = LinkedTools.root(for: config)   // the team's tools, once Settings links a repository
-        registry.secretScripts = { [weak self] in self.map { Set($0.effectiveConfig.secretScripts.values) } ?? [] }
-        ScriptedSecrets.shared.runner = runner   // a gateway's token is made with the Mac's proxy and certificates too
-        linkedTools.onToolsChanged = { [weak self] in await self?.linkedToolsChanged() }
-        // A tools folder of one's own gives its notes up once; one outside Noteling's folder may be shared, so its
-        // notes are copied and the file stays for the others.
-        let ownTools = config.resolvedToolsDir.standardizedFileURL.path.hasPrefix(Config.dir.standardizedFileURL.path)
-        notesStore.moveNotes(fromPacksIn: config.resolvedToolsDir, rename: ownTools)
-        if let linked = registry.linkedRoot { notesStore.moveNotes(fromPacksIn: linked, rename: false) }   // the team's notes
-        registry.notesStore = notesStore
-        briefs = PageBriefs(registry: registry)
-        assistant = Assistant(config: effectiveConfig, watcher: watcher, registry: registry, shell: shell, learning: learning, execution: execution, desktop: desktop)
-        assistant.briefs = briefs
-        assistant.onStartWand = { [weak self] in self?.startWand() }
-        assistant.onCancelWand = { [weak self] in if self?.wand.isActive == true { self?.wand.cancel() } }
-        assistant.onOpenWatchDraft = { [weak self] title, markdown in
-            guard let self else { return }
-            self.watchDraftWindow.show(title: title, markdown: markdown, hideFromScreenShare: self.config.hideFromScreenShare)
-        }
-        shell.onHideBubble = { [weak self] in self?.hideBubbleWithHint() }
-        shell.onDragBubble = { [weak self] phase in
-            guard let self else { return }
-            let mouse = NSEvent.mouseLocation
-            switch phase {
-            case .moved:
-                if self.dragOffset == nil {
-                    self.dragOffset = NSPoint(x: mouse.x - self.panel.frame.origin.x, y: mouse.y - self.panel.frame.origin.y)
-                }
-                let o = self.dragOffset!
-                self.panel.setFrameOrigin(NSPoint(x: mouse.x - o.x, y: mouse.y - o.y))
-                self.placeRunStickers()
-            case .ended:
-                self.dragOffset = nil
-                self.config.bubbleX = self.panel.frame.origin.x
-                self.config.bubbleY = self.panel.frame.origin.y
-                self.config.save()
-                self.placeRunStickers()
-            }
-        }
-        shell.onOpenSettings = { [weak self] in self?.openSettings() }
-        if let w = config.cardWidth, let h = config.cardHeight, w >= 340, h >= 400 {
-            shell.cardSize = NSSize(width: w, height: h)
-        }
-        shell.onResizeCard = { [weak self] size, done in
-            guard let self else { return }
-            self.shell.cardSize = size
-            if self.shell.expanded { self.panel.resizeKeepingTopLeft(to: size) }
-            if done { self.config.cardWidth = size.width; self.config.cardHeight = size.height; self.config.save() }
-        }
-        shell.onToggleLarge = { [weak self] in
-            guard let self else { return }
-            let large = BubblePanel.largeExpandedSize
-            let target = self.shell.cardSize.height >= large.height - 1 ? BubblePanel.defaultExpandedSize : large
-            self.shell.onResizeCard?(target, true)
-        }
-        assistant.onSetControlLane = { [weak self] allow, background in
-            guard let self else { return }
-            self.config.allowControl = allow
-            self.config.controlInBackground = background
-            self.config.save()
-            self.assistant.reconfigure(self.effectiveConfig)
-            self.morningTasks?.wake()
-            self.cardGeneration?.start()
-            Log.info("control lane: allow=\(allow) background=\(background)")
-        }
-        shell.onPoke = { [weak self] in
-            guard let self, self.config.pokeHintsShown < 3 else { return }
-            self.config.pokeHintsShown += 1
-            self.config.save()
-            self.hideHint.show(under: self.panel.frame, title: "Double-click to chat", subtitle: "Hold the note to pick up the pen", seconds: 2.5) { [weak self] in
-                self?.shell.expanded = true
-            }
-        }
-        runner.extraEnv = config.env
-        control.maxLongEdge = config.maxImageLongEdge
-        control.hideFromScreenShare = config.hideFromScreenShare
-        control.preciseClicks = config.backgroundDirectClicks
-        control.asksFirst = config.backgroundAsksFirst
-        control.onCaption = { [weak self] c in
-            guard let self else { return }
-            guard self.control.lane != .background else { return }
-            self.assistant.status = c
-        }
-        // Desktop tasks have their own surface; starting or finishing one never opens chat.
-        control.onBackgroundTaskBegin = { [weak self] in
-            self?.desktop.executor.backgroundDidBegin()
-        }
-        control.onBegin = { [weak self] in
-            guard let self else { return }
-            self.origami.cancel()
-            if self.control.lane == .background {
-                self.desktop.executor.nativeDidBegin()
-                return
-            }
-            self.morningPanel?.setHiddenForForegroundGrant(true)
-            self.bubbleWasVisibleBeforeControl = self.panel.isVisible
-            self.shell.expanded = false
-            self.panel.orderOut(nil)          // keep our own windows out of the way of clicks
-            self.placeRunStickers()
-        }
-        control.onEnd = { [weak self] in
-            guard let self else { return }
-            self.morningPanel?.setHiddenForForegroundGrant(false)
-            if self.control.lane == .background {
-                self.taskPanel.setHiddenForForegroundGrant(false)
-                return
-            }
-            if self.bubbleWasVisibleBeforeControl { self.panel.orderFrontRegardless() }
-            self.shell.expanded = true
-            self.placeRunStickers()
-        }
-        control.onGrant = { [weak self] entering in
-            guard let self else { return }
-            self.taskPanel.setHiddenForForegroundGrant(entering)
-            self.morningPanel?.setHiddenForForegroundGrant(entering)
-            if entering {
-                self.bubbleWasVisibleBeforeControl = self.panel.isVisible
-                self.panel.orderOut(nil)
-            } else {
-                if self.bubbleWasVisibleBeforeControl { self.panel.orderFrontRegardless() }
-            }
-            self.placeRunStickers()
-        }
-
+        setupHarness()
+        setupAsk()
+        setupAct()
         setupEditMenu()
         setupPanel()
-        morningTasks = MorningTaskRunner(store: morning, desktop: desktop, registry: registry,
-                                        activities: activities, config: { [weak self] in self?.effectiveConfig ?? Config() })
-        calendarReader = CalendarCollectionRunner(store: calendarSources, desktop: desktop, registry: registry,
-                                                  activities: activities, config: { [weak self] in self?.effectiveConfig ?? Config() })
-        taskPanel = BackgroundTaskPanelController(
-            store: desktop.tasks, hideFromScreenShare: config.hideFromScreenShare, morning: morning,
-            onCancelQueued: { [weak self] id in self?.morningTasks.cancel(id: id) },
-            onOpenCard: { [weak self] id in self?.morningPanel.showCard(id: id) })
-        cardGeneration = CardGenerationService(morning: morning, sources: calendarSources, desktop: desktop,
-                                               config: { [weak self] in self?.effectiveConfig ?? Config() })
-        cardGeneration.onSorted = { [weak self] observations, runIDs in
-            guard let self else { return }
-            self.attention.recordSorted(observations, runIDs: runIDs, runs: self.calendarSources.runStore, cards: self.morning.cards)
-        }
-        attention.onTaught = { [weak self] facts, change in try? self?.morning.teach(facts, change) }
-        attention.backfill(receipts: morning.workspace.cardGenerations ?? [], sources: calendarSources, cards: morning.cards)
-        attention.watch(morning)
-        calendarReader.trackedItems = { [weak self] sourceID in self?.morning.trackedItems(sourceID: sourceID) ?? [] }
-        calendarReader.openSource = { await SourcePageOpener().prepare($0) }
-        calendarReader.onRunFinished = { [weak self] runID in _ = self?.cardGeneration.generate(runID: runID) }
-        calendarReader.sortedRunIDs = { [weak self] in Set((self?.morning.workspace.cardGenerations ?? []).flatMap(\.runIDs)) }
-        let cardConversation = CardConversation(store: morning)
-        cardConversation.onHandoff = { [weak self] _ in self?.morningTasks.wake() }
-        assistant.cardConversation = cardConversation
-        let sourceConversation = SourceConversation(store: calendarSources)
-        sourceConversation.isRunning = { [weak self] in self?.calendarReader.isRunning ?? false }
-        sourceConversation.sourceScripts = { [weak self] in
-            guard let registry = self?.registry else { return [] }
-            return registry.sourceScripts().map { pack, script in
-                SourceScript(id: script.id, pack: pack.name, description: script.description,
-                             missingSecrets: registry.missingRequirements(for: [pack]).first?.keys ?? [])
-            }
-        }
-        assistant.onOpenSettings = { [weak self] in self?.openSettings() }
-        assistant.sourceConversation = sourceConversation
-        let showMe = ShowMeConversation(registry: registry)
-        showMe.hideFromScreenShare = { [weak self] in self?.config.hideFromScreenShare ?? false }
-        assistant.showMe = showMe
-        // The way is done: the note, folded for the lesson, hops once to say the chat is there when wanted.
-        assistant.onTourDone = { [weak self] in
-            guard let self, self.panel.isVisible, !self.shell.expanded, !self.origami.isFlying else { return }
-            self.hop()
-        }
-        assistant.onOpenJobs = { [weak self] in self?.morningPanel.showJobs(trigger: .chat) }
-        assistant.onRunSource = { [weak self] id in self?.runSavedSource(id) }
-        setupFolderJobs()   // before the panel, which shows them among the jobs
-        morningPanel = MorningPanelController(store: morning, hideFromScreenShare: config.hideFromScreenShare,
-                                             calendarSources: calendarSources, calendarRunner: calendarReader, cardGeneration: cardGeneration,
-                                             attention: attention, jobs: jobsSetup,
-                                             showLauncher: config.morningFolderOnScreen, folderJobs: folderJobs?.panel)
-        morningPanel.onLauncherShownChanged = { [weak self] shown in
-            guard let self else { return }
-            self.config.morningFolderOnScreen = shown
-            self.config.save()
-        }
-        morningPanel.onDiscussCard = { [weak self] card in
-            guard let self, self.assistant.discussCard(card) else { return }
-            self.openChat()
-        }
-        morningPanel.handoffDestination = { [weak self] in self?.taskPanel.landingFrame }
-        morningPanel.onOpen = { [weak self] in self?.linkedTools.checkSoon() }   // a job pushed a moment ago shows without a restart
-        morningPanel.onHandoff = { [weak self] _ in
-            guard let self else { return }
-            self.morningTasks.wake()
-        }
+        setupAttend()
         setupStatusItem()
         setupHotKey()
         setupWatcher()
@@ -276,9 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Secrets.migrateKeychainToFile(keys: (config.connectionMode == "api" ? ["ANTHROPIC_API_KEY"] : []) + registry.packs.flatMap(\.requires))
             if !assistant.hasConnection { assistant.reconfigure(effectiveConfig) }   // pick up a migrated key
             ScriptedSecrets.shared.warm(effectiveConfig)   // a gateway token's script runs now, not on the first question
-            morningTasks.start()
-            cardGeneration.start()
-            folderJobs?.start()   // only once the packs are loaded, so a job.py can import what they hold
+            startAttend()   // only once the packs are loaded, so a job.py can import what they hold
         }
 
         if !assistant.hasConnection {
@@ -288,10 +112,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         MainThreadDiagnostics.shared.mark(.appReady)
     }
 
-    // MARK: setup
+    // MARK: the harness
+
+    /// The scripts, the team's tools and the secrets' scripts: what all three products run on.
+    func setupHarness() {
+        runner = ScriptRunner(config: config)
+        registry = ToolRegistry(root: config.resolvedToolsDir, runner: runner)
+        registry.linkedRoot = LinkedTools.root(for: config)   // the team's tools, once Settings links a repository
+        registry.secretScripts = { [weak self] in self.map { Set($0.effectiveConfig.secretScripts.values) } ?? [] }
+        ScriptedSecrets.shared.runner = runner   // a gateway's token is made with the Mac's proxy and certificates too
+        linkedTools.onToolsChanged = { [weak self] in await self?.linkedToolsChanged() }
+        runner.extraEnv = config.env
+    }
+
+    /// First run: copy the bundled example tool packs to ~/.noteling/tools and retire the old knowledge folder.
+    func seedToolsIfMissing() {
+        let fm = FileManager.default
+        let dir = config.resolvedToolsDir
+        if !fm.fileExists(atPath: dir.path), let bundled = Bundle.main.resourceURL?.appendingPathComponent("tools"), fm.fileExists(atPath: bundled.path) {
+            try? fm.copyItem(at: bundled, to: dir)
+            Log.info("seeded example tool packs into \(dir.path)")
+        }
+        // A pack added in an update (such as Mail) reaches existing installs; edited or removed packs are left alone.
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("tools"), fm.fileExists(atPath: bundled.path) {
+            for name in ToolRegistry.addMissingPacks(from: bundled, to: dir) { Log.info("added tool pack \(name) to \(dir.path)") }
+        }
+        // A pack with no rules used to apply everywhere; once, the person's own such packs say so (`match: anywhere`).
+        for name in ToolRegistry.markOwnPacksAnywhereOnce(in: dir) { Log.info("tool pack \(name) now says match: anywhere") }
+        let legacy = Config.dir.appendingPathComponent("knowledge")
+        let seededNames: Set<String> = ["expense-reports.md", "hr-portal.md", "vpn-and-access.md"]
+        if let files = try? fm.contentsOfDirectory(atPath: legacy.path), !files.isEmpty, Set(files).isSubset(of: seededNames) {
+            try? fm.removeItem(at: legacy)
+            Log.info("removed old example knowledge folder (docs now live in tools/<pack>/docs)")
+        }
+    }
+
+    @objc func reloadTools() {
+        Task {
+            await registry.reload()
+            notesStore.reload()
+            assistant.notesHere = registry.notes(for: watcher.current)
+        }
+    }
+
+    /// A new copy of the team's tools, or none: reload, and take in the notes kept in it (its files are never renamed).
+    /// Its Claude settings may have changed too: reconnect as saving Settings does, keeping the conversation.
+    func linkedToolsChanged() async {
+        registry.linkedRoot = LinkedTools.root(for: config)
+        await registry.reload()
+        if let linked = registry.linkedRoot { notesStore.moveNotes(fromPacksIn: linked, rename: false) }
+        notesStore.reload()
+        assistant.notesHere = registry.notes(for: watcher.current)
+        assistant.reconfigure(effectiveConfig)
+        ScriptedSecrets.shared.warm(effectiveConfig)
+        morningTasks?.wake()
+        cardGeneration?.start()
+        folderJobs?.toolsChanged()   // the team's jobs as the new copy has them, now rather than at the next tick
+    }
+
+    @objc func openTools() { NSWorkspace.shared.open(config.resolvedToolsDir) }
+
+    func requestPermissionsOnFirstRun() {
+        if !Permissions.accessibilityGranted { Permissions.requestAccessibility() }
+        if !Permissions.screenRecordingGranted { Permissions.requestScreenRecording() }
+        Log.info("permissions: screen=\(Permissions.screenRecordingGranted) accessibility=\(Permissions.accessibilityGranted)")
+    }
+
+    @objc func fixScreenPermission() { if !Permissions.requestScreenRecording() { Permissions.openScreenRecordingSettings() } }
+    @objc func fixAXPermission() { Permissions.requestAccessibility(); Permissions.openAccessibilitySettings() }
+
+    // MARK: menus
 
     /// Standard application and Edit menus provide native Quit and text-editing shortcuts.
-    private func setupEditMenu() {
+    func setupEditMenu() {
         let main = NSMenu()
         let appItem = NSMenuItem(); main.addItem(appItem)
         appItem.submenu = NSMenu()
@@ -326,44 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.mainMenu = main
     }
 
-    private func setupPanel() {
-        panel = BubblePanel(hideFromScreenShare: config.hideFromScreenShare)
-        let host = NSHostingView(rootView: BubbleView(state: assistant, shell: shell, onOrigami: { [weak self] in self?.takeOrigamiFlight() }))
-        host.frame = NSRect(origin: .zero, size: BubblePanel.collapsedSize)
-        panel.contentView = host
-        if let x = config.bubbleX, let y = config.bubbleY,
-           NSScreen.screens.contains(where: { $0.visibleFrame.insetBy(dx: -20, dy: -20).contains(NSPoint(x: x + 42, y: y + 42)) }) {
-            panel.setFrameOrigin(NSPoint(x: x, y: y))
-        } else {
-            panel.placeAtBottomRight()
-        }
-        panel.orderFrontRegardless()
-
-        shell.$expanded
-            .removeDuplicates()
-            .receive(on: RunLoop.main)
-            .sink { [weak self] expanded in
-                guard let self else { return }
-                if self.origami.isFlying {
-                    if expanded { self.origami.cancel() } else { return }
-                }
-                self.panel.resize(to: expanded ? self.shell.cardSize : BubblePanel.collapsedSize, animate: false)
-                if expanded {
-                    if self.shell.consumeQuietExpand() { self.panel.orderFrontRegardless() } else { self.panel.makeKeyAndOrderFront(nil) }
-                } else { self.panel.orderFrontRegardless(); self.panel.resignKey() }
-                self.placeRunStickers()
-            }
-            .store(in: &cancellables)
-
-        assistant.$chatBusy.combineLatest(learning.$phase)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] chatBusy, phase in
-                if chatBusy || phase == .recording || phase == .stopping || phase == .summarizing || phase == .saving { self?.origami.cancel() }
-            }
-            .store(in: &cancellables)
-    }
-
-    private func setupStatusItem() {
+    func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let img = NSImage(systemSymbolName: "pencil.tip", accessibilityDescription: "Noteling") {
             img.isTemplate = true
@@ -411,115 +267,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
     }
 
-    private func setupHotKey() {
-        hotKey?.unregister()
-        hotKey = nil
-        let spec = config.hotkey.isEmpty ? "control+option+space" : config.hotkey
-        guard let (code, mods) = HotKey.parse(spec) else { Log.info("hotkey: cannot parse \"\(spec)\""); return }
-        hotKey = HotKey(keyCode: code, modifiers: mods) { [weak self] in
-            guard let self else { return }
-            if self.assistant.watching { self.stopWatchingAndShow() }
-            else if self.desktop.executor.stopActive() { }
-            else if self.control.active, self.control.lane == .background { self.control.stop(reason: HotKey.display(self.config.hotkey)) }
-            else if self.wand.isActive { self.wand.cancel() }
-            else { self.startWand() }
-        }
-    }
-
-    private func setupWatcher() {
-        watcher.onChange = { [weak self] ctx in
-            guard let self else { return }
-            if self.wand.isShowingNotes { self.wand.hideNotes() }   // another page: its notes go with it
-            self.briefs.prefetch(ctx)   // a page whose pack briefs it: read it now, so the pen answers without waiting
-            let here = self.registry.notes(for: ctx)
-            self.assistant.notesHere = here
-            if !here.isEmpty {
-                self.notesUsage.record("arrive", counts: ["notes": here.count, "warnings": here.filter(\.isWarning).count], notes: here.map(\.id))
-            }
-            self.assistant.inFront = ctx
-            guard !self.assistant.watching else { return }   // the line reads "Watching…" while recording
-            self.assistant.contextLine = ctx.summaryLine
-        }
-        if config.watcherEnabled { watcher.start(interval: config.watcherIntervalSeconds) } else { assistant.contextLine = "Watcher off" }
-    }
-
-    private func setupWand() {
-        wand.onPick = { [weak self] target in
-            guard let self else { return }
-            if !self.panel.isVisible { self.showBubble() }
-            self.assistant.wandPick(target)
-            // The pad asks what about it: take the keyboard so the question can be typed straight away.
-            if self.shell.expanded { self.panel.makeKeyAndOrderFront(nil) }
-        }
-        assistant.onCaptured = { [weak self] moment in
-            CaptureFlash.show(moment, toward: self?.panel.isVisible == true ? self?.panel.frame : nil)
-        }
-        wand.sceneProvider = { [weak self] in self?.watcher.sample() ?? self?.watcher.current }
-        wand.notesProvider = { [weak self] ctx in self?.registry.notes(for: ctx) ?? [] }
-        wand.author = { [weak self] in self.map { NoteStore.author($0.config) } ?? NSFullUserName() }
-        wand.onNoteSave = { [weak self] note in self?.assistant.saveNote(note) }
-        wand.onNoteDelete = { [weak self] id in self?.assistant.deleteNote(id) }
-        assistant.onNotesChanged = { [weak self] in
-            guard let self else { return }
-            self.assistant.notesHere = self.registry.notes(for: self.watcher.current)
-        }
-        assistant.notesUsage = notesUsage
-        assistant.onShowNotes = { [weak self] in self?.toggleNotes(via: "badge") }
-        wand.checksProvider = { [weak self] ctx in
-            // Scripts of the packs for this scene that need no arguments: what a note's claim can be tested with.
-            guard let self else { return [] }
-            return self.registry.select(for: ctx).active.flatMap { pack in
-                pack.scripts.filter { ($0.inputSchema["required"] as? [String] ?? []).isEmpty }.map { script in
-                    NoteEditor.CheckChoice(script: script.id, title: "\(script.id.components(separatedBy: "__").last ?? script.id) (\(pack.name))")
-                }
-            }
-        }
-        wand.onPlaced = { [weak self] placed, notOnScreen, shown in
-            self?.notesUsage.record("placed", counts: ["placed": placed, "notOnScreen": notOnScreen], tags: ["mode": shown ? "shown" : "pen"])
-        }
-        wand.hideFromScreenShare = config.hideFromScreenShare
-        notesShortcut.onPress = { [weak self] in self?.toggleNotes(via: "shortcut") }
-        if config.notesShortcut { notesShortcut.start() }
-    }
-
-    private func startWand() {
-        origami.cancel()
-        guard !assistant.watching else { assistant.startWand(); return }   // no-op with a status line
-        guard !assistant.busy else { shell.expanded = true; return }
-        shell.expanded = false
-        wand.activate()
-    }
-
-    private func requestPermissionsOnFirstRun() {
-        if !Permissions.accessibilityGranted { Permissions.requestAccessibility() }
-        if !Permissions.screenRecordingGranted { Permissions.requestScreenRecording() }
-        Log.info("permissions: screen=\(Permissions.screenRecordingGranted) accessibility=\(Permissions.accessibilityGranted)")
-    }
-
-    /// First run: copy the bundled example tool packs to ~/.noteling/tools and retire the old knowledge folder.
-    private func seedToolsIfMissing() {
-        let fm = FileManager.default
-        let dir = config.resolvedToolsDir
-        if !fm.fileExists(atPath: dir.path), let bundled = Bundle.main.resourceURL?.appendingPathComponent("tools"), fm.fileExists(atPath: bundled.path) {
-            try? fm.copyItem(at: bundled, to: dir)
-            Log.info("seeded example tool packs into \(dir.path)")
-        }
-        // A pack added in an update (such as Mail) reaches existing installs; edited or removed packs are left alone.
-        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("tools"), fm.fileExists(atPath: bundled.path) {
-            for name in ToolRegistry.addMissingPacks(from: bundled, to: dir) { Log.info("added tool pack \(name) to \(dir.path)") }
-        }
-        // A pack with no rules used to apply everywhere; once, the person's own such packs say so (`match: anywhere`).
-        for name in ToolRegistry.markOwnPacksAnywhereOnce(in: dir) { Log.info("tool pack \(name) now says match: anywhere") }
-        let legacy = Config.dir.appendingPathComponent("knowledge")
-        let seededNames: Set<String> = ["expense-reports.md", "hr-portal.md", "vpn-and-access.md"]
-        if let files = try? fm.contentsOfDirectory(atPath: legacy.path), !files.isEmpty, Set(files).isSubset(of: seededNames) {
-            try? fm.removeItem(at: legacy)
-            Log.info("removed old example knowledge folder (docs now live in tools/<pack>/docs)")
-        }
-    }
-
-    // MARK: menu
-
     func menuNeedsUpdate(_ menu: NSMenu) {
         watcherMenuItem.title = watcher.isRunning ? "Watcher: On" : "Watcher: Off"
         watchMenuItem.title = assistant.watching ? "Stop Watching   ⌃⌥Space" : "Watch Me"
@@ -541,24 +288,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         axPermItem.title = "Accessibility: " + (Permissions.accessibilityGranted ? "granted ✓" : "not granted — click to fix")
     }
 
-    @objc private func menuWand() { startWand() }
-    @objc private func menuStopWork() {
-        if !desktop.executor.stopActive() { control.stop(reason: "menu") }
-    }
-    @objc private func menuShowTasks() { desktop.tasks.show() }
-    @objc private func menuShowMorning() { morningPanel.show() }
-    /// The little Morning folder on the screen, put away or brought back; Morning Files still opens from the menu.
-    @objc private func toggleMorningFolder() { morningPanel.setLauncherShown(!morningPanel.launcherShown) }
-    @objc private func menuShowPeople() { morningPanel.showPeople() }
-    @objc private func menuWatch() {
-        if assistant.watching { stopWatchingAndShow() } else { assistant.startWatching() }
+    /// Screen rect of the menu bar icon, if it is on screen.
+    var statusItemRect: NSRect? {
+        guard let b = statusItem.button, let w = b.window else { return nil }
+        return w.convertToScreen(b.convert(b.bounds, to: nil))
     }
 
-    /// The pad comes back for the "what were you doing?" note even when the bubble was hidden in the menu bar.
-    private func stopWatchingAndShow() {
-        assistant.stopWatching()
-        if !panel.isVisible { showBubble() }
+    func pulseStatusItem(remaining: Int) {
+        guard remaining > 0, let b = statusItem.button else { return }
+        NSAnimationContext.runAnimationGroup({ ctx in ctx.duration = 0.22; b.animator().alphaValue = 0.15 }, completionHandler: {
+            NSAnimationContext.runAnimationGroup({ ctx in ctx.duration = 0.22; b.animator().alphaValue = 1 }, completionHandler: { [weak self] in
+                self?.pulseStatusItem(remaining: remaining - 1)
+            })
+        })
     }
+
+    // MARK: the hotkey
+
+    func setupHotKey() {
+        hotKey?.unregister()
+        hotKey = nil
+        let spec = config.hotkey.isEmpty ? "control+option+space" : config.hotkey
+        guard let (code, mods) = HotKey.parse(spec) else { Log.info("hotkey: cannot parse \"\(spec)\""); return }
+        hotKey = HotKey(keyCode: code, modifiers: mods) { [weak self] in
+            guard let self else { return }
+            if self.assistant.watching { self.stopWatchingAndShow() }
+            else if self.desktop.executor.stopActive() { }
+            else if self.control.active, self.control.lane == .background { self.control.stop(reason: HotKey.display(self.config.hotkey)) }
+            else if self.wand.isActive { self.wand.cancel() }
+            else { self.startWand() }
+        }
+    }
+
+    // MARK: the app's life
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         cardGeneration?.stop()
@@ -585,12 +347,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         assistant.abortWatching()
         BrowserAccessibility.settle()   // last: a recording just stopped lets go of its browsers above
     }
-    @objc private func openChat() {
-        origami.cancel()
-        if !panel.isVisible { showBubble() }
-        shell.expanded = true
-        MainThreadDiagnostics.shared.mark(.chatPanelShown, itemCount: assistant.transcript.count)
-    }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         guard let panel else { return true }
@@ -602,178 +358,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    @objc private func menuHideBubble() { if panel.isVisible || origami.isFlying { hideBubbleWithHint() } }
+    // MARK: Settings
 
-    private var canTakeOrigamiFlight: Bool {
-        !assistant.busy && !assistant.watching && !control.active && !wand.isActive
-    }
-
-    @objc private func takeOrigamiFlight() {
-        if origami.isFlying { origami.cancel(); return }
-        guard canTakeOrigamiFlight else { return }
-        hideHint.dismiss(animated: false)
-        shell.expanded = false
-        // Collapse synchronously before measuring home. The published resize skips a flight already in progress.
-        panel.resize(to: BubblePanel.collapsedSize, animate: false)
-        guard let screen = panel.screen ?? NSScreen.main else { return }
-        let home = CGPoint(x: panel.frame.midX, y: panel.frame.midY)
-        let started = origami.start(home: home, screen: screen, hideFromScreenShare: config.hideFromScreenShare) { [weak self] in
-            guard let self else { return }
-            // A disconnected/resized display must not leave even part of the note beyond the desktop.
-            let center = CGPoint(x: self.panel.frame.midX, y: self.panel.frame.midY)
-            let screens = NSScreen.screens
-            let destination = screens.first { $0.visibleFrame.contains(center) } ?? screens.min {
-                hypot($0.visibleFrame.midX - center.x, $0.visibleFrame.midY - center.y)
-                    < hypot($1.visibleFrame.midX - center.x, $1.visibleFrame.midY - center.y)
-            }
-            if let bounds = destination?.visibleFrame {
-                let frame = self.panel.frame
-                self.panel.setFrameOrigin(CGPoint(
-                    x: min(max(frame.minX, bounds.minX), max(bounds.minX, bounds.maxX - frame.width)),
-                    y: min(max(frame.minY, bounds.minY), max(bounds.minY, bounds.maxY - frame.height))
-                ))
-            }
-            self.panel.orderFrontRegardless()
-            self.placeRunStickers()
-            Log.info("origami: returned home")
-        }
-        if started {
-            panel.orderOut(nil)
-            placeRunStickers()
-            Log.info("origami: folding for a flight")
-        }
-    }
-
-    /// Always available: bring the bubble back, or if it is already on screen, bring it to the front and hop.
-    @objc private func menuShowBubble() {
-        origami.cancel()
-        if panel.isVisible {
-            panel.orderFrontRegardless()
-            hop()
-        } else {
-            showBubble()
-        }
-    }
-
-    private func hop() {
-        let home = panel.frame
-        var up = home; up.origin.y += 18
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.16; ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            self.panel.animator().setFrame(up, display: true)
-        }, completionHandler: {
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.22; ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
-                self.panel.animator().setFrame(home, display: true)
-            }
-        })
-    }
-
-    /// Screen rect of the menu bar icon, if it is on screen.
-    private var statusItemRect: NSRect? {
-        guard let b = statusItem.button, let w = b.window else { return nil }
-        return w.convertToScreen(b.convert(b.bounds, to: nil))
-    }
-
-    /// Fly the bubble into the menu bar icon, pulse the icon, and show a callout saying where it went.
-    private func hideBubbleWithHint() {
-        origami.cancel()
-        shell.expanded = false
-        wand.deactivate()
-        stickersPanel?.orderOut(nil)
-        guard let target = statusItemRect else { panel.orderOut(nil); return }
-        let start = panel.frame
-        savedBubbleFrame = start
-        let end = NSRect(x: target.midX - 10, y: target.minY - 6, width: 20, height: 20)
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.4
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            self.panel.animator().setFrame(end, display: true)
-            self.panel.animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            guard let self else { return }
-            self.panel.orderOut(nil)
-            self.stickersPanel?.orderOut(nil)
-            self.panel.alphaValue = 1
-            self.panel.setFrame(start, display: false)
-            self.hideHint.show(under: target) { [weak self] in self?.showBubble() }
-            self.pulseStatusItem(remaining: 3)
-        })
-    }
-
-    private func showBubble() {
-        origami.cancel()
-        hideHint.dismiss(animated: true)
-        guard !panel.isVisible else { return }
-        let dest = savedBubbleFrame ?? panel.frame
-        if let target = statusItemRect {
-            panel.setFrame(NSRect(x: target.midX - 10, y: target.minY - 6, width: 20, height: 20), display: false)
-            panel.alphaValue = 0
-            panel.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.4
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                self.panel.animator().setFrame(dest, display: true)
-                self.panel.animator().alphaValue = 1
-            }
-        } else {
-            panel.setFrame(dest, display: true)
-            panel.orderFrontRegardless()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in self?.placeRunStickers() }
-    }
-
-    private func pulseStatusItem(remaining: Int) {
-        guard remaining > 0, let b = statusItem.button else { return }
-        NSAnimationContext.runAnimationGroup({ ctx in ctx.duration = 0.22; b.animator().alphaValue = 0.15 }, completionHandler: {
-            NSAnimationContext.runAnimationGroup({ ctx in ctx.duration = 0.22; b.animator().alphaValue = 1 }, completionHandler: { [weak self] in
-                self?.pulseStatusItem(remaining: remaining - 1)
-            })
-        })
-    }
-
-    @objc private func toggleWatcher() {
-        if watcher.isRunning { watcher.stop(); assistant.contextLine = "Watcher off" } else { watcher.start(interval: config.watcherIntervalSeconds) }
-        config.watcherEnabled = watcher.isRunning
-        config.save()
-    }
-
-    /// Shows the notes on the screen in front, or puts them away, and notes how it was asked for.
-    private func toggleNotes(via: String) {
-        guard !wand.isActive else { return }
-        if wand.isShowingNotes {
-            wand.hideNotes()
-            notesUsage.record("hide", tags: ["via": via])
-        } else {
-            notesUsage.record("show", counts: ["notes": assistant.notesHere.count], tags: ["via": via])
-            wand.showNotes()
-        }
-    }
-
-    @objc private func reloadTools() {
-        Task {
-            await registry.reload()
-            notesStore.reload()
-            assistant.notesHere = registry.notes(for: watcher.current)
-        }
-    }
-
-    /// A new copy of the team's tools, or none: reload, and take in the notes kept in it (its files are never renamed).
-    /// Its Claude settings may have changed too: reconnect as saving Settings does, keeping the conversation.
-    private func linkedToolsChanged() async {
-        registry.linkedRoot = LinkedTools.root(for: config)
-        await registry.reload()
-        if let linked = registry.linkedRoot { notesStore.moveNotes(fromPacksIn: linked, rename: false) }
-        notesStore.reload()
-        assistant.notesHere = registry.notes(for: watcher.current)
-        assistant.reconfigure(effectiveConfig)
-        ScriptedSecrets.shared.warm(effectiveConfig)
-        morningTasks?.wake()
-        cardGeneration?.start()
-        folderJobs?.toolsChanged()   // the team's jobs as the new copy has them, now rather than at the next tick
-    }
-
-    @objc private func openSettings() {
+    @objc func openSettings() {
         origami.cancel()
         ScriptedSecrets.shared.warm(effectiveConfig)   // so Settings says whether a gateway token's script works
         settings.model.importSetup = { [weak self] in self?.chooseSetupFile() }
@@ -802,7 +389,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Log.info("settings saved (connection: \(self.effectiveConfig.connectionMode), ready: \(self.assistant.hasConnection), hotkey: \(self.config.hotkey))")
         }, onOpenTools: { [weak self] in self?.openTools() }, onReloadTools: { [weak self] in self?.reloadTools() })
     }
-    @objc private func openTools() { NSWorkspace.shared.open(config.resolvedToolsDir) }
+
+    @objc func openConfig() { NSWorkspace.shared.open(Config.file) }
+    @objc func openLog() { NSWorkspace.shared.open(Config.logFile) }
 
     // MARK: setup files
 
@@ -812,7 +401,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Settings' Import setup file…
-    private func chooseSetupFile() {
+    func chooseSetupFile() {
         let panel = NSOpenPanel()
         panel.title = "Import a setup file"
         panel.message = "Choose the .notelingsetup file your team gave you."
@@ -824,7 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Says what the file will do, applies it only if the person agrees, then links and says how that went.
-    private func offerSetup(_ url: URL) {
+    func offerSetup(_ url: URL) {
         NSApp.activate(ignoringOtherApps: true)
         let setup: NotelingSetup
         do {
@@ -875,136 +464,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func setupAlert(_ title: String, _ text: String) {
+    func setupAlert(_ title: String, _ text: String) {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = text
         alert.runModal()
-    }
-    @objc private func openConfig() { NSWorkspace.shared.open(Config.file) }
-    @objc private func openLog() { NSWorkspace.shared.open(Config.logFile) }
-
-    /// The chat's Run now tab: run one reading job, then show it on its page in Jobs, where its progress, results and
-    /// cards are.
-    private func runSavedSource(_ id: UUID) {
-        let started: Task<Void, Never>?
-        if let source = calendarSources.readingSources.first(where: { $0.id == id }) {
-            started = calendarReader.collect(source: source)
-        } else if let source = calendarSources.sources.first(where: { $0.id == id }) {
-            started = calendarReader.collect(source: source, day: Date())
-        } else {
-            assistant.status = "That job is no longer in Jobs."
-            return
-        }
-        assistant.status = started == nil ? (calendarReader.error ?? "That job could not start.") : "Running your job. Its page in Jobs shows how it goes."
-        morningPanel.showSourceJob(id: id)
-    }
-
-    /// The menu bar's way into Jobs.
-    static let jobsMenuTitle = "Jobs…"
-
-    /// What only the app knows about the jobs: the secrets each still needs in Settings, whether mouse and keyboard
-    /// control is on, and how to open Settings.
-    private var jobsSetup: JobsSetup {
-        JobsSetup(missingSecrets: { [weak self] source in
-            guard let registry = self?.registry, let script = source.script, let pack = registry.pack(holdingScript: script) else { return [] }
-            return registry.missingRequirements(for: [pack]).first?.keys ?? []
-        }, controlAllowed: { [weak self] in
-            self?.effectiveConfig.allowControl ?? true
-        }, openSettings: { [weak self] in self?.openSettings() })
-    }
-    @objc private func fixScreenPermission() { if !Permissions.requestScreenRecording() { Permissions.openScreenRecordingSettings() } }
-    @objc private func fixAXPermission() { Permissions.requestAccessibility(); Permissions.openAccessibilitySettings() }
-
-    // MARK: jobs kept as folders
-
-    /// Jobs kept as folders: yours in `jobs/`, your team's in the linked tools' `jobs/`, run on schedule, with a card
-    /// while their output has a preview, a notification when it has something new, and their tools in chat. Set up
-    /// before the Morning panel, which shows them; the schedule starts once the packs have loaded (in
-    /// `applicationDidFinishLaunching`).
-    private func setupFolderJobs() {
-        let notifier = JobNotifier()
-        notifier.activate()
-        let feature = FolderJobsFeature(registry: registry, notifier: notifier)
-        notifier.onOpenJob = { [weak self, weak feature] id in
-            guard let self, let job = feature?.store.job(id: id) else { self?.morningPanel?.showJobs(); return }
-            let card = CardInboxFormat.cardID(FolderJobCards.key(for: job))
-            if self.morning.cards.contains(where: { $0.id == card }) { self.morningPanel?.showCard(id: card, trigger: nil) }
-            else { self.morningPanel?.showFolderJob(id: id) }
-        }
-        assistant.folderJobs = feature.conversation
-        folderJobs = feature
-    }
-
-    /// The menu bar's Jobs…: every job, the reading jobs and those kept as folders, in one list.
-    @objc private func menuShowJobs() { morningPanel.showJobs() }
-
-    // MARK: run stickers
-
-    /// A job's latest finding as a sticky note beside the bubble, from whoever shared the job: the stickers follow the
-    /// orb, step aside while the pad is open or the bubble is away, and a click opens the job's page.
-    private func setupRunStickers() {
-        let model = RunStickers(file: Config.dir.appendingPathComponent("job-results/stickers.json"))
-        runStickers = model
-        stickersPanel = RunStickersPanel(model: model, hideFromScreenShare: config.hideFromScreenShare,
-                                         open: { [weak self] id in self?.morningPanel.showFolderJob(id: id) },
-                                         more: { [weak self] in self?.morningPanel.showJobs() },
-                                         putAway: { [weak model] id in model?.putAway(id) })
-        model.$stickers
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.placeRunStickers() }
-            .store(in: &cancellables)
-        stickersScreenObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
-        ) { [weak self] _ in MainActor.assumeIsolated { self?.placeRunStickers() } }
-        refreshRunStickers()
-    }
-
-    /// The jobs as they stand: at launch, at each tick and after each run.
-    private func refreshRunStickers() {
-        guard let jobs = folderJobs?.store.jobs else { return }
-        runStickers?.update(jobs)
-    }
-
-    /// Beside the orb while the bubble is collapsed and on the screen and a job has something to show; away otherwise.
-    private func placeRunStickers() {
-        guard let stickersPanel, let runStickers else { return }
-        let shown = RunStickersPanel.shows(bubbleVisible: panel.isVisible, alpha: panel.alphaValue, expanded: shell.expanded,
-                                           flying: origami.isFlying, count: runStickers.stickers.count)
-        guard shown else { stickersPanel.orderOut(nil); return }
-        stickersPanel.place(besideOrb: panel.frame, on: panel.screen)
-        stickersPanel.orderFrontRegardless()
-    }
-
-    // MARK: cards inbox
-
-    /// Cards that scripts and jobs write into `cards/inbox/`, picked up into Morning Files at the jobs' tick, after each
-    /// run, right after a job's card changes, and after a press of a button on a job's card. A card's buttons open its
-    /// page, ask about it in chat, or run a function of its job's job.py. What watches wrote there goes first: they no
-    /// longer run.
-    private func setupCardInbox() {
-        RetiredWatchCards.cleanUp(inbox: Config.dir.appendingPathComponent("cards/inbox"))
-        let inbox = CardInbox(store: morning)
-        inbox.folderName = { [weak self] source in self?.folderJobs?.cardFolderName(source) }
-        inbox.held = { [weak self] source in self?.folderJobs?.holds(source) ?? false }
-        folderJobs?.runner.onTick = { [weak inbox, weak self] in inbox?.scan(); self?.refreshRunStickers() }
-        folderJobs?.runner.onCardsChanged = { [weak inbox, weak self] in inbox?.scan(); self?.refreshRunStickers() }
-        // A card's button that runs its job's code: what it came to stays on the card, and the card follows its file.
-        folderJobs?.buttons.onCardsChanged = { [weak inbox] in inbox?.scan() }
-        folderJobs?.buttons.record = { [weak self] id, press in
-            do { try self?.morning.recordPress(cardID: id, press) }
-            catch { Log.info("cards: couldn't keep what a button came to: \(error.localizedDescription)") }
-        }
-        morningPanel.onAskAboutCard = { [weak self] card, question in self?.askAboutCard(card, question: question) }
-        cardInbox = inbox
-        inbox.scan()
-    }
-
-    /// A card's question button asks about the card in chat.
-    private func askAboutCard(_ card: MorningCard, question: String) {
-        guard assistant.discussCard(card) else { return }
-        openChat()
-        assistant.question = question
-        assistant.ask()
     }
 }

@@ -463,44 +463,6 @@ final class WandPanel: NSPanel {
     var wandView: WandView? { contentView as? WandView }
 }
 
-/// Paper colours shared by the stickers on screen and the editor.
-enum StickerPaper {
-    static let tip = CGColor(red: 1.0, green: 0.94, blue: 0.58, alpha: 1)
-    static let warning = CGColor(red: 1.0, green: 0.85, blue: 0.50, alpha: 1)
-    static let edge = CGColor(red: 0.80, green: 0.66, blue: 0.28, alpha: 0.9)
-    static let ink = NSColor(red: 0.12, green: 0.165, blue: 0.267, alpha: 1)
-    static let inkSoft = NSColor(red: 0.12, green: 0.165, blue: 0.267, alpha: 0.6)
-
-    static func font(_ size: CGFloat, bold: Bool = false) -> NSFont {
-        if let family = HandFont.family,
-           let f = NSFontManager.shared.font(withFamily: family, traits: bold ? .boldFontMask : [], weight: bold ? 9 : 5, size: size) ?? NSFont(name: family, size: size) {
-            return f
-        }
-        return NSFont.systemFont(ofSize: size, weight: bold ? .semibold : .regular)
-    }
-
-    /// The text as CATextLayer should draw it, and the height it needs (measured with the same attributes, plus slack
-    /// for the layer's own leading), capped at `maxLines`.
-    static func measure(_ text: String, font: NSFont, color: NSColor, width: CGFloat, maxLines: Int) -> (NSAttributedString, CGFloat) {
-        let para = NSMutableParagraphStyle(); para.lineBreakMode = .byWordWrapping
-        let attr = NSAttributedString(string: text, attributes: [.font: font, .paragraphStyle: para, .foregroundColor: color])
-        let r = attr.boundingRect(with: NSSize(width: width, height: 10_000), options: [.usesLineFragmentOrigin, .usesFontLeading])
-        let line = ceil(font.ascender - font.descender + font.leading) + 2
-        let lines = max(1, min(CGFloat(maxLines), ceil(r.height / max(1, line - 2))))
-        return (attr, lines * line + 4)
-    }
-
-    /// Stuck to the control's top-right corner; when there is no room above, hung under its bottom-right corner instead.
-    static func origin(for size: NSSize, control: NSRect, in bounds: NSRect) -> NSPoint {
-        var x = control.maxX - 26
-        var y = control.maxY - 10
-        if y + size.height > bounds.height - 6 { y = control.minY + 10 - size.height }
-        x = min(max(6, x), bounds.width - size.width - 6)
-        y = min(max(6, y), bounds.height - size.height - 6)
-        return NSPoint(x: x, y: y)
-    }
-}
-
 final class WandView: NSView {
     private unowned let controller: WandController
     private let screen: NSScreen
@@ -1034,55 +996,6 @@ final class NoteTextView: NSTextView {
             if event.modifierFlags.contains(.shift) { insertNewline(nil) } else { onReturn?() }
         default: super.keyDown(with: event)
         }
-    }
-}
-
-/// Shared overlay chrome: the rotating rainbow border and a caption pill at the top.
-enum ShimmerBorder {
-    static func install(on root: CALayer, bounds: CGRect, dim: CGFloat) {
-        root.backgroundColor = CGColor(gray: 0, alpha: dim)
-        for (width, opacity) in [(CGFloat(28), Float(0.28)), (CGFloat(8), Float(0.95))] {
-            let container = CALayer()
-            container.frame = bounds
-            let mask = CAShapeLayer()
-            mask.frame = bounds
-            mask.path = CGPath(roundedRect: bounds.insetBy(dx: width / 2, dy: width / 2), cornerWidth: 18, cornerHeight: 18, transform: nil)
-            mask.fillColor = nil
-            mask.strokeColor = CGColor(gray: 0, alpha: 1)
-            mask.lineWidth = width
-            container.mask = mask
-            let g = CAGradientLayer()
-            g.type = .conic
-            g.colors = [NSColor.systemBlue, NSColor.systemPurple, NSColor.systemPink, NSColor.systemOrange, NSColor.systemTeal, NSColor.systemBlue].map(\.cgColor)
-            g.startPoint = CGPoint(x: 0.5, y: 0.5)
-            g.endPoint = CGPoint(x: 1, y: 0.5)
-            let side = hypot(bounds.width, bounds.height) * 1.1
-            g.frame = CGRect(x: bounds.midX - side / 2, y: bounds.midY - side / 2, width: side, height: side)
-            g.opacity = opacity
-            let spin = CABasicAnimation(keyPath: "transform.rotation.z")
-            spin.fromValue = 0; spin.toValue = 2 * Double.pi; spin.duration = 5; spin.repeatCount = .infinity
-            g.add(spin, forKey: "spin")
-            container.addSublayer(g)
-            root.addSublayer(container)
-        }
-    }
-
-    static func captionPill(bounds: CGRect, scale: CGFloat, width: CGFloat, text: String) -> (CALayer, CATextLayer) {
-        let pill = CALayer()
-        let t = CATextLayer()
-        pill.frame = CGRect(x: bounds.midX - width / 2, y: bounds.height - 64, width: width, height: 34)
-        pill.backgroundColor = NSColor(calibratedWhite: 0.1, alpha: 0.88).cgColor
-        pill.cornerRadius = 17
-        t.string = text
-        t.fontSize = 13
-        t.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        t.foregroundColor = NSColor.white.cgColor
-        t.alignmentMode = .center
-        t.truncationMode = .end
-        t.contentsScale = scale
-        t.frame = CGRect(x: 8, y: 8, width: width - 16, height: 20)
-        pill.addSublayer(t)
-        return (pill, t)
     }
 }
 
