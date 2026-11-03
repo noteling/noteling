@@ -61,6 +61,10 @@ final class FolderJobRunner: ObservableObject {
     var onTick: (() -> Void)?
     /// A run left a preview that shows something it didn't before: the app tells the person.
     var onNews: ((FolderJob) -> Void)?
+    /// A run reported findings: what is new, changed and gone since the last run (the minister's cue).
+    var onFindings: ((FolderJob, FindingsChange) -> Void)?
+    /// Where each run and each finding's change is written down; nil writes none.
+    var memory: MemoryLog?
     /// Folders a job.py may import from, asked at each run.
     var importPaths: () -> [URL] = { [] }
     var hasSecret: (String) -> Bool = { Secrets.has($0) || ProcessInfo.processInfo.environment[$0] != nil }
@@ -186,8 +190,9 @@ final class FolderJobRunner: ObservableObject {
         var state = job.state
         let before = job.state.preview
         state.lastRunAt = now()
+        var change: FindingsChange?
         do {
-            try await runScript(job, state: &state)
+            change = try await runScript(job, state: &state)
         } catch {
             state.error = Self.reason(error)
         }
@@ -195,6 +200,7 @@ final class FolderJobRunner: ObservableObject {
         Log.info("jobs: \(job.isTeam ? "the team's " : "")\(job.path) " + (state.error.map { "failed: \($0)" } ?? "ran"))
         reconcileCards()
         onTick?()
+        if let change, let latest = store.job(id: job.id) { onFindings?(latest, change) }
         if asked.remove(job.id) != nil, let latest = store.job(id: job.id) {
             receipt = FolderJobReceipt(jobID: job.id, text: FolderJobWords.receipt(latest))
         }
@@ -203,8 +209,9 @@ final class FolderJobRunner: ObservableObject {
         onNews?(latest)
     }
 
-    /// Runs job.py into a fresh output folder, and on success puts it in place of the last one.
-    private func runScript(_ job: FolderJob, state: inout FolderJobState) async throws {
+    /// Runs job.py into a fresh output folder, and on success puts it in place of the last one. A run that reported
+    /// findings leaves them as a table in its output, and what changed since the last run comes back.
+    private func runScript(_ job: FolderJob, state: inout FolderJobState) async throws -> FindingsChange? {
         let missing = missingSecrets(job)
         guard missing.isEmpty else { throw FolderJobError(Jobs.needs(missing)) }
         guard let folder = store.folder(for: job), FileManager.default.fileExists(atPath: folder.appendingPathComponent(FolderJobFiles.entry).path)
@@ -230,12 +237,30 @@ final class FolderJobRunner: ObservableObject {
             throw error
         }
         if task.isCancelled { throw FolderJobError("Stopped.") }
+        let outcome = try FindingsOutcome.parse(value, map: job.map)
+        let file = store.findingsFile(for: job)
+        let previous = FindingsSnapshot.read(file)
+        if let rows = outcome.rows {
+            // A run with no findings keeps the last run's columns, so its table has the same header.
+            let columns = rows.isEmpty && previous.columns.count > outcome.columns.count ? previous.columns : outcome.columns
+            try JobFiles.write(FolderJobFindings.csv(rows, columns: columns), to: staging.appendingPathComponent(FolderJobFiles.findings))
+        }
         let output = store.output(for: job)
         try Self.swap(staging, into: output)
         state.lastSuccessAt = now()
         state.error = nil
-        state.said = Self.said(value)
+        state.said = outcome.said
         state.preview = FolderJobFiles.previewDigest(output: output)
+        state.source = outcome.source
+        state.read = outcome.read
+        state.found = outcome.rows?.count
+        state.note = outcome.notes.isEmpty ? nil : outcome.notes.joined(separator: " ")
+        guard let rows = outcome.rows, let map = job.map else { return nil }
+        let (change, snapshot) = FolderJobFindings.diff(previous: previous, rows: rows, map: map, at: now())
+        try snapshot.write(to: file)
+        memory?.ran(job, outcome: outcome)
+        memory?.record(job, change: change)
+        return change
     }
 
     /// Puts the new output in place of the old in one step: the two folders swap names, and the old one, now at the
@@ -248,16 +273,7 @@ final class FolderJobRunner: ObservableObject {
     }
 
     /// What a run's `run()` said, when it returned words (or a number): trimmed, and not too long.
-    static func said(_ value: Any) -> String? {
-        let text: String
-        switch value {
-        case let string as String: text = string
-        case let number as NSNumber where CFGetTypeID(number) != CFBooleanGetTypeID(): text = number.stringValue
-        default: return nil
-        }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : JobWords.clip(trimmed, 1_000)
-    }
+    static func said(_ value: Any) -> String? { FolderJobFindings.said(value) }
 
     /// Why a run failed, in its first line.
     static func reason(_ error: Error) -> String {
@@ -299,9 +315,10 @@ final class FolderJobsFeature {
     let notifier: JobNotifier
     let conversation: FolderJobConversation
 
-    /// `inbox` is the cards inbox its cards are written into.
+    /// `inbox` is the cards inbox its cards are written into; `memory` the log its runs and findings are written to.
     init(registry: ToolRegistry, notifier: JobNotifier, store: FolderJobStore? = nil,
-         inbox: URL = Config.dir.appendingPathComponent("cards/inbox")) {
+         inbox: URL = Config.dir.appendingPathComponent("cards/inbox"),
+         memory: URL = Config.dir.appendingPathComponent(MemoryLog.folder)) {
         // Your team's jobs are `jobs/` in the linked tools, wherever the latest update put them.
         let store = store ?? FolderJobStore(teamDirectory: { [weak registry] in
             registry?.linkedRoot.map { $0.appendingPathComponent(ToolRegistry.jobsFolder) }
@@ -323,6 +340,7 @@ final class FolderJobsFeature {
         let buttons = FolderJobButtons(store: store, execute: execute)
         buttons.importPaths = importPaths
         runner.cards = FolderJobCards(root: inbox)
+        runner.memory = MemoryLog(directory: memory)
         runner.onNews = { [weak notifier] job in
             notifier?.post(job: job.id, title: job.name, body: job.state.said ?? FolderJobWords.somethingNew)
         }

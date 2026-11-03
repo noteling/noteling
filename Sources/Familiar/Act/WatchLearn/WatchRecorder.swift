@@ -106,14 +106,8 @@ final class WatchRecorder {
     /// Form fields whose typed text is recorded. A text area counts only in a browser (a web form's multi-line field);
     /// in editors, chat apps and the like typing is noted but the text withheld.
     static let recordedRoles: Set<String> = ["AXTextField", "AXComboBox", "AXSearchField"]
-    /// Field names that mean the value is a secret, whatever the subrole says.
-    nonisolated static let secretPattern = try! NSRegularExpression(
-        pattern: #"(?i)\b(pass(word|code|phrase)?|pwd|pin|otp|mfa|2fa|secret|token|api[ _-]?key|key|cvv|cvc|ssn|credential|(security|verification|one[ -]?time|authenticat(ion|or)|recovery|backup) codes?|card ?numbers?|account ?numbers?|routing|iban|social security|(recovery|seed) phrases?)s?\b"#)
-
-    nonisolated static func looksSecret(_ s: String?) -> Bool {
-        guard let s, !s.isEmpty else { return false }
-        return secretPattern.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
-    }
+    /// Field names that mean the value is a secret, whatever the subrole says (`SecretWords`).
+    nonisolated static func looksSecret(_ s: String?) -> Bool { SecretWords.looksSecret(s) }
 
     /// What the keystrokes are going into: a named form field, or something whose text must not be written down.
     enum Field: Equatable {

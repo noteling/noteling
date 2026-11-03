@@ -1,5 +1,7 @@
 # Examples
 
+> The job examples below still write a `preview/` folder, the way jobs reported before findings. From 0.8.0 a job returns its findings as rows and `job.json`'s `map` says which column is which ([Jobs](jobs.md#findings)); the template repository's `pages-up` job shows the new way, and these examples follow at 0.8.0.
+
 Four patterns to copy, and how to share code between them. Each uses Python's standard library only. Addresses such as
 `api.example.com` stand for your own services.
 

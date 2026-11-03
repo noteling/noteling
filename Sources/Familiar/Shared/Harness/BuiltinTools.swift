@@ -158,6 +158,6 @@ enum ScreenText {
     /// Whether an element's value may be read out: not a password field's, one named like a secret, or a value that
     /// looks like a key or a card number.
     static func safeValue(_ value: String, subrole: String?, names: [String]) -> Bool {
-        subrole != "AXSecureTextField" && !names.contains(where: { WatchRecorder.looksSecret($0) }) && !PageWalk.looksLikeSecretValue(value)
+        subrole != "AXSecureTextField" && !names.contains(where: { SecretWords.looksSecret($0) }) && !PageWalk.looksLikeSecretValue(value)
     }
 }

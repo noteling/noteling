@@ -28,16 +28,47 @@ enum FolderJobWords {
         ([capitalized(every(job))] + [window(job, now: now)].compactMap { $0 }).joined(separator: " · ")
     }
 
-    /// "Last run 6:31 PM · 2 of 8 prices wrong", "… · something to look at", "… · nothing to look at", "… · failed",
-    /// or "Not run yet".
+    /// "Last run 6:31 PM · checked Orders API: read 2,113, found 3", "… · 2 of 8 prices wrong", "… · something to
+    /// look at", "… · nothing to look at", "… · failed", or "Not run yet".
     static func lastRun(_ job: FolderJob, now: Date) -> String {
         guard let last = job.state.lastRunAt else { return Jobs.notRunYet }
         let how: String
         if job.state.error != nil { how = "failed" }
+        else if let checked = checked(job.state) { how = lowercased(checked) }
         else if let said = job.state.said { how = JobWords.clip(said.components(separatedBy: .newlines).first ?? said, 80) }
         else { how = job.state.preview == nil ? "nothing to look at" : "something to look at" }
         return "Last run " + JobWords.time(last, now: now) + " · " + how
     }
+
+    /// The receipt of a run that reported findings: "Checked Orders API: read 2,113, found 3", "Read 2,113, found 3",
+    /// "Found 3"; nil for a run that reported none.
+    static func checked(_ state: FolderJobState) -> String? {
+        guard state.reportsFindings else { return nil }
+        var counts: [String] = []
+        if let read = state.read { counts.append("read \(read.formatted())") }
+        if let found = state.found { counts.append("found \(found.formatted())") }
+        let what = counts.joined(separator: ", ")
+        if let source = state.source { return "Checked " + source + (what.isEmpty ? "" : ": " + what) }
+        return what.prefix(1).uppercased() + what.dropFirst()
+    }
+
+    /// Over a job's latest result when it reported findings: "Checked Orders API: read 2,113, found 3 · 9:02 AM · next
+    /// 10:02 AM"; nil for a run that reported none.
+    static func receiptLine(_ job: FolderJob, now: Date) -> String? {
+        guard let checked = checked(job.state) else { return nil }
+        var parts = [checked]
+        if let at = job.state.lastSuccessAt { parts.append(JobWords.time(at, now: now)) }
+        if let next = next(job, now: now) { parts.append("next " + JobWords.time(next, now: now)) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// When its schedule next comes round, for a job that runs on one and is running at `now`.
+    static func next(_ job: FolderJob, now: Date) -> Date? {
+        guard let minutes = job.everyMinutes, job.running(at: now), let last = job.state.lastRunAt else { return nil }
+        return last.addingTimeInterval(TimeInterval(minutes * 60))
+    }
+
+    private static func lowercased(_ text: String) -> String { text.prefix(1).lowercased() + text.dropFirst() }
 
     /// The line on a job's folder in Morning Files: "Last run 6:31 PM · every hour", or "Running now · every hour".
     static func folderLine(_ job: FolderJob, running: Bool, now: Date) -> String {
@@ -56,7 +87,8 @@ enum FolderJobWords {
     static func receipt(_ job: FolderJob) -> String {
         let name = "“" + JobWords.clip(job.name, 60) + "”"
         if let error = job.state.error { return "\(name) couldn't finish: " + error }
-        let said = job.state.said.map { JobWords.clip($0.components(separatedBy: .newlines).first ?? $0, 120) }
+        let said = checked(job.state).map(lowercased)
+            ?? job.state.said.map { JobWords.clip($0.components(separatedBy: .newlines).first ?? $0, 120) }
             ?? (job.state.preview == nil ? "nothing to look at" : "something to look at")
         let line = "\(name) ran: " + said + (said.hasSuffix(".") ? "" : ".")
         return [line, thanks(job, run: job.state.lastSuccessAt)].compactMap { $0 }.joined(separator: " ")
@@ -177,6 +209,16 @@ struct FolderJobPage: View {
                         if let from = FolderJobWords.from(folderJob, now: now()) {
                             Text(from).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
                         }
+                        if let receipt = FolderJobWords.receiptLine(folderJob, now: now()) {
+                            Text(receipt).font(.system(size: 12, weight: .medium)).foregroundStyle(Pad.ink).textSelection(.enabled)
+                        }
+                        if folderJob.state.reportsFindings, let said = folderJob.state.said {
+                            Text(said).font(.system(size: 12)).foregroundStyle(Pad.ink).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                        }
+                        if let note = folderJob.state.note {
+                            Label(note, systemImage: "exclamationmark.triangle").font(.system(size: 12))
+                                .foregroundStyle(Pad.redInk).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                        }
                         FolderJobResultView(result: result, actions: files, report: report)
                     } else {
                         Text(folderJob.state.lastRunAt == nil ? "It hasn't run yet." : "No run has worked yet.")
@@ -242,7 +284,7 @@ struct FolderJobPreviewView: View {
     var body: some View {
         let preview = FolderJobPreviewCache.shared.preview(file)
         VStack(alignment: .leading, spacing: 7) {
-            Text(String(file.path.dropFirst(FolderJobFiles.preview.count + 1))).font(.system(size: 13, weight: .semibold))
+            Text(file.heading).font(.system(size: 13, weight: .semibold))
             switch preview {
             case .table(let rows, _):
                 if rows.isEmpty { Text("It's empty.").font(.system(size: 12)).foregroundStyle(Pad.inkSoft) }

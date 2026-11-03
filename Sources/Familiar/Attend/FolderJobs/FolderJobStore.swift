@@ -67,6 +67,16 @@ final class FolderJobStore: ObservableObject {
     /// What's in its latest output; nil before a run worked.
     func result(for job: FolderJob) -> FolderJobResult? { FolderJobFiles.result(output: output(for: job)) }
 
+    /// The rows its last run reported, kept for the next run's diff: `findings.json` beside its output.
+    func findingsFile(for job: FolderJob) -> URL { resultFolder(for: job).appendingPathComponent(FolderJobFiles.findingsState) }
+
+    /// The job's static description for the minister, `job.md` beside its job.json; nil without one.
+    func description(for job: FolderJob) -> String? {
+        guard let folder = folder(for: job), let text = try? String(contentsOf: folder.appendingPathComponent(FolderJobFiles.description), encoding: .utf8) else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     /// Its input folder, in its own folder.
     func input(for job: FolderJob) -> URL? { folder(for: job)?.appendingPathComponent(FolderJobFiles.input) }
 

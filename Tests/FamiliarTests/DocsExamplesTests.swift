@@ -15,7 +15,7 @@ struct DocsExamplesTests {
 
     // MARK: the template's job
 
-    @Test func theTemplatesJobPutsThePagesThatNeedALookInItsPreviewAndOnACard() async throws {
+    @Test func theTemplatesJobReportsThePagesThatNeedALookAsFindings() async throws {
         let pages = try await LocalPages(["/fine": (200, "<title>Fine</title><p>Hello from Noteling</p>"),
                                           "/plain": (200, "<p>Something else entirely</p>"),
                                           "/down": (503, "Down for maintenance")])
@@ -24,7 +24,7 @@ struct DocsExamplesTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let folder = root.appendingPathComponent("jobs/examples/pages-up")
         try FileManager.default.createDirectory(at: folder.appendingPathComponent("input"), withIntermediateDirectories: true)
-        for name in ["job.json", "job.py"] {
+        for name in ["job.json", "job.py", "job.md"] {
             try FileManager.default.copyItem(at: Self.pagesUp.appendingPathComponent(name), to: folder.appendingPathComponent(name))
         }
         let base = "http://127.0.0.1:\(pages.port)"
@@ -38,39 +38,44 @@ struct DocsExamplesTests {
                                         notifier: JobNotifier(),
                                         store: FolderJobStore(directory: root.appendingPathComponent("jobs"),
                                                               results: root.appendingPathComponent("job-results")),
-                                        inbox: inbox)
+                                        inbox: inbox, memory: root.appendingPathComponent("memory"))
         let morning = MorningStore(directory: root.appendingPathComponent("morning"))
         let cards = CardInbox(store: morning, directory: inbox)
         cards.folderName = { feature.cardFolderName($0) }
         feature.runner.onCardsChanged = { cards.scan() }
         let job = try #require(feature.store.jobs.first)
         #expect(job.name == "Pages up" && job.everyMinutes == 60 && job.contributors == ["Your name"])
+        #expect(job.map?.id == "page" && job.map?.page == "page")
+        #expect(feature.store.description(for: job)?.hasPrefix("Each finding is a page in `input/pages.csv` that needs a look.") == true)
 
         feature.runner.run(job.id)
         await feature.runner.finish()
 
         let state = try #require(feature.store.job(id: job.id)?.state)
-        #expect(state.error == nil && state.said == "2 of 3 pages need a look")
+        #expect(state.error == nil && state.source == "the pages in pages.csv" && state.read == 3 && state.found == 2 && state.said == nil)
         let result = try #require(feature.store.result(for: job))
-        #expect(result.files.map(\.path) == ["preview/problems.csv", "all.csv"])
+        #expect(result.files.map(\.path) == ["findings.csv", "all.csv"] && !result.hasPreview)
         #expect(FolderJobPreview.read(result.shown[0]) == .table(rows: [
-            ["page", "what's wrong"],
-            ["\(base)/plain", "it doesn't show “Hello from Noteling”"],
-            ["\(base)/down", "it answered 503"],
+            ["page", "status", "problem"],
+            ["\(base)/plain", "200", "it doesn't show “Hello from Noteling”"],
+            ["\(base)/down", "503", "it answered 503"],
         ], total: 2))
         let all = try String(contentsOf: try #require(result.files.first { $0.path == "all.csv" }).url, encoding: .utf8)
         #expect(all.hasPrefix("page,status,what's wrong,checked at") && all.contains("\(base)/fine,200,,"))
-        let card = try #require(morning.cards.first { $0.inbox?.key == FolderJobCards.key(for: job) })
-        #expect(card.title.hasPrefix("Pages up · ") && card.summary == "2 of 3 pages need a look" && !card.isResolved)
+        let memory = try #require(feature.runner.memory)
+        #expect(memory.lines(on: Date()).compactMap { $0["new"] as? String } == ["\(base)/plain", "\(base)/down"])
+        #expect(FolderJobWords.lastRun(try #require(feature.store.job(id: job.id)), now: Date()).hasSuffix(" · checked the pages in pages.csv: read 3, found 2"))
+        #expect(morning.cards.isEmpty)   // no preview, so no card: the findings wait for the minister's stickers
 
-        // The README's next step: delete the row that's wrong on purpose and run it again, and the card goes.
+        // The README's next step: delete the row that's wrong on purpose and run it again, and the findings are gone.
         try "url,expect\n\(base)/fine,Hello from Noteling\n".write(to: folder.appendingPathComponent("input/pages.csv"),
                                                                   atomically: true, encoding: .utf8)
         feature.runner.run(job.id)
         await feature.runner.finish()
-        #expect(feature.store.job(id: job.id)?.state.said == "The page is fine")
-        #expect(feature.store.result(for: job)?.hasPreview == false)
-        #expect(morning.cards.first { $0.inbox?.key == FolderJobCards.key(for: job) }?.isResolved == true)
+        #expect(feature.store.job(id: job.id)?.state.found == 0 && feature.store.job(id: job.id)?.state.read == 1)
+        #expect(FindingsSnapshot.read(feature.store.findingsFile(for: job)).rows.isEmpty)
+        #expect(memory.lines(on: Date()).compactMap { $0["gone"] as? String }.sorted() == ["\(base)/down", "\(base)/plain"])
+        #expect(FolderJobPreview.read(try #require(feature.store.result(for: job)?.shown.first)) == .table(rows: [["page", "status", "problem"]], total: 0))
     }
 
     @Test func theTemplatesPackIsAPackWithItsToolsAndBrief() throws {

@@ -1,7 +1,8 @@
 """Pages up: checks that each page in input/pages.csv answers and shows the text it should.
 
-The pages that need a look go into preview/problems.csv, so Noteling shows them and keeps a card; every page goes into
-all.csv. Put your own pages in input/pages.csv, push, and every Mac that turned this job on checks them.
+Each page that needs a look is a finding: its address, the status it answered with, and what's wrong. Noteling keeps the
+findings as a table on the job's page, tells new ones from old, and decides which deserve a sticker. Every page goes into
+all.csv beside them. Put your own pages in input/pages.csv, push, and every Mac that turned this job on checks them.
 """
 import csv
 import os
@@ -40,24 +41,16 @@ def run():
     with ThreadPoolExecutor(max_workers=AT_ONCE) as pool:
         results = list(pool.map(check, rows))
 
-    out = os.environ["NOTELING_OUTPUT"]
-    problems = [(url, problem) for url, problem, _ in results if problem]
-    # Only what needs a look goes in the preview, and nothing that changes by itself, such as the time: an empty
-    # preview means no card, and a preview that changes means a notification.
-    if problems:
-        os.makedirs(os.path.join(out, "preview"))
-        with open(os.path.join(out, "preview", "problems.csv"), "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["page", "what's wrong"])
-            writer.writerows(problems)
+    # The findings: one row per page that needs a look. The page's address is the id, so a page that is still wrong
+    # next run is the same finding, and one that is fixed is gone.
+    problems = [{"page": url, "status": status, "problem": problem} for url, problem, status in results if problem]
 
-    # Everything, with the time, goes beside the preview: there to open or save, never shown by itself.
+    # Everything, with the time, goes beside the findings: there to open or save.
+    out = os.environ["NOTELING_OUTPUT"]
     checked = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M")
     with open(os.path.join(out, "all.csv"), "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["page", "status", "what's wrong", "checked at"])
         writer.writerows([url, status, problem, checked] for url, problem, status in results)
 
-    if problems:
-        return f"{len(problems)} of {len(results)} pages need a look"
-    return "The page is fine" if len(results) == 1 else f"All {len(results)} pages are fine"
+    return {"source": "the pages in pages.csv", "read": len(results), "findings": problems}

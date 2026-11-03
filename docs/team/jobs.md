@@ -1,13 +1,16 @@
 # Jobs
 
 A job is a folder in your repository's `jobs/` folder holding a `job.json` and a `job.py`, at any depth. Noteling doesn't
-know what a job is for. It runs `job.py` on the schedule in `job.json`, shows what the job marks as its preview, offers
-every file it leaves to download, and keeps a card while the preview has something.
+know what a job is for. It runs `job.py` on the schedule in `job.json`; the job reports its findings as rows of its own
+columns, and `job.json` says which column is which. Noteling keeps the findings as a table on the job's page, tells new
+ones from old, writes each run down, and offers every file the job leaves to download. The minister reads the findings
+and decides which deserve a sticker; until that ships, a job's preview still makes a card ([below](#until-080-the-preview-and-the-card)).
 
 ```
 jobs/
   sales/stuck-orders/          the folder's path is the job's name until you give it one
-    job.json                   what the job is and when it runs, nothing else
+    job.json                   what the job is, when it runs, and which column is which
+    job.md                     what the data is, in plain words, for Noteling to read
     job.py                     run(): the one entry point
     input/                     any files it reads: lists, thresholds, templates
 ```
@@ -17,51 +20,48 @@ A job's folder is the job's: nothing inside it is looked at for another job. Nes
 
 ## job.json
 
-What the job is and when it runs. Every key is optional.
+What the job is, when it runs, and how to read what it reports. Every key is optional.
 
 ```json
-{"name": "Stuck orders", "about": "Orders waiting on our team for more than a day.",
+{"name": "Stuck orders", "about": "Paid orders the warehouse hasn't packed.",
  "every_minutes": 60, "starts": "2026-11-27T00:00:00-05:00", "ends": "2026-12-01T23:59:00-05:00",
- "requires": ["ORDERS_API_KEY"], "contributor": "Yang"}
+ "requires": ["ORDERS_API_KEY"], "contributor": "Yang",
+ "map": {"id": "order_id", "about": ["customer", "owner"], "where": "https://orders.example.com/{order_id}", "since": "paid_on"},
+ "actions": [{"label": "Nudge the warehouse", "run": "nudge", "args": {"order": "{order_id}"}, "confirm": true}]}
 ```
 
 | Key | What it does |
 |---|---|
-| `name` | Shown on its row, its page and its card. Defaults to the folder's path. |
+| `name` | Shown on its row and its page. Defaults to the folder's path. |
 | `about` | One line on what it's for, shown on its row and its page. |
 | `every_minutes` | How often it runs, 5 to 1440. Without it, the job runs only when someone presses **Run now**. |
 | `starts`, `ends` | When it's worth anyone's attention, as `2026-11-27T00:00:00-05:00`. Without an offset, it's each Mac's own time. See [The window](#the-window). |
 | `requires` | Secrets `job.py` needs, by name, such as `["ORDERS_API_KEY"]`. Each person enters them once in **Settings → Tool packs**, or a setup file brings them. `job.py` gets them as environment variables. |
 | `contributor` | Who wrote it and shares it: a name, or a list of names. See [Credit](#credit). |
+| `map` | Which of the job's columns mean what to Noteling. See [Findings](#findings). |
+| `actions` | Buttons the findings can have, each a function of `job.py`. See [Actions](#actions). |
 
 The job's data never goes in `job.json`. Lists, thresholds and anything else it reads belong in `input/` as files.
 
 ## job.py
 
-One function, `run()`, with no arguments:
+One function, `run()`, with no arguments. It returns what it read and the rows that need someone:
 
 ```python
-"""Orders waiting on us for more than a day: those in the preview, every one in all.csv."""
+"""Paid orders the warehouse hasn't packed."""
 import csv
 import os
 
 def run():
     with open(os.path.join(os.environ["NOTELING_INPUT"], "orders.csv"), newline="") as f:
-        orders = list(csv.DictReader(f))
-    stuck = [order for order in orders if float(order["hours_waiting"]) > 24]
+        orders = list(csv.DictReader(f))                          # order_id, customer, owner, paid_on, waiting_days
+    stuck = [order for order in orders if int(order["waiting_days"]) >= 2]
+    return {"source": "Orders API", "read": len(orders), "findings": stuck}
 
-    out = os.environ["NOTELING_OUTPUT"]
-    if stuck:
-        os.makedirs(os.path.join(out, "preview"))
-        with open(os.path.join(out, "preview", "stuck.csv"), "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["order", "customer"])
-            writer.writerows([order["order"], order["customer"]] for order in stuck)
-    with open(os.path.join(out, "all.csv"), "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(orders[0]) if orders else ["order"])
-        writer.writeheader()
-        writer.writerows(orders)
-    return f"{len(stuck)} of {len(orders)} orders stuck" if stuck else "Nothing stuck"
+def nudge(order):
+    """Reminds the warehouse about one order, as the person who pressed the button."""
+    ...
+    return f"Reminded the warehouse about order {order}."
 ```
 
 **What it gets:**
@@ -69,50 +69,109 @@ def run():
 | Variable | What it holds |
 |---|---|
 | `NOTELING_INPUT` | The job's `input/` folder. Read it; never write into it: every update replaces it. |
-| `NOTELING_OUTPUT` | A fresh, empty folder for this run. Everything the job leaves goes here. |
-| `NOTELING_CARDS_DIR` | The job's own folder for cards it writes itself. See [Cards](cards.md). |
+| `NOTELING_OUTPUT` | A fresh, empty folder for this run. Anything the job leaves goes here: the full results, for Excel. |
+| `NOTELING_CARDS_DIR` | The job's own folder for cards it writes itself. Until 0.8.0; see [Cards](cards.md). |
 | the names in `requires` | Each secret, from the person's Keychain. |
 | `HTTP(S)_PROXY`, `NO_PROXY`, `SSL_CERT_FILE` | The Mac's proxy and trusted certificates. `urllib` uses them as they are. |
 | `PYTHONPATH` | The person's own tools folder, then your repository: `job.py` can import code kept there. |
 
-**What it returns:** words, such as "2 of 8 prices wrong", shown on the job's row, its card and the line after **Run
-now**. Anything else is ignored.
+**What it returns:** an object with up to four keys. `source` is what it read, in business words ("Orders API", "the
+pages in pages.csv"). `read` is how many it read. `findings` is the list of rows, each a flat object of the job's own
+columns: everything that is true now. `said` is a line of its own, if it wants one. A job that has nothing to report yet
+can still return words alone, as jobs did before: they show on its row and nothing else changes.
 
 **When it fails:** raise an exception with a plain message, such as `raise RuntimeError("The orders service asked to
-sign in again.")`. The job's row shows its first line in red, the last output stays as it was, and no card changes.
+sign in again.")`. The job's row shows its first line in red, the last output and findings stay as they were.
 
 **Limits:** jobs run one at a time, each for up to 10 minutes. Python's standard library only.
 
 **Shared code:** put it in a pack's `scripts/` folder, in a file whose name starts with `_` (so it isn't offered as a
 tool), and add that folder to the path in `job.py`. [Examples](examples.md#shared-code) shows the three lines.
 
-**Other functions:** a card your job writes can have buttons that call other functions of `job.py`, such as one that
-fixes the item the card is about. See [Cards](cards.md#buttons-that-run-your-jobs-code).
+## Findings
+
+A finding is a row the job reports: an order that is stuck, a page that is down, a refund over the limit. The job writes
+no prose about it. It returns its own table, and `map` in `job.json` says which column is which:
+
+| Role | Means | Required |
+|---|---|---|
+| `id` | The column that makes a row the same row next run: an order number, a page's address. | yes |
+| `about` | Columns naming who and what a row concerns: a customer, an owner, an account. Data, never routing: who should see it is never the job's to say. | no |
+| `where` | A column, or an address with `{column}` in it, such as `https://orders.example.com/{order_id}`: the page a row lives on. | no |
+| `since` | The column saying since when it has been true. | no |
+| `due` | The column saying until when it matters, or by when it must be done. | no |
+| `at` | The column saying when it happened. With `at`, rows are events: a run reports what happened, nothing is ever gone. | no |
+| `what` | A column holding a ready sentence, for a job whose rows don't share a shape. | no |
+| `files` | A column naming files the job left in its output. | no |
+
+Column names are the keys of the rows. A row without the `id` column, or with an empty one, is left out and the job's
+page says so.
+
+**What Noteling does with them.** Each run reports everything that is true now, so the job never deletes anything,
+tracks no state and never says "resolved". After a run that works:
+
+- the findings are written as a table, `findings.csv`, in the job's output, with the job's columns across: shown on the
+  job's page, there to open in Excel, and kept with the output until the next run replaces it;
+- the rows are compared with the last run's by `id`: a row the last run didn't have is new, one whose values differ has
+  changed (and which columns), one the last run had and this one doesn't is gone. The last run's rows live in
+  `findings.json` beside the output;
+- each run, and each row that is new, changed or gone, is written to the memory log, one file a day in Noteling's
+  folder, with anything that looks like a secret (a column named like one, a value that looks like a key or a card
+  number) hidden;
+- the job's row and page say what it came to: "Checked Orders API: read 2,113, found 3 · 9:02 AM · next 10:02 AM".
+
+The minister reads what changed and decides what deserves a sticker. Until it ships, the findings show on the job's page
+and nowhere else.
+
+**Limits.** Up to 500 findings a run; past that, the first 500 are kept and the page says so. A value longer than 4,000
+characters is cut. A job with more to report than that boils it down first: the job's output can still hold the whole
+file, for Excel.
+
+## Actions
+
+A button on a finding is a function of the job's own `job.py`, named in `job.json`:
+
+```json
+{"actions": [{"label": "Nudge the warehouse", "run": "nudge", "args": {"order": "{order_id}"}, "confirm": true}]}
+```
+
+| Key | What it does |
+|---|---|
+| `label` | What the button says, up to 40 characters. |
+| `run` | The name of a function in the job's `job.py`. Not `run` itself, and not a name starting with `_`. |
+| `args` | One JSON object, passed as the function's arguments. `{column}` in a string is filled from the row: `{"order": "{order_id}"}` calls `nudge(order="4417")`. Up to 4 KB. |
+| `confirm` | Asked before it runs. Give every button that changes something outside the Mac one. |
+
+Up to six. Actions belong to the job, not to a row: `nudge()` exists for every order. What runs is always the `job.py`
+of the job that reported the finding; a row can't name another file or another job. The words a function returns show
+where the button was pressed; an exception's first line shows in red. Noteling never presses a button by itself.
+
+## job.md
+
+A plain-words description of what the job reports, beside `job.json`, for Noteling to read when it weighs the findings:
+what a row is, what the columns mean, what the numbers are measured against, whom the job normally serves.
+
+```
+Each row is a paid order the warehouse hasn't packed. `waiting_days` counts from payment; our SLA is 48 hours.
+`owner` is the account manager on the order. Customers ending in -TEST are test accounts.
+Normally this serves account managers and the warehouse lead.
+```
+
+Describe; don't instruct. Whom to show a finding to, when, how urgent and in what words are Noteling's to decide, from
+the finding, this description, and what it knows of the person.
 
 ## What it leaves
 
-A run that works replaces the job's output on that Mac. It lives only there, never in the repository.
+A run that works replaces the job's output on that Mac. It lives only there, never in the repository. Everything in
+`NOTELING_OUTPUT` is there to **Open**, **Save as…** or **Show in Finder**: put the full results here, for Excel.
+`findings.csv` is Noteling's, written from the rows; a file of that name the job writes is replaced.
 
-- **`preview/`**: what a person should see at a glance. `.csv`, `.tsv` and `.txt` files here are shown as they are, on
-  the job's page and its card: tables as tables (the first row is the heading; up to 200 rows), text as text (up to
-  20,000 characters).
-- **Everything else**, beside `preview/`: there to **Open**, **Save as…** or **Show in Finder**, preview files included.
-  Put the full results here, for Excel.
+## Until 0.8.0: the preview and the card
 
-## Its card
-
-While a job's latest output has anything in `preview/`, the job has one card in the Morning folder, in a folder named
-after the job. It shows the preview and the files, the words `run()` returned, and **Open job**.
-
-- An empty preview means nothing to look at: no `preview/` folder, no card. The card goes when the preview does.
-- When the preview's contents change, the people who turned the job on get a notification, and a card someone resolved
-  opens again. Not on the first run after they turn it on: they're looking at it.
-- A job can also write cards of its own into `NOTELING_CARDS_DIR`, such as one per stuck order that needs a follow-up.
-  They show in the same folder. See [Cards](cards.md).
-
-**Keep the preview stable.** A notification goes out whenever the preview's contents change, so it must say the same
-thing when nothing changed. Keep times such as "checked at", run numbers and anything else that moves by itself out of
-`preview/`, and put them in the files beside it.
+Files in `output/preview/` (`.csv`, `.tsv`, `.txt`) are still shown as they are on the job's page, and while the preview
+has anything in it the job keeps one card in the Morning folder, with a notification when its contents change. A job can
+also write cards of its own into `NOTELING_CARDS_DIR` ([Cards](cards.md)). Keep the preview stable: no times or run
+numbers in it. The minister's stickers replace all of this; a job that reports findings needs none of it.
 
 ## The window
 
@@ -121,8 +180,8 @@ the way: it doesn't run, sends no notifications, has no card (nor do the cards i
 the Morning folder's home. In Jobs it waits under one line, **Upcoming (1) · Ended (2) · Show**, where it can still be
 opened, and an upcoming job can be turned on ahead of its start.
 
-Push a later `ends`, and the job and its cards come back once the update reaches each Mac. Give every job for an event an
-`ends`, so it leaves people's desks when the event does.
+Push a later `ends`, and the job comes back once the update reaches each Mac. Give every job for an event an `ends`, so
+it leaves people's desks when the event does.
 
 ## Turning it on
 
@@ -135,9 +194,9 @@ on or off and read what one found, but never makes or changes one: jobs are your
 
 ## Credit
 
-`contributor` names whoever wrote the job and shares it. It shows as "Shared by Yang" on the job's row and page, and the
-job's card and each **Run now** thank them, in a line that changes from run to run, such as "Thanks to Yang for sharing
-this job." Notifications stay about the result. A list reads "Yang and Ana", or "Yang, Ana and Sam".
+`contributor` names whoever wrote the job and shares it. It shows as "Shared by Yang" on the job's row and page, and
+each **Run now** thanks them, in a line that changes from run to run, such as "Thanks to Yang for sharing this job."
+A list reads "Yang and Ana", or "Yang, Ana and Sam".
 
 ## Moving a watch to a job
 
@@ -147,9 +206,5 @@ Watches (`watches/<path>/watch.json` with `items.psv`) no longer run, and Jobs s
 - `watch.json`'s `name`, `every_minutes`, `starts`, `ends` and `requires` go into `job.json` as they are. Its `check`,
   `args`, `expect`, `fields`, `cards` and `files` don't: what they did is now `job.py`'s to do.
 - `items.psv` goes into `input/`, as it is or as `items.csv`.
-- `job.py` reads the items, calls the check you already have, compares what it found with what each row expects, writes
-  the rows that need a look into `preview/problems.csv` and every row into `all.csv`, and returns a line such as "2 of 8
-  items need a look".
-
-There's one card and one notification per job, when its preview changes. A job that wants one card per item writes them
-itself.
+- `job.py` reads the items, calls the check you already have, compares what it found with what each row expects, and
+  returns the rows that need a look as its findings, with `map.id` naming the item column.
