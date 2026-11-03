@@ -28,7 +28,7 @@ def main():
             spec.loader.exec_module(mod)
             result = function(mod, name, path)(**args)
         if isinstance(result, dict) and isinstance(result.get("findings"), list):
-            result.setdefault("_columns", columns(result["findings"]))
+            result["_columns"] = columns(result["findings"])
         out = {"result": result}
         if buf.getvalue().strip():
             out["stdout"] = buf.getvalue()[-4000:]

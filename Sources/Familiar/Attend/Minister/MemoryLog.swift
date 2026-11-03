@@ -28,24 +28,40 @@ final class MemoryLog {
         append(line)
     }
 
+    /// A job's run failed, and why.
+    func failed(_ job: FolderJob, _ reason: String) {
+        append(["job": Self.name(of: job), "name": job.name, "failed": reason])
+    }
+
     /// What changed between a job's runs: each new or changed row, as reported, and each id that is gone.
     func record(_ job: FolderJob, change: FindingsChange) {
         let name = Self.name(of: job)
-        for row in change.new { append(["job": name, "new": row.id, "row": Self.redact(row.values)]) }
+        var lines: [[String: Any]] = []
+        for row in change.new { lines.append(["job": name, "new": row.id, "row": Self.redact(row.values)]) }
         for changed in change.changed {
-            append(["job": name, "changed": changed.row.id, "columns": changed.columns, "row": Self.redact(changed.row.values)])
+            lines.append(["job": name, "changed": changed.row.id, "columns": changed.columns, "row": Self.redact(changed.row.values)])
         }
-        for id in change.gone { append(["job": name, "gone": id]) }
+        for id in change.gone { lines.append(["job": name, "gone": id]) }
+        append(lines)
     }
 
-    /// Adds one line, with the time, to today's file. A line that can't be written is logged and lost; the log never
-    /// stops a job.
-    func append(_ fields: [String: Any]) {
+    /// Adds one line, with the time, to today's file.
+    func append(_ fields: [String: Any]) { append([fields]) }
+
+    /// Adds lines, each with the time, to today's file, opened once. A line that can't be written is logged and lost;
+    /// the log never stops a job.
+    func append(_ lines: [[String: Any]]) {
+        guard !lines.isEmpty else { return }
         let now = clock()
-        var line = fields
-        line["t"] = Self.stamp(now, in: timeZone)
+        let stamp = Self.stamp(now, in: timeZone)
         do {
-            let data = try JSONSerialization.data(withJSONObject: line, options: [.sortedKeys, .withoutEscapingSlashes])
+            var data = Data()
+            for fields in lines {
+                var line = fields
+                line["t"] = stamp
+                data += try JSONSerialization.data(withJSONObject: line, options: [.sortedKeys, .withoutEscapingSlashes])
+                data += Data("\n".utf8)
+            }
             let file = file(for: now)
             let manager = FileManager.default
             try manager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -57,9 +73,9 @@ final class MemoryLog {
             let handle = try FileHandle(forWritingTo: file)
             defer { try? handle.close() }
             try handle.seekToEnd()
-            try handle.write(contentsOf: data + Data("\n".utf8))
+            try handle.write(contentsOf: data)
         } catch {
-            Log.info("memory: couldn't write a line: \(error.localizedDescription)")
+            Log.info("memory: couldn't write to the log: \(error.localizedDescription)")
         }
     }
 

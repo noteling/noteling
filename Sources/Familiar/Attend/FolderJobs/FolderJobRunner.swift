@@ -195,6 +195,7 @@ final class FolderJobRunner: ObservableObject {
             change = try await runScript(job, state: &state)
         } catch {
             state.error = Self.reason(error)
+            memory?.failed(job, state.error ?? "It failed without saying why.")
         }
         do { try store.record(job.id, state) } catch { Log.info("jobs: couldn't save how \(job.path) ran: \(error.localizedDescription)") }
         Log.info("jobs: \(job.isTeam ? "the team's " : "")\(job.path) " + (state.error.map { "failed: \($0)" } ?? "ran"))
@@ -240,11 +241,18 @@ final class FolderJobRunner: ObservableObject {
         let outcome = try FindingsOutcome.parse(value, map: job.map)
         let file = store.findingsFile(for: job)
         let previous = FindingsSnapshot.read(file)
-        if let rows = outcome.rows {
+        var pending: (change: FindingsChange, snapshot: URL)?
+        if let rows = outcome.rows, let map = job.map {
             // A run with no findings keeps the last run's columns, so its table has the same header.
             let columns = rows.isEmpty && previous.columns.count > outcome.columns.count ? previous.columns : outcome.columns
             try JobFiles.write(FolderJobFindings.csv(rows, columns: columns), to: staging.appendingPathComponent(FolderJobFiles.findings))
+            // The next run's snapshot is written before the output is put in place, so a run leaves both or neither.
+            let (change, snapshot) = FolderJobFindings.diff(previous: previous, rows: rows, map: map, at: now())
+            let written = file.deletingLastPathComponent().appendingPathComponent(".\(FolderJobFiles.findingsState)-\(UUID().uuidString).tmp")
+            try snapshot.write(to: written)
+            pending = (change, written)
         }
+        defer { if let pending { try? manager.removeItem(at: pending.snapshot) } }   // gone once it's in place; otherwise cleaned up
         let output = store.output(for: job)
         try Self.swap(staging, into: output)
         state.lastSuccessAt = now()
@@ -255,12 +263,13 @@ final class FolderJobRunner: ObservableObject {
         state.read = outcome.read
         state.found = outcome.rows?.count
         state.note = outcome.notes.isEmpty ? nil : outcome.notes.joined(separator: " ")
-        guard let rows = outcome.rows, let map = job.map else { return nil }
-        let (change, snapshot) = FolderJobFindings.diff(previous: previous, rows: rows, map: map, at: now())
-        try snapshot.write(to: file)
         memory?.ran(job, outcome: outcome)
-        memory?.record(job, change: change)
-        return change
+        guard let pending else { return nil }
+        if rename(pending.snapshot.path, file.path) != 0 {
+            Log.info("jobs: couldn't keep \(job.path)'s findings for its next run: \(String(cString: strerror(errno)))")
+        }
+        memory?.record(job, change: pending.change)
+        return pending.change
     }
 
     /// Puts the new output in place of the old in one step: the two folders swap names, and the old one, now at the

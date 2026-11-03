@@ -76,6 +76,15 @@ struct FolderJobFindingsTests {
         #expect(rows[0].text("customer") == "Acme Ltd (again)" && rows[0].text("waiting_days") == "4" && rows[1].text("paid") == "true")
         #expect(outcome.notes == ["1 finding had no order_id, so it was left out.", "1 finding repeated an earlier order_id; the last one counts."])
 
+        // Ids read the same however the job wrote them: a number, one with a fraction, text with stray spaces.
+        let ids = try FindingsOutcome.parse(["findings": [["order_id": 4417.0], ["order_id": " 4390 "], ["order_id": 1e3]]], map: map)
+        #expect(ids.rows?.map(\.id) == ["4417", "4390", "1000"] && ids.rows?[1].values["order_id"] as? String == "4390")
+        // Without the columns from run_tool.py: the id first and the rest by name, the same every run.
+        let unordered = try FindingsOutcome.parse(["findings": [["zebra": 1, "order_id": 2, "apple": 3]]], map: map)
+        #expect(unordered.columns == ["order_id", "apple", "zebra"])
+        // A list on its own is the likeliest slip under the contract; without a map it's what it always was, nothing.
+        #expect(try FindingsOutcome.parse([["x": 1]], map: nil) == FindingsOutcome())
+
         // A report without findings says nothing about the rows: nil, not none.
         #expect(try FindingsOutcome.parse(["source": "Orders API", "read": 0], map: map).rows == nil)
         #expect(try FindingsOutcome.parse(["findings": []], map: map).rows?.isEmpty == true)
@@ -85,6 +94,7 @@ struct FolderJobFindingsTests {
             do { _ = try FindingsOutcome.parse(value, map: map); return nil } catch { return (error as? FolderJobError)?.message }
         }
         #expect(refusal(["findings": [["order_id": 1]]], map: nil)?.hasPrefix("job.py returned findings, but its job.json has no map") == true)
+        #expect(refusal([["order_id": 1]]) == "job.py returned a list. Its findings go inside an object: return {\"findings\": [...]}.")
         #expect(refusal(["findings": "none"]) == "job.py's findings must be a list of rows, each a JSON object.")
         #expect(refusal(["findings": [1, 2]]) == "job.py's findings must be a list of rows, each a JSON object.")
         #expect(refusal(["read": "many"]) == "job.py's read must be how many it read: a whole number, 0 or more.")
@@ -118,12 +128,20 @@ struct FolderJobFindingsTests {
         let third = FolderJobFindings.diff(previous: second.snapshot, rows: [row(4390, 5), row(4402, 1)], map: map, at: later.addingTimeInterval(3_600))
         #expect(third.change.isEmpty && third.change.unchanged == 2 && third.snapshot == second.snapshot)
 
-        // The snapshot survives a relaunch as it is.
+        // A column that goes away is a change; one that is missing, null or empty reads the same three ways.
+        let narrower = FindingRow(id: "4390", values: ["order_id": 4390, "waiting_days": 5], columns: ["order_id", "waiting_days"])
+        let fourth = FolderJobFindings.diff(previous: second.snapshot, rows: [narrower, row(4402, 1)], map: map, at: later)
+        #expect(fourth.change.changed.map(\.row.id) == ["4390"] && fourth.change.changed[0].columns == ["customer"])
+        let blank = FindingRow(id: "4390", values: ["order_id": 4390, "customer": NSNull(), "waiting_days": 5], columns: ["order_id", "customer", "waiting_days"])
+        #expect(FolderJobFindings.diff(previous: fourth.snapshot, rows: [blank, row(4402, 1)], map: map, at: later).change.isEmpty)
+
+        // The snapshot survives a relaunch as it is, fractions of a second included.
         let place = FileManager.default.temporaryDirectory.appendingPathComponent("findings-\(UUID())")
         defer { try? FileManager.default.removeItem(at: place) }
         let file = place.appendingPathComponent("job-results/own/x/findings.json")
-        try second.snapshot.write(to: file)
-        #expect(FindingsSnapshot.read(file) == second.snapshot)
+        let fractional = FolderJobFindings.diff(previous: first.snapshot, rows: [row(4390, 5), row(4402, 1)], map: map, at: later.addingTimeInterval(0.75)).snapshot
+        try fractional.write(to: file)
+        #expect(FindingsSnapshot.read(file) == fractional && fractional.rows["4402"]?.firstSeen == later.addingTimeInterval(0.75))
         #expect(FindingsSnapshot.read(place.appendingPathComponent("none.json")) == FindingsSnapshot())
 
         // Events are only ever new.
@@ -145,6 +163,26 @@ struct FolderJobFindingsTests {
         let (parsed, total) = FolderJobPreview.table(csv, separator: ",", limit: 200)
         #expect(parsed == [["order_id", "customer", "note", "paid", "owner", "missing"], ["4417", "Acme, Ltd", "said \"soon\"\nmaybe", "true", "", ""]] && total == 1)
         #expect(FolderJobFindings.text(["b": 1, "a": [1, 2]]) == #"{"a":[1,2],"b":1}"#)
+        // A value that starts like a formula gets a space in front; a number doesn't.
+        let guarded = FolderJobFindings.csv([FindingRow(id: "1", values: ["id": 1, "a": "=SUM(A1)", "b": "-5", "c": "+1", "d": "@x", "e": "-"], columns: ["id", "a", "b", "c", "d", "e"])],
+                                            columns: ["id", "a", "b", "c", "d", "e"])
+        #expect(guarded == "id,a,b,c,d,e\n1, =SUM(A1),-5,+1, @x, -\n")
+    }
+
+    // MARK: secrets
+
+    @Test func secretNamesAreSeenThroughUnderscoresAndCamelCaseAndTheChatSeesTheTableRedacted() {
+        for name in ["password", "access_token", "user_password", "secret_key", "account_number", "card-number", "customer_pin",
+                     "routing_number", "apiKey", "accessToken", "SSN"] {
+            #expect(SecretWords.looksSecret(name), "\(name) should look like a secret")
+        }
+        for name in ["customer", "order_id", "waiting_days", "keyboard", "monkey", "tokenizer_version"] {
+            #expect(!SecretWords.looksSecret(name), "\(name) shouldn't")
+        }
+        let table = [["order_id", "customer", "access_token", "note"], ["4417", "Acme Ltd", "abc", "card 4111111111111111"], ["4390", "Beta", "def", "fine"]]
+        #expect(FolderJobFindings.redacted(table) == [["order_id", "customer", "access_token", "note"],
+                                                       ["4417", "Acme Ltd", "(hidden)", "(hidden)"], ["4390", "Beta", "(hidden)", "fine"]])
+        #expect(FolderJobFindings.redacted([]) == [])
     }
 
     // MARK: the memory log
@@ -190,6 +228,7 @@ struct FolderJobFindingsTests {
         let runner = FolderJobRunner(store: store, execute: { run in
             if fail { throw ScriptRunnerError(message: "job.py failed: RuntimeError: The orders service asked to sign in again.") }
             try place.write(run.output.appendingPathComponent("all.csv"), "order_id\n1\n")
+            try place.write(run.output.appendingPathComponent("findings.csv"), "mine\n1\n")   // the name is Noteling's: replaced
             return ["source": "Orders API", "read": 2113, "findings": rows, "_columns": ["order_id", "customer", "waiting_days"]] as [String: Any]
         }, now: { at })
         let memory = MemoryLog(directory: place.root.appendingPathComponent("memory"))
@@ -234,6 +273,10 @@ struct FolderJobFindingsTests {
         await runner.finish()
         #expect(store.job(id: id)?.state.error == "The orders service asked to sign in again." && store.job(id: id)?.state.found == 2)
         #expect(FindingsSnapshot.read(store.findingsFile(for: job)).rows.keys.sorted() == ["4390", "4402"] && changes.count == 2)
+        #expect(memory.lines(on: at).compactMap { $0["failed"] as? String } == ["The orders service asked to sign in again."])
+        #expect(memory.lines(on: at).filter { $0["ran"] != nil }.count == 2)
+        let left = try FileManager.default.contentsOfDirectory(atPath: store.resultFolder(for: job).path)
+        #expect(left.sorted() == ["findings.json", "output", "run.json"])   // no half-written snapshot beside them
     }
 
     @Test func aRunThatReturnsWordsLeavesTheFindingsAsTheyWereAndABadReportFails() async throws {
@@ -244,6 +287,9 @@ struct FolderJobFindingsTests {
         let store = place.store()
         var value: Any = ["findings": [["item": 1]]] as [String: Any]
         let runner = FolderJobRunner(store: store, execute: { _ in value }, now: { at })
+        let memory = MemoryLog(directory: place.root.appendingPathComponent("memory"))
+        memory.clock = { at }
+        runner.memory = memory
         let gm = try #require(store.jobs.first { $0.path == "gm" })
         let plain = try #require(store.jobs.first { $0.path == "plain" })
         runner.run(gm.id)
@@ -256,6 +302,12 @@ struct FolderJobFindingsTests {
         #expect(store.job(id: gm.id)?.state.said == "Nothing to report" && store.job(id: gm.id)?.state.reportsFindings == false)
         #expect(FindingsSnapshot.read(store.findingsFile(for: gm)).rows.count == 1)   // words say nothing about the rows
         #expect(store.result(for: gm)?.files.isEmpty == true)   // and this run left no table
+        #expect(memory.lines(on: at).compactMap { ($0["ran"] as? [String: Any])?["said"] as? String } == ["Nothing to report"])   // every run is written down
+
+        value = [["item": 2]]   // a bare list, the likeliest slip
+        runner.run(gm.id)
+        await runner.finish()
+        #expect(store.job(id: gm.id)?.state.error?.hasPrefix("job.py returned a list.") == true)
 
         value = ["findings": [["item": 2]]] as [String: Any]
         runner.run(plain.id)   // no map in its job.json
@@ -267,6 +319,7 @@ struct FolderJobFindingsTests {
         runner.run(gm.id)
         await runner.finish()
         #expect(store.job(id: gm.id)?.state.error == "job.py's findings must be a list of rows, each a JSON object." && store.job(id: gm.id)?.state.said == "Nothing to report")
+        #expect(memory.lines(on: at).compactMap { $0["failed"] as? String }.count == 3)
     }
 
     // MARK: fixtures

@@ -181,6 +181,9 @@ struct FindingsOutcome: Equatable {
     /// Reads what `run()` returned. Words (or a number) are what it said. An object is a report: `source`, `read`, and
     /// `findings`, a list of rows, which needs the job's map to say which column is the id.
     static func parse(_ value: Any, map: FindingsMap?) throws -> FindingsOutcome {
+        if value is [Any], map != nil {
+            throw FolderJobError("job.py returned a list. Its findings go inside an object: return {\"findings\": [...]}.")
+        }
         guard let object = value as? [String: Any] else { return FindingsOutcome(said: FolderJobFindings.said(value)) }
         var outcome = FindingsOutcome()
         if let raw = object["said"], !(raw is NSNull) { outcome.said = FolderJobFindings.said(raw) }
@@ -200,7 +203,9 @@ struct FindingsOutcome: Equatable {
         guard let map else {
             throw FolderJobError("job.py returned findings, but its job.json has no map saying which column is the id. Add \"map\": {\"id\": \"…\"}.")
         }
-        var columns: [String] = (object[columnsKey] as? [String]) ?? []
+        // The job's column order comes from run_tool.py; without it, the id first and the rest by name, the same every run.
+        let ordered = object[columnsKey] as? [String]
+        var columns: [String] = ordered ?? []
         var rows: [FindingRow] = []
         var byID: [String: Int] = [:]
         var noID = 0, duplicates = 0, cut = false
@@ -215,9 +220,11 @@ struct FindingsOutcome: Equatable {
             }
             let id = fields[map.id].map(text)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !id.isEmpty else { noID += 1; continue }
+            if values[map.id] is String { values[map.id] = id }   // the id as the row is known by, without stray spaces
             let row = FindingRow(id: id, values: values, columns: columns)
             if let index = byID[id] { rows[index] = row; duplicates += 1 } else { byID[id] = rows.count; rows.append(row) }
         }
+        if ordered == nil { columns = [map.id] + columns.filter { $0 != map.id }.sorted() }
         if columns.isEmpty { columns = [map.id] }
         for index in rows.indices { rows[index].columns = columns }
         let total = rows.count
@@ -262,24 +269,32 @@ struct FindingsSnapshot: Equatable {
         guard let data = try? Data(contentsOf: file), let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return FindingsSnapshot() }
         var snapshot = FindingsSnapshot()
         snapshot.columns = object["columns"] as? [String] ?? []
-        let dates = ISO8601DateFormatter()
         for (id, raw) in object["rows"] as? [String: Any] ?? [:] {
             guard let kept = raw as? [String: Any], let values = kept["row"] as? [String: Any],
-                  let first = (kept["first_seen"] as? String).flatMap(dates.date(from:)) else { continue }
+                  let first = (kept["first_seen"] as? String).flatMap(date) else { continue }
             let columns = kept["columns"] as? [String] ?? values.keys.sorted()
             snapshot.rows[id] = Kept(row: FindingRow(id: id, values: values, columns: columns), firstSeen: first,
-                                     changedAt: (kept["changed_at"] as? String).flatMap(dates.date(from:)))
+                                     changedAt: (kept["changed_at"] as? String).flatMap(date))
         }
         snapshot.events = object["events"] as? [String] ?? []
         return snapshot
     }
 
+    /// Times with their fraction of a second, so a snapshot read back is the one written; one written without a
+    /// fraction still reads.
+    private static let stamps: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let wholeStamps = ISO8601DateFormatter()
+    private static func date(_ text: String) -> Date? { stamps.date(from: text) ?? wholeStamps.date(from: text) }
+
     func write(to file: URL) throws {
-        let dates = ISO8601DateFormatter()
         var rows: [String: Any] = [:]
         for (id, kept) in self.rows {
-            var entry: [String: Any] = ["row": kept.row.values, "columns": kept.row.columns, "first_seen": dates.string(from: kept.firstSeen)]
-            if let changed = kept.changedAt { entry["changed_at"] = dates.string(from: changed) }
+            var entry: [String: Any] = ["row": kept.row.values, "columns": kept.row.columns, "first_seen": Self.stamps.string(from: kept.firstSeen)]
+            if let changed = kept.changedAt { entry["changed_at"] = Self.stamps.string(from: changed) }
             rows[id] = entry
         }
         let object: [String: Any] = ["version": 1, "rows": rows, "events": events, "columns": columns]
@@ -334,8 +349,9 @@ enum FolderJobFindings {
         }
         for row in rows {
             if let before = previous.rows[row.id] {
-                let columns = row.columns.filter { row.text($0) != before.row.text($0) }
-                    + before.row.columns.filter { !row.columns.contains($0) && before.row.text($0) != nil }
+                // A column that is missing, null or empty reads the same three ways: nothing there.
+                let names = row.columns + before.row.columns.filter { !row.columns.contains($0) }
+                let columns = names.filter { (row.text($0) ?? "") != (before.row.text($0) ?? "") }
                 if columns.isEmpty {
                     change.unchanged += 1
                     snapshot.rows[row.id] = FindingsSnapshot.Kept(row: row, firstSeen: before.firstSeen, changedAt: before.changedAt)
@@ -360,9 +376,26 @@ enum FolderJobFindings {
         return lines.joined(separator: "\n") + "\n"
     }
 
+    /// A value as a CSV field: quoted when it needs to be, and with a space in front when it starts like a formula
+    /// (`=`, `+`, `-` or `@`) and isn't a number, so a spreadsheet never runs what a row said.
     static func csvField(_ text: String) -> String {
+        var text = text
+        if let first = text.first, "=+-@".contains(first), Double(text) == nil { text = " " + text }
         guard text.contains(where: { $0 == "," || $0 == "\"" || $0 == "\n" || $0 == "\r" }) else { return text }
         return "\"" + text.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+    }
+
+    /// A table of findings with anything that looks like a secret hidden, as the memory log hides it: every cell of a
+    /// column named like a secret, and any cell that looks like a key, a token or a card number. For what the chat is
+    /// shown; the file itself is the person's.
+    static func redacted(_ table: [[String]]) -> [[String]] {
+        guard let header = table.first else { return table }
+        let secretColumns = Set(header.indices.filter { SecretWords.looksSecret(header[$0]) })
+        return [header] + table.dropFirst().map { row in
+            row.enumerated().map { index, cell in
+                secretColumns.contains(index) || PageWalk.looksLikeSecretValue(cell) ? MemoryLog.hidden : cell
+            }
+        }
     }
 
     /// `{column}` in a template, each filled from the row; nil when the row has no such column.

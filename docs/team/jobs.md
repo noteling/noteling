@@ -78,7 +78,9 @@ def nudge(order):
 **What it returns:** an object with up to four keys. `source` is what it read, in business words ("Orders API", "the
 pages in pages.csv"). `read` is how many it read. `findings` is the list of rows, each a flat object of the job's own
 columns: everything that is true now. `said` is a line of its own, if it wants one. A job that has nothing to report yet
-can still return words alone, as jobs did before: they show on its row and nothing else changes.
+can still return words alone, as jobs did before: they show on its row, the run's output is whatever it left (no findings
+table), and the last findings Noteling kept stay as they were, for the next run that reports some. A list on its own is
+refused: the findings go inside the object.
 
 **When it fails:** raise an exception with a plain message, such as `raise RuntimeError("The orders service asked to
 sign in again.")`. The job's row shows its first line in red, the last output and findings stay as they were.
@@ -115,9 +117,10 @@ tracks no state and never says "resolved". After a run that works:
 - the rows are compared with the last run's by `id`: a row the last run didn't have is new, one whose values differ has
   changed (and which columns), one the last run had and this one doesn't is gone. The last run's rows live in
   `findings.json` beside the output;
-- each run, and each row that is new, changed or gone, is written to the memory log, one file a day in Noteling's
-  folder, with anything that looks like a secret (a column named like one, a value that looks like a key or a card
-  number) hidden;
+- each run (and a run that failed, with why), and each row that is new, changed or gone, is written to the memory log,
+  one file a day in Noteling's folder, with anything that looks like a secret (a column named like one, such as
+  `access_token` or `card_number`, or a value that looks like a key or a card number) hidden. The chat sees the table
+  the same way; the file itself is the person's, as the job wrote it;
 - the job's row and page say what it came to: "Checked Orders API: read 2,113, found 3 · 9:02 AM · next 10:02 AM".
 
 The minister reads what changed and decides what deserves a sticker. Until it ships, the findings show on the job's page
@@ -143,13 +146,16 @@ A button on a finding is a function of the job's own `job.py`, named in `job.jso
 | `confirm` | Asked before it runs. Give every button that changes something outside the Mac one. |
 
 Up to six. Actions belong to the job, not to a row: `nudge()` exists for every order. What runs is always the `job.py`
-of the job that reported the finding; a row can't name another file or another job. The words a function returns show
-where the button was pressed; an exception's first line shows in red. Noteling never presses a button by itself.
+of the job that reported the finding; a row can't name another file or another job. The button shows on the sticker the
+minister makes from a finding (0.8.0); until then, actions are read and checked, and shown nowhere. The words a function
+returns show where the button was pressed; an exception's first line shows in red. Noteling never presses a button by
+itself.
 
 ## job.md
 
-A plain-words description of what the job reports, beside `job.json`, for Noteling to read when it weighs the findings:
-what a row is, what the columns mean, what the numbers are measured against, whom the job normally serves.
+A plain-words description of what the job reports, beside `job.json`, for the minister to read when it weighs the
+findings (0.8.0): what a row is, what the columns mean, what the numbers are measured against, whom the job normally
+serves.
 
 ```
 Each row is a paid order the warehouse hasn't packed. `waiting_days` counts from payment; our SLA is 48 hours.
@@ -164,7 +170,9 @@ the finding, this description, and what it knows of the person.
 
 A run that works replaces the job's output on that Mac. It lives only there, never in the repository. Everything in
 `NOTELING_OUTPUT` is there to **Open**, **Save as…** or **Show in Finder**: put the full results here, for Excel.
-`findings.csv` is Noteling's, written from the rows; a file of that name the job writes is replaced.
+`findings.csv` is Noteling's name: a run that reports findings writes it from the rows, so don't write one yourself. In
+it, a value that starts with `=`, `+`, `-` or `@` and isn't a number gets a space in front, so a spreadsheet never runs
+what a row said as a formula.
 
 ## Until 0.8.0: the preview and the card
 

@@ -196,7 +196,8 @@ final class FolderJobConversation {
             var entry: [String: Any] = ["file": file.path]
             switch FolderJobPreview.read(file) {
             case .table(let rows, let total):
-                let kept = Array(rows.prefix(Self.rowLimit + 1))
+                // The findings as the model may see them: anything that looks like a secret hidden, as in the memory log.
+                let kept = Array((file.isFindings ? FolderJobFindings.redacted(rows) : rows).prefix(Self.rowLimit + 1))
                 entry["csv"] = kept.map { $0.map(Self.csvField).joined(separator: ",") }.joined(separator: "\n")
                 let shownRows = max(0, kept.count - 1)
                 if let total, total > shownRows { entry["rows_not_shown"] = total - shownRows }
