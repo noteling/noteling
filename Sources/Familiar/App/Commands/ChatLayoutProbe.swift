@@ -39,12 +39,7 @@ enum ChatLayoutProbe {
         let learning = WatchLearnComposition.make(recorder: WatchRecorder(config: config, watcher: watcher),
             registry: registry, activities: NativeActivityGate(), config: { config })
         let state = Assistant(config: config, watcher: watcher, registry: registry, shell: shell, learning: learning)
-        let store = MorningStore(directory: root.appendingPathComponent("morning"))
-        let card = MorningCard(folderID: store.folders[0].id, title: "Review the CVS settlement notice",
-            action: MorningAction(title: "Prepare a summary", instruction: "Summarize the saved settlement notice"))
-        try store.saveCard(card)
-        state.cardConversation = CardConversation(store: store)
-        state.contextLine = "Discussing a morning card"
+        state.contextLine = "A fixture conversation"
         let hosting = NSHostingView(rootView: BubbleView(state: state, shell: shell))
         let window = BubblePanel(hideFromScreenShare: true)
         window.contentView = hosting
@@ -70,11 +65,11 @@ enum ChatLayoutProbe {
         for shape in shapes {
             state.clearConversation()
             if shape == 2 {
-                state.transcript = [ChatMessage(role: .user, text: "What should I review this morning?"),
-                    ChatMessage(role: .assistant, text: "You have two saved cards to review. Choose one to discuss its suggested action.")]
+                state.transcript = [ChatMessage(role: .user, text: "What should I look at first today?"),
+                    ChatMessage(role: .assistant, text: "Two of your jobs found something. Open one of their stickers to see the rows behind it.")]
             }
-            _ = state.discussCard(card)
-            try await settle(hosting, phase: "card invitation \(shape)", milliseconds: 350)
+            shell.expanded = true
+            try await settle(hosting, phase: "opened \(shape)", milliseconds: 350)
             try await submitSyntheticQuestion("What should I do?", to: state, hosting: hosting)
             let text = replayText ?? response(shape: shape)
             let result = try await state.execution.run(client: FixtureClient(text: text),

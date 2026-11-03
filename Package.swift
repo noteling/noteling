@@ -5,7 +5,6 @@ let package = Package(
     name: "Familiar",
     platforms: [.macOS(.v14)],
     targets: [
-        .systemLibrary(name: "CSQLite", path: "Sources/CSQLite"),
         .target(
             name: "FamiliarContracts",
             path: "Sources/FamiliarContracts"
@@ -17,7 +16,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "Familiar",
-            dependencies: ["FamiliarContracts", "FamiliarRuntime", "CSQLite"],
+            dependencies: ["FamiliarContracts", "FamiliarRuntime"],
             path: "Sources/Familiar",
             linkerSettings: [
                 .linkedFramework("AppKit"),

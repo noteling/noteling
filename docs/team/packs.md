@@ -98,7 +98,7 @@ def run(order_id: str, include_history: bool = False) -> dict:
 - **What it gets:** `NOTELING_CONTEXT`, JSON of what's in front (`appName`, `bundleID`, `windowTitle`, `url`);
   `NOTELING_FACTS`, what the page's brief found (its result's `facts`, see below), when the page has one, so a tool can
   take the order on the page without being told it; `NOTELING_TOOL_DIR`, the pack's folder (read only: every update
-  replaces it); `NOTELING_CARDS_DIR`, for cards it writes ([Cards](cards.md)); the secrets in `requires`; and the Mac's
+  replaces it); the secrets in `requires`; and the Mac's
   proxy settings.
 - **Limits:** a tool call stops after 90 seconds. Python's standard library only. Never write into the pack's folder;
   keep state in `tempfile.gettempdir()`, since several scripts may run at once.

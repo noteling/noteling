@@ -71,10 +71,6 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    with macOS Reduce Motion enabled, the fold and gentle flap stay at home.
 6. Claude can call the pack's scripts, the four reading tools (`list`, `read`, `search`, `rows`) over the docs, Noteling's
    memory log, the matters and what the jobs found, and `read_screen` (accessibility text).
-   General chat also knows the saved sources (the reading jobs created in chat, or taught with Watch Me in earlier versions).
-   - **Context:** every turn carries a short "Your saved jobs" list: name, kind, address, reading rules, and when each was taught and last run.
-   - **Tools** (`SourceConversation`): `get_source` shows one job with its latest findings, `update_source` edits it through the same store and checks as Edit on its page in Jobs, `remove_source` / `restore_source` take it out of future runs and bring it back, `create_source` starts a job that reads through a pack script, with no teaching, and `offer_run_source` adds a Run now tab, which runs the job and opens its page in Jobs.
-   - **Rules:** only the person's tap runs a job. Edits wait while a read is running, and they never clear a source's "needs review" flag. Each change leaves a receipt on the pad and an Open Jobs tab.
 7. **Control** (off by default, Settings → "Allow Noteling to control the mouse and keyboard"): ask it to do something
    ("type the sum formula for me") and it does it through Claude's computer toolset. By default it works **in the
    background**: it drives the window you were in when you asked through Accessibility and events sent to that app, so
@@ -87,8 +83,7 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    the task screen keeps execution running, and completion respects that choice. Reopen it through the menu bar's
    **Background Tasks…** entry or by clicking Noteling while a task runs. The task header can be dragged to another spot.
    Recent results and their last screenshots are kept for up to 20 tasks until Noteling quits. Ordinary conversational
-   answers stay in chat. One desktop task runs at a time. Chat waits for its current request to finish; Morning Files can
-   hand off several actions to a saved queue, which runs them one at a time.
+   answers stay in chat. One desktop task runs at a time. Chat waits for its current request to finish.
    Background `read_screen` and `look_at_screen` read only the selected target window and fail if no target is available.
    When something needs the real mouse (a drag, a context menu, a ⌘ shortcut) it asks on the task screen first:
    to use your screen, mouse and keyboard, and **Go ahead** begins the desktop handoff with a shimmer border. Pause
@@ -196,94 +191,26 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    Headless: `--record-synthetic <dir>` (a fake recording from the current screen) and
    `--summarize-recording <dir> ["purpose"] [--tools-root <dir>] [--keep] [--claude-cli]` (prints the draft JSON; keeps into a temp folder by default).
 
-10. **Morning Files**: opened from the menu bar's pencil icon, or at its Jobs page from the Open Jobs tab chat offers after it ran or turned on a job (a small folder in the upper-left opens it
-   too, when Settings puts one on the screen), it shows categorized folders and a spread of files. Choose any file
-   to see its three parts: what it is, what it means for you, and one to three options, best first (hover an option for its
-   exact instruction). **Show original** shows what Noteling read. **Ignore** files it away, **I'll do it**
-   keeps it yours, and handing it to Noteling saves the action before the file flies to the background task screen.
-   **Select** on a folder (or ⌘-click a file) chooses several files to decide together: the bar offers what changes the
-   files the folder shows (Resolve, File away, I'll do it, Back to review, or Reopen), one save does them all
-   (`MorningStore.decide(cardIDs:_:)`), and one Undo puts them back (`restoreDecisions`). A file with work under way stays
-   as it is. A save that decides more than one card isn't read by the attention test as a judgment of each
-   (`AttentionImplicit.decisions`). On the home, folders with nothing under the decision shown fold into **Quiet folders**.
-   Drag the small folder itself or a window's header to move it; the morning windows and background task list remember
-   their positions. Add your own folders and files, and configure roles, relationships and identities through
-   **… → Who's Who**. The retrieval menu
-   brings back filed items and completed results. Everything is stored privately under `~/.noteling/morning/`.
-   **Try sample files** adds explicitly fictional examples; these can only prepare local drafts and analysis.
-   Preparation uses your configured Claude connection with no tools. **Work in an app** uses existing desktop control
-   and approvals. Queue entries survive restarts; interrupted work returns for review rather than replaying actions.
-   **Jobs** (see below) lists everything Noteling runs: the saved sources, which read a calendar, inbox or web view
-   (reading jobs), and the team's jobs kept as folders (see Team jobs). Watch Me never makes a job: what it keeps is a
-   tool (the steps shown, in a pack in the tools folder) for the pen and chat to follow. Reading jobs come from the
-   chat's `create_source` through a listed way to read, such as the mail pack; ones taught with Watch Me in earlier
-   versions keep running. A calendar job reads today with **Run now**; for another
-   day, choose **Read another day…** on its page, pick a day and hours, and **Read calendar**.
-   Each reading job's page has **Edit** (or **Review**) and **Remove…**. Edit its description, location, account and
-   reading rules; changes update the same source. Remove excludes it from future batches while keeping past run results.
-   **Removed jobs → Restore** in Jobs (or **Undo** right after removing it) brings the saved setup back, including after a restart.
-   Noteling uses fresh observations to collect that date and compute meeting blocks, accepted conflicts, and open time
-   within your selected briefing window. Partial reads show their limitations and do not assert free time.
-   **Run all reading jobs** reads registered sources one at a time: calendars for today (09:00–17:00 briefing window in each
-   source’s time zone), and mail/web sources within their saved scope. It collects up to 25 visible mail/web observations,
-   retaining evidence and coverage gaps. New-item inbox discovery uses visible rows and snippets. Separately,
-   unresolved cards can request bounded rechecks of their tracked conversations, including opening a matching thread.
-   A job can instead read through a pack script that its SKILL.md lists under `sources:`, with no window, model or
-   computer control. The bundled `imap-mail` pack's `today` reads everything that arrived in the inbox over IMAP,
-   read-only, back to the last read a card step sorted (24 hours the first time, at most 7 days, the newest 200
-   messages). Chat creates such a job with `create_source`; the job's reading rules are applied by the card step.
-   Results show which reads completed, were partial, or failed. Stop cancels the remaining reads
-   and keeps collections already saved. **Run all reading jobs** opens the **Latest run** screen, which follows the run and
-   names any job that didn't finish at the top. The card controls (**Make cards from saved results**, **View cards**)
-   are on the run screens; the main screen shows card work only while it runs or when it fails.
-   Clicking a completed row opens that run’s findings; a run's **Open job** opens the job's page, for its setup and rules.
-   **Run history** keeps earlier results available after a restart. Findings appear before expandable collection
-   details, and partial or failed reads remain clearly labeled.
-   Each run is stored under `~/.noteling/runs/<readable-timestamp>/`, with `run.json`, per-source JSON
-   exports, and a readable `report.md`. **Show run folder** opens the run folder. Existing saved collections
-   are preserved as recovered results; future runs retain every collection instead of replacing previous ones.
-   This first calendar collection supports exposed Accessibility navigation controls; unsupported controls are reported.
-   Calendar collection does not create or move meetings. Reads are started explicitly; scheduled collection, preference
-   history and relationship-based recommendations are not connected yet. Apart from script jobs, sources are read from the screen.
-
-   **Jobs** (`MorningNavigation.Route.jobs`, `Attend/Jobs/`) is one page for both kinds, opened from the Jobs box on
-   the panel's home ("5 jobs · 2 need attention · last run 6:31 PM"), the panel's **⋯** menu, the menu bar's **Jobs…**,
-   and the chat's **Open Jobs** tab. Storage and runners stay each kind's own: `CalendarStore` and
-   `CalendarCollectionRunner` for reading jobs, `FolderJobStore` and `FolderJobRunner` for jobs kept as folders.
-   - The list (`JobsPage`) has every reading job, calendars included, and every job kept as a folder, the person's own
-     and the team's. Jobs that need attention come first (a failed, partial or skipped read; one that needs review,
-     can't run yet or needs something in Settings, such as a pack's secret or mouse and keyboard control for a job that
-     reads from the screen; a job whose last run failed), then the person's own, then the team's, each by name. A row
-     says what the job does ("Reads mail", "Prices on the GM items · from your team's tools"), how often it runs ("Every
-     15 minutes", "When you run it", with a job's start or end), how its last run went ("Last run 6:31 PM · 12 new · 3
-     cards", "2 of 8 items need a look", "nothing saved") and how it stands (Running, Waiting to run, Off, Needs
-     Settings, Needs review, Can't run yet, Failed), with what's wrong in red. Its buttons: **Run now** (a reading job's
-     read, a calendar's today; a job's `job.py`), **Stop** while a reading job reads, **Open Settings** when it needs
-     something there, and the on/off switch for a team job. Jobs before their start or past their end wait under one
-     line, **Upcoming (1) · Ended (2) · Show**. The page also has **Run all reading jobs** with **Stop all**, **Latest
-     run** (saying when a job didn't finish) and **Run history**; folders in the jobs folders that can't be a job, and
-     why, and a `watches/` folder left behind (watches no longer run); and **Removed jobs** to restore.
-   - Every job's page starts with the same header (`JobHeader`): its name, what it does and how often, its last run,
-     how it stands, its buttons, and **Card**, which opens the card it made: a job's preview card from
-     `cards/inbox/job-…/job.json`, resolved or not, and the open cards its `job.py` wrote, or a reading job's open cards (a menu when there are several, those
-     its latest run made or saw first). A reading job's page (`SourceJobPage`, `.sourceJob(id)`) then has its meaning,
-     account and reading rules, **Edit**/**Review**, **Remove…**, **Read another day…** for a calendar, **Run history**,
-     and its latest run's findings, with **Open the run**, "Became a card" and **Matters to me**. A job kept as a folder's
-     page is `.folderJob(id)` (see Team jobs).
-   - Back from a job's page goes to Jobs, and from Jobs to the home; a card or a run opened from a job's page comes back
-     to it. The older Manage sources (`.sources`) route still works, but nothing the person sees leads there.
-   Saved observations generate continuing cards. Repeated scans match cards using the source and an extracted item key;
-   newer evidence can update or resolve a card, while missing items remain open. Human edits and handled decisions persist.
-   The card step judges each item once: only items that are new or changed since its last judgment go to the model.
-   While a job reads mail through a script, the one-week attention test adds thumbs and **Let me explain…** to its
-   cards, a daily line that opens the day's rest (with **Matters to me**), and **This week**. Its append-only
-   ledger stays in `~/.noteling/attention/` and is never sent to a model. Thumbs, explanations and **Matters to me**
-   (also offered on each run result that didn't become a card) become lessons in `morning/`, listed on **What you've
-   taught**; the card step sends each job's 40 newest lessons beside its rules.
-   **Discuss or adjust** opens a focused card conversation; an explicit handoff queues its action for the shared executor.
-   Cards, decisions and accepted work live in a local SQLite database, separate from source rules and run evidence.
-   See [persistent cards](../architecture/persistent-cards.md) for identity and recheck limitations.
-   See [calendar collection](../architecture/calendar-ingestion.md) and [Morning Files](../architecture/morning-files.md).
+10. **Jobs** (`JobsWindowController`, `JobsNavigation`, `JobsWindowView`, `Attend/Jobs/`): one floating window, opened
+   from the menu bar's **Jobs…**, the chat's **Open Jobs** tab after it ran or turned on a job, a job's notification, or a
+   sticker (on its matter's page). It takes the focus only when clicked into, remembers where it was dragged
+   (`FloatingWindowPlacement("jobsWindow")`), and shows one screen at a time: the list (`JobsPage`), a job's page
+   (`FolderJobPage`) and a matter's page (`MatterPage`; Back goes to Jobs).
+   - The list has every job kept as a folder, the person's own and the team's. Jobs that need attention come first (one
+     that needs a secret in Settings, one whose last run failed), then the person's own, then the team's, each by name. A
+     row says what the job does ("Prices on the GM items · from your team's tools"), how often it runs ("Every 15
+     minutes", with a job's start or end), how its last run went ("Checked the event pages: read 2,113, found 3 · 9:02 AM
+     · next 10:02 AM", or "failed") and how it stands (Running, Waiting to run, Off, Needs Settings, Failed), with what's
+     wrong in red. Its buttons: **Run now**, **Open Settings** when it needs something there, and the on/off switch for a
+     team job. Jobs before their start or past their end wait under one line, **Upcoming (1) · Ended (2) · Show**. The
+     page also lists folders in the jobs folders that can't be a job, and why, and a `watches/` folder left behind
+     (watches no longer run).
+   - A job's page starts with the same header (`JobHeader`): its name, what it does and how often, its last run, how it
+     stands and its buttons; then what it is for, what's wrong, its input files, and its latest result: the findings as a
+     table and whatever else the run left, each file with Open, Save as… and Show in Finder (`JobFileActions`).
+   - What earlier versions kept for the Morning folder, the cards inbox, the attention test and the reading jobs is
+     deleted at launch (`RetiredMorning`: `cards/`, `attention/`, `calendar/`, `runs/`); `morning/` itself is left, with
+     the Who's Who people kept there, for the phase that gives the minister the person's side.
 
 Noteling appears in the Dock with its app icon. Click it to reopen chat, use **Quit Noteling** or ⌘Q to exit,
 or use macOS **Force Quit** (⌥⌘Esc) if it becomes unresponsive. Closing a window keeps Noteling running.
@@ -302,7 +229,7 @@ Then, once:
 3. Menu bar → **Watch Me**, do a short task in the app you want it to learn, then **Stop Watching** (or ⌃⌥Space). Add a short description, then add optional context or choose **Skip context**. Review the draft and choose **Keep it**. It becomes a tool pack under `~/.noteling/tools/`.
 
 No packs are needed to start: watching creates them. Chat, recording write-ups, and delegated actions send their selected
-context to your configured Claude connection. Creating and editing Morning Files or Who’s Who entries stays local.
+context to your configured Claude connection.
 
 ## Requirements
 - macOS 14+, Xcode Command Line Tools (Swift 5.9+). No Xcode needed.
@@ -320,7 +247,7 @@ context to your configured Claude connection. Creating and editing Morning Files
 .build/release/Familiar --render-card /tmp/card [--states]   # the pad with a pick, a note sticker and answers, as PNGs
 .build/release/Familiar --render-stickers /tmp/stickers       # the run stickers beside the bubble: one, three and five jobs' findings, as PNGs
 .build/release/Familiar --render-background-task /tmp/tasks # task screen states, fabricated content, no model or desktop capture
-.build/release/Familiar --render-morning /tmp/morning      # native folder, files, people and queue with fictional local data
+.build/release/Familiar --render-jobs /tmp/jobs            # the Jobs window: the list, a job's page and a matter's page, from fictional files
 .build/release/Familiar --render-pen /tmp/pen               # the pen overlay over a fake page: stickers and the note editor, as a PNG
 build/Noteling.app/Contents/MacOS/Noteling --ask "question" [url] [--shot] [--control] [--claude-cli]   # headless Claude call, real tool loop
 build/Noteling.app/Contents/MacOS/Noteling --background-click com.apple.calculator --label "7" [--title part] [--say word] [--trust]   # one SkyLight coordinate click in that app's window while another app stays in front; PASS/FAIL per promise; --say prints what the window then says, --trust skips the self-test
@@ -415,8 +342,6 @@ Behind a company proxy, scripts and uv also get the Mac's network settings (`Scr
 internet address; `SSL_CERT_FILE` (and `REQUESTS_CA_BUNDLE`) pointing at `~/.noteling/run/certificates.pem`, the
 certificates this Mac trusts for everyone, including one a company installs for its proxy; and `UV_NATIVE_TLS=1`.
 The config's `env` map wins over all of them, for example to send internal hosts direct with `NO_PROXY`.
-Every script also gets `NOTELING_CARDS_DIR`, a folder of its own in the cards inbox, where writing a file makes a card in
-Morning Files (see The cards inbox).
 Docs under the stuff limit are pasted into the prompt; larger ones are listed and read on demand.
 
 ### The Waxwing pack (current target)
@@ -506,8 +431,8 @@ pack) is read at launch and after each new copy (`Sources/Familiar/Shared/Config
   someone who chose the local Claude CLI. That gateway gets only the team's headers: not the person's own headers, and
   not their Anthropic key unless a header asks for it (`$ANTHROPIC_API_KEY`). The team's values are never written into
   config.json (`Config.save` refuses a configuration in effect), so unlinking, or removing the file, brings everyone's
-  own values back. Every Claude client is built from the configuration in effect: chat, Watch Me write-ups, source
-  reads, cards and queued tasks, and the `--ask` and `--summarize-recording` commands. When an update changes the file,
+  own values back. Every Claude client is built from the configuration in effect: chat, Watch Me write-ups, the
+  minister's turns and background tasks, and the `--ask` and `--summarize-recording` commands. When an update changes the file,
   chat reconnects the way saving Settings does, keeping the conversation.
 - **Secrets.** A header value written exactly `$NAME` is the secret of that name, read when the client is built (the
   Keychain in signed builds, `secrets.json` in dev builds). `$$` at the start stands for a literal `$`. Names are letters,
@@ -542,11 +467,11 @@ in [Keeping a team's tools](../team/README.md); here is how the app keeps it.
   nothing inside it is looked at for another. A job's id is made from whose it is and its path, so it is the same on
   every Mac. The person's own are on while their folder is there; the team's run only once turned on (`job-results/on.json`).
 - **Running them** (`FolderJobRunner`): every 30 seconds, and just after the Mac wakes, the due ones run, one at a time,
-  through the same `ScriptRunner` as tool-pack scripts, with `NOTELING_INPUT`, a fresh `NOTELING_OUTPUT`, the job's own
-  `NOTELING_CARDS_DIR` and the tools folders on `PYTHONPATH`. A run that works swaps its output into
+  through the same `ScriptRunner` as tool-pack scripts, with `NOTELING_INPUT`, a fresh `NOTELING_OUTPUT` and the tools
+  folders on `PYTHONPATH`. A run that works swaps its output into
   `job-results/<own|team>/<path>/output/` in one step; one that fails keeps the last output and says why on the row.
-- **Showing them** (`FolderJobPages`): a job's page and its card show the output's `preview/` files as they are
-  (csv/tsv as a table, txt as text, capped) and every output file with Open, Save as… and Show in Finder (`FileRow`).
+- **Showing them** (`FolderJobPages`): a job's page shows its findings as a table and the output's `preview/` files as
+  they are (csv/tsv as a table, txt as text, capped), and every output file with Open, Save as… and Show in Finder (`FileRow`).
 - **Stickers** (`StickersView`, `StickersPanel`, fed from `Matters`): the open matters with a sticker the minister wrote,
   urgent ones first, three at most, "and N more" opening Jobs; a click opens the matter's page; the × puts one away
   (`Matters.putAway`). The app delegate decides when the panel is on the screen (`StickersPanel.shows`) and places it
@@ -554,115 +479,17 @@ in [Keeping a team's tools](../team/README.md); here is how the app keeps it.
   the stack to a spot of its own (`home`, kept in the config as `stickersX`/`stickersY`), where the bubble's state no
   longer matters, until Put back beside Noteling. The right-click menu is an AppKit menu popped up by `FirstClickHost`,
   since the panel never becomes key: Open, Put away, Bigger/Smaller (`StickersLook.steps`, kept as `stickerScale`), Put
-  back beside Noteling, Hide stickers (for this run; the menu bar's Show Stickers brings them back). The Morning folder
-  icon is off the screen unless `morningFolderOnScreen` is on.
-- **Cards and notifications** (`FolderJobCards`, `JobNotifier`): while the latest output has a preview, the job has one
-  card, `cards/inbox/job-<own|team>-<path>/job.json`, whose one part is the preview's digest; a change of digest
-  reopens a card the person resolved and posts one notification. Cards the job's script writes go to
-  `cards/inbox/jobcards-…/` and share the job's folder in Morning Files. While a job is off, and outside its start and
-  end, it has neither: its preview card's file is deleted, and the inbox holds its script's folder (`CardInbox.held`),
-  leaving the files, so those cards come back when it runs again.
+  back beside Noteling, Hide stickers (for this run; the menu bar's Show Stickers brings them back).
+- **Notifications** (`JobNotifier`): an urgent sticker is also a notification, once; clicking it opens the matter's page
+  in Jobs. Turning a team job on asks macOS for permission.
 - **Finding and thanking** (`JobsSearchBox`, `FolderJobWords.thanks`): past `Jobs.searchFrom` team jobs, Jobs has a
   search over their names and paths, kept in `job-results/search.json`; jobs that are on always show. A job.json's
-  `contributor` shows as "Shared by …" and as a thank-you, picked per run from a fixed set, on its card and its Run now
+  `contributor` shows as "Shared by …" and as a thank-you, picked per run from a fixed set, on its page and its Run now
   receipt, never in a notification.
 - **In chat** (`FolderJobConversation`): `list_jobs`, `run_job_now`, `turn_on_job`, `turn_off_job` and
   `read_job_result`. The chat never makes or changes a job.
-- **Watches are gone.** They no longer run, and nothing reads `watches/` or `team-watches/`. At launch
-  `RetiredWatchCards` deletes the card files watches wrote into the inbox, so their cards resolve, and Jobs says when a
-  `watches/` folder still holds one (`Jobs.retiredWatches`).
-
-### The cards inbox (`cards/inbox/`)
-A script makes a card in Morning Files by writing a file, with no model involved: one JSON file per card,
-`~/.noteling/cards/inbox/<source>/<id>.json`.
-```json
-{
-  "title": "Refund ready · Order 123",
-  "body": "The price dropped by $10 after you paid.",
-  "url": "https://shop.example.com/order/123",
-  "severity": "high",
-  "actions": [
-    {"label": "Open order", "url": "https://shop.example.com/order/123"},
-    {"label": "Worth it?", "ask": "Is this refund worth claiming?"}
-  ],
-  "details": {"paid": 22.0, "now": 12.0},
-  "files": ["refunds.csv", "receipt.pdf"]
-}
-```
-- Only `title` is required (up to 200 characters). `body` is shown in full (up to 8,000), `url` must be an http or https
-  address, `severity` is `high`, `normal` (the default) or `low`, and `details`, text or any JSON (up to 8,000
-  characters), shows under **Show original** and goes with the card when it is discussed. Keys it doesn't know are
-  ignored.
-- `actions` (up to six) only open a web page (`url`) or ask Noteling about the card in chat (`ask`); anything else is
-  dropped. A card from the inbox never runs anything: `MorningStore.enqueue` refuses it, a card discussion can't change
-  its options, and it has no Edit. A card with a `url` and no button that opens a page gets **Open page**.
-- `parts` (up to 1,000 strings) says what the matter is made of, such as which items are wrong. A card the person
-  resolved stays resolved while its file stays, however it changes, until it names a part it didn't have when they
-  resolved it; then it opens again. Without `parts`, nothing a file says while it stays opens it.
-- `files` (up to 10) names files the script wrote beside the card file, in the same folder, such as the full results of
-  a run for Excel: plain names only, never a path, so nothing outside that folder is ever taken. When Noteling reads a
-  new version of the card file, it copies them into its own folder, `cards/files/<card id>/`, in place of the card's
-  earlier ones, all at once: a card keeps only its latest files, and the script may change or delete its own afterwards
-  without breaking the card. The same card file read again (at the next launch, say) keeps them as they are, so write
-  the files first, then the card file, and write the card file again when they change. Each may be up to 500 MB, and
-  only tables, text, PDFs and pictures are taken: csv, tsv, txt, json, md, log, xlsx, pdf, png, jpg, jpeg, gif and heic;
-  never anything that can run, such as an app, a command, a script, an installer, a disk image, a web page, an SVG or an
-  archive. A listed file that is missing, too big, of another kind, a link, hidden or past the tenth isn't attached,
-  and the card says why, one plain note each: "problems.csv wasn't attached: it's 620 MB, and the most is 500 MB."
-  Nothing else changes: the card is still a card, with the files that could be attached. The copies keep their
-  modification times and can only be read, so a change made in Excel is saved somewhere else rather than lost at the
-  next run. The card stores each file's name, size and modification time; its **Files** section lists them with their
-  size, and **Open** (in the file's default app), **Save as…** and **Show in Finder**, and its tile on the folder page
-  shows a paperclip and how many.
-- **Identity** is `<source>/<id>`: the folder, and the file's name without `.json`. Writing the file again changes the
-  same card's title, body, page, severity, buttons, details and files, and nothing the person did: their decision, their
-  context, the folder's name.
-- **Deleting the file** means the matter went away. A card nobody had decided anything about is resolved; a card the
-  person took keeps their decision and says "Its script no longer reports this". Either way it keeps its files. A file
-  that comes back is the matter again: a resolved card opens again, whoever resolved it, and a card the person took
-  keeps their decision.
-- A file that can't be read (not JSON, no title, bigger than 64 KB) is never deleted and never resolves its card: the log
-  says why once, and its source's folder in Morning Files lists it until it is fixed. A source shows up to 500 cards and
-  up to 100 sources are read; files past that are listed, and their cards stay as they are.
-- Each source is a folder in Morning Files, named after its job for a job's cards and otherwise after the folder
-  (`pack-shop`). A folder the person renames keeps its name.
-- Noteling looks at the inbox at launch, at the jobs' 30-second tick, after each job's run, and right after a job's card
-  changes. It
-  reads only files that changed, saves only when a card changed, and never writes or deletes a script's files, including
-  those a card carries and those it doesn't list.
-- The card step, its reconciliation and the attention test never touch or count these cards: they only consider the
-  cards they track, and the count of cards to review that the attention test records leaves them out.
-
-**`NOTELING_CARDS_DIR`.** Every script gets a folder of its own in the inbox, made when needed and readable only by the
-person: a pack's scripts `cards/inbox/pack-<pack folder>/`, a job's `job.py` `cards/inbox/jobcards-<own|team>-<its
-path, / as ->/`. The name keeps only letters, digits, `.`, `_` and `-`, so it is always one
-folder directly in the inbox and never another source's. Write the whole file at once, so Noteling never reads half of
-it, and delete it when the matter is over:
-```python
-import json, os
-card = {"title": "Refund ready · Order 123", "body": "The price dropped by $10 after you paid.", "url": "https://shop.example.com/order/123"}
-path = os.path.join(os.environ["NOTELING_CARDS_DIR"], "order-123.json")   # this script's own folder in the inbox
-with open(path + ".tmp", "w") as f: json.dump(card, f)
-os.replace(path + ".tmp", path)   # the whole file at once, so Noteling never reads half of it
-```
-A card that carries a file names it under `files`. Write the file the same way, before the card file:
-```python
-import csv, json, os
-folder = os.environ["NOTELING_CARDS_DIR"]
-with open(os.path.join(folder, "refunds.csv.tmp"), "w", newline="", encoding="utf-8-sig") as f:   # utf-8-sig: Excel reads every language
-    csv.writer(f).writerows([["order", "refund"], ["123", "10.00"], ["124", "4.50"]])
-os.replace(os.path.join(folder, "refunds.csv.tmp"), os.path.join(folder, "refunds.csv"))   # the file first
-with open(os.path.join(folder, "refunds.json.tmp"), "w") as f: json.dump({"title": "2 refunds ready", "files": ["refunds.csv"]}, f)
-os.replace(os.path.join(folder, "refunds.json.tmp"), os.path.join(folder, "refunds.json"))   # then the card that lists it
-```
-
-**Cards from jobs.** A job kept as a folder has one card of Noteling's while its latest output has a preview, and its
-`job.py` may write more of its own; see Team jobs. Watches wrote cards here too; they no longer run, and at launch
-Noteling deletes what they wrote (`job.json`, `problems.csv`, `all.csv` and their numbered parts, `item-….json`) from
-`watch-…` folders, so those cards resolve, leaving anything else there.
-
-The code is in `Sources/Familiar/Attend/Morning/CardInbox.swift` (with `CardFiles.swift` for the files a card carries
-and `CardFilesView.swift` for its Files section) and `Attend/FolderJobs/FolderJobCards.swift` for jobs' cards.
+- **Watches are gone.** They no longer run, and nothing reads `watches/` or `team-watches/`; Jobs says when a
+  `watches/` folder still holds one.
 
 ## Config (`~/.noteling/config.json`)
 | key | default | meaning |
@@ -681,7 +508,6 @@ and `CardFilesView.swift` for its Files section) and `Attend/FolderJobs/FolderJo
 | screenshotMode | auto | `auto`: attach a screenshot when the question sounds screen-related, otherwise the model may call `look_at_screen`; `always`; `never` |
 | screenshotReuseSeconds | 0 | if > 0, quick follow-ups on the same screen reuse the last screenshot within this window |
 | hideFromScreenShare | false | true makes the bubble invisible in screenshots, screen shares and recordings |
-| morningFolderOnScreen | false | the little Morning folder on the screen (Settings → Show the Morning folder on the screen); off, Morning Files opens from the menu bar's pencil icon, and its Jobs page also from the Open Jobs tab chat offers after it runs or turns on a job. A new key: the old `showMorningFolder` was rewritten as true on every launch, so it is ignored |
 | toolsDir | "" | override tool packs folder |
 | docsStuffLimitChars | 24000 | how much doc text to paste before switching to read |
 | uvPath | "" | override the uv binary |
@@ -725,7 +551,7 @@ pre-approved, so the user clicks one prompt on first launch, once per install.
   - `Sources/Familiar/App`: `main`; `AppDelegate` (the launch sequence, the menus, the hotkey, Settings and a team's setup file) with one file per product, `AppDelegate+Ask`, `+Act` and `+Attend`, that wires it; `ExecutionTools`, the tools one request gets, from all three; and the headless/render commands.
   - `Sources/Familiar/Ask`: the pen and the chat. `Chat` (`Assistant`, the intents, the pad, the prompt), `Companion` (the bubble and its state, the mascot, the crane, the hint when the bubble hides), `Pen` (the wand overlay, the notes it leaves and their checks, the capture flash) and `Packs` (`ToolRegistry` with the match rules and page leads, `PageBriefs`, the pack context).
   - `Sources/Familiar/Act`: Teach me and Do it for me, in front of the person or in the background. `Control` (`ComputerController` and the background lane), `Tasks` (`TaskExecutor`, `DesktopExecutionService`, `NativeActivityGate`, the background task store and its panel), `ShowMe` (Teach me's tours) and `WatchLearn` (Watch Me's recordings, summaries and the draft window).
-  - `Sources/Familiar/Attend`: the jobs, what they find, and the stickers. `FolderJobs` (jobs kept as folders: their files, runner, store, cards, buttons and pages), `Jobs` (every job as one list, the Jobs page, a reading job's page, notifications), `Reading` (the reading jobs: calendar, mail and web profiles in `CalendarStore`, screen reads in `SourceCollectionTask`, script reads, the run archive in `SourceRunStore`, chat's job tools in `SourceConversation`, the Latest run and Run history screens; `CalendarCollectionRunner` runs the reads), `Stickers` (the stickers beside the note, fed from the matters), `Minister` (the memory log, one file a day; the matters, one folder each with the sticker and the notes; the minister's two turns, triage and compose, and their prompts and checks; a matter's page), and, until the minister replaces them ([the plan](../plans/attention-minister.md)), `Morning` (cards, Who's Who and queued work in `morning.sqlite`, the card step and its judgments, the cards inbox, the Morning Files screens and the render fixtures) and `Attention` (the one-week attention test).
+  - `Sources/Familiar/Attend`: the jobs, what they find, and the stickers. `FolderJobs` (jobs kept as folders: their files, runner, store, findings, buttons and pages), `Jobs` (every job as one list, the Jobs page, the Jobs window and its screens, notifications, the render fixtures), `Stickers` (the stickers beside the note, fed from the matters) and `Minister` (the memory log, one file a day; the matters, one folder each with the sticker and the notes; the minister's two turns, triage and compose, and their prompts and checks; a matter's page).
   - `Sources/Familiar/Shared`: what all three run on. `Configuration` (settings, paths, secrets, signing, logging, the team's settings, setup files, the model backend), `Harness` (the script runner and its network settings, the team's tools from GitHub, scripted secrets, the built-in reading tools), `Screen` (the context watcher, page reading, hit testing, screen capture), `Permissions` (permissions and the hotkey), `Settings` (the Settings window) and `Shell` (window placement, drag handles, the first-click host).
 - Cleanup goals and integration boundaries: [architecture plan](../architecture/next-phase-structure.md).
 - Python helpers in `Resources/py/`: `introspect.py` (ast-only schema extraction), `run_tool.py` (executes `run(**args)`), `claude_mcp.py` (private CLI tool bridge).

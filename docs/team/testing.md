@@ -13,7 +13,7 @@ Copy the job's folder into `jobs/` in Noteling's folder, `~/.noteling/jobs/`, ke
 ```
 
 It shows in Jobs within 30 seconds, already on (your own jobs can't be turned off: remove the folder to stop one), with
-**Run now**. Its output, card and notifications behave exactly as they will for everyone else. Your team's tools and your
+**Run now**. Its output, stickers and notifications behave exactly as they will for everyone else. Your team's tools and your
 own are on its Python path, as they will be.
 
 ## Try a pack before you push it
@@ -39,8 +39,8 @@ echo '{}' | NOTELING_CONTEXT='{"url": "https://orders.example.com/order/4417"}' 
 mkdir -p /tmp/out && echo '{}' | NOTELING_INPUT=jobs/sales/stuck-orders/input NOTELING_OUTPUT=/tmp/out \
   python3 /Applications/Noteling.app/Contents/Resources/py/run_tool.py jobs/sales/stuck-orders/job.py
 
-# A card's button: its function's name after the file, its card's args as the JSON:
-mkdir -p /tmp/cards && echo '{"order": "4417"}' | NOTELING_CARDS_DIR=/tmp/cards \
+# A finding's button: its function's name after the file, its args as the JSON:
+echo '{"order": "4417"}' | \
   python3 /Applications/Noteling.app/Contents/Resources/py/run_tool.py jobs/sales/stuck-orders/job.py nudge
 ```
 
@@ -56,7 +56,7 @@ To ask the pen about a page without the UI, run its brief and get the answer Cla
 ## Where to look when something's off
 
 - **Jobs**, for every job's last run and anything Noteling couldn't read.
-- **The log**: **Open Log** in the menu bar. Lines starting `jobs:`, `tools:` and `cards inbox:` say what ran, what failed
+- **The log**: **Open Log** in the menu bar. Lines starting `jobs:`, `tools:` and `minister:` say what ran, what failed
   and why.
 
 ## What each message means
@@ -85,24 +85,20 @@ To ask the pen about a page without the UI, run its brief and get the answer Cla
 | It failed without saying why. | It raised an exception with no message. Give your exceptions one. |
 | Its job.py isn't there any more. | An update removed it while it was waiting to run. |
 
-**On a card, after pressing one of its buttons that run your job's code:**
+**On a matter's page, after pressing a finding's button that runs your job's code:**
 
 | Message | What it means |
 |---|---|
-| `job.py has no function x() of its own.` | The card's `run` names a function `job.py` doesn't define, or one it only imported. |
-| An exception's first line, in red | The function raised it. The card stays as it was. |
+| `job.py has no function x() of its own.` | The action's `run` names a function `job.py` doesn't define, or one it only imported. |
+| An exception's first line, in red | The function raised it. The finding stays as it was. |
 | It took longer than 2 minutes, so it was stopped. | A button should do one thing quickly; leave long work to the job's run. |
 | Turn its job on in Jobs to use this button. | The person turned your team's job off. |
 | Its job hasn't started yet / has ended, so this button can't run. | It's outside the job's `starts` and `ends`. |
 | Needs `ORDERS_API_KEY` in Settings. | A secret the job `requires` isn't entered yet. |
-| Its job isn't here any more, so this button can't run. | The job's folder was removed or moved, so its cards have no job. |
+| Its job isn't here any more, so this button can't run. | The job's folder was removed or moved, so its findings have no job. |
 
-A button that doesn't show at all was left out of its card file: `run` must be a plain function name (not `run`, not
-`_…`), `args` one JSON object of up to 4 KB, and the card must come from a job's `NOTELING_CARDS_DIR`.
+A button that doesn't show at all was left out of its job.json's `actions`: `run` must be a plain function name (not
+`run`, not `_…`), and `args` one JSON object of up to 4 KB.
 
 **In Settings, under the token:** "Couldn't update. … Using the copy from …" means the last check failed (often an
 expired token, or no network), and the copy Noteling already has keeps working.
-
-**In a card folder:** "`x.json` can't be read: it needs a title." (or isn't valid JSON, or must be one JSON object) means a
-card file a script wrote is wrong; its card stays as it was. "… is bigger than 64 KB, so it wasn't read." means the same
-for a file that's too big.

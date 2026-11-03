@@ -241,7 +241,7 @@ struct FolderJobsTests {
         #expect(jobs.map(\.phase).sorted { "\($0)" < "\($1)" } == [.ended, .upcoming])
         #expect(Jobs.controls(try #require(jobs.first { $0.name == "Winter" }), canOpenSettings: true) == [.onOff])
         #expect(Jobs.controls(try #require(jobs.first { $0.name == "Autumn" }), canOpenSettings: true).isEmpty)
-        #expect(Jobs.summary(jobs, now: at) == Jobs.noneLive)
+        #expect(jobs.allSatisfy { !$0.isLive })
     }
 
     @Test func aPersonTurnsOnAsManyTeamJobsAsAreTheirsAndItIsKept() throws {
@@ -298,9 +298,8 @@ struct FolderJobsTests {
 extension Jobs.Input {
     /// The jobs kept as folders, as the pages see them.
     @MainActor
-    init(at now: Date, cards: [MorningCard] = [], panel: FolderJobsPanel? = nil) {
+    init(at now: Date, panel: FolderJobsPanel? = nil) {
         self.init()
-        self.cards = cards
         self.now = now
         if let panel {
             folderJobs = panel.store.jobs

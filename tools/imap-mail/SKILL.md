@@ -7,7 +7,7 @@ match: anywhere
 ---
 `imap-mail__today` lists what arrived in the inbox recently (the last 24 hours by default), newest first: sender, subject,
 time, whether it's read, a short preview, and for Gmail the tab it landed in (Primary, Promotions, Social, Updates,
-Forums) and Gmail's Important marker. It can also feed a saved job, so the morning pack reads mail without a browser.
+Forums) and Gmail's Important marker. It also feeds Noteling's Mail job, which reads mail without a browser.
 
 It needs two secrets in Noteling Settings (right-click the bubble → Settings…):
 - MAIL_ADDRESS: the email address.

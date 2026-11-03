@@ -52,16 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let watchDraftWindow = WatchDraftWindowController()
     var bubbleWasVisibleBeforeControl = false
 
-    // Attend: the jobs, the reading jobs, Morning Files (until the minister replaces it) and the stickers.
-    let morning = MorningStore()
-    let calendarSources = CalendarStore()
-    let attention = AttentionLedger(inBackground: true)
-    var calendarReader: CalendarCollectionRunner!
-    var morningPanel: MorningPanelController!
-    var morningTasks: MorningTaskRunner!
-    var cardGeneration: CardGenerationService!
+    // Attend: the jobs, what they find, the Jobs window and the stickers.
+    var jobsWindow: JobsWindowController!
     var folderJobs: FolderJobsFeature?
-    var cardInbox: CardInbox?
     var matters: Matters!
     var minister: Minister!
     var stickersPanel: StickersPanel?
@@ -69,7 +62,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     var watcherMenuItem: NSMenuItem!
     var hideMenuItem: NSMenuItem!
-    var morningFolderMenuItem: NSMenuItem!
     var stickersMenuItem: NSMenuItem!
     var screenPermItem: NSMenuItem!
     var axPermItem: NSMenuItem!
@@ -95,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupHotKey()
         setupWatcher()
         setupWand()
-        setupCardInbox()
+        setupAttendHousekeeping()
         setupRunStickers()
         requestPermissionsOnFirstRun()
         Task {
@@ -174,8 +166,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         assistant.notesHere = registry.notes(for: watcher.current)
         assistant.reconfigure(effectiveConfig)
         ScriptedSecrets.shared.warm(effectiveConfig)
-        morningTasks?.wake()
-        cardGeneration?.start()
         folderJobs?.toolsChanged()   // the team's jobs as the new copy has them, now rather than at the next tick
     }
 
@@ -197,12 +187,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let main = NSMenu()
         let appItem = NSMenuItem(); main.addItem(appItem)
         appItem.submenu = NSMenu()
-        let openMorning = NSMenuItem(title: "Morning Files…", action: #selector(menuShowMorning), keyEquivalent: "")
-        openMorning.target = self
-        appItem.submenu?.addItem(openMorning)
-        let openPeople = NSMenuItem(title: "Who’s Who…", action: #selector(menuShowPeople), keyEquivalent: "")
-        openPeople.target = self
-        appItem.submenu?.addItem(openPeople)
+        let openJobs = NSMenuItem(title: Self.jobsMenuTitle, action: #selector(menuShowJobs), keyEquivalent: "")
+        openJobs.target = self
+        appItem.submenu?.addItem(openJobs)
         let openTasks = NSMenuItem(title: "Background Tasks…", action: #selector(menuShowTasks), keyEquivalent: "")
         openTasks.target = self
         appItem.submenu?.addItem(openTasks)
@@ -237,10 +224,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
         menu.autoenablesItems = false
-        menu.addItem(NSMenuItem(title: "Morning Files…", action: #selector(menuShowMorning), keyEquivalent: ""))
-        morningFolderMenuItem = NSMenuItem(title: "Hide Morning Folder", action: #selector(toggleMorningFolder), keyEquivalent: "")
-        menu.addItem(morningFolderMenuItem)
-        menu.addItem(NSMenuItem(title: "Who’s Who…", action: #selector(menuShowPeople), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: Self.jobsMenuTitle, action: #selector(menuShowJobs), keyEquivalent: ""))
         stickersMenuItem = NSMenuItem(title: "Hide Stickers", action: #selector(toggleStickers), keyEquivalent: "")
         menu.addItem(stickersMenuItem)
@@ -287,7 +270,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             : "Stop Working in \(assistant.peek.appName)   \(HotKey.display(config.hotkey))"
         tasksMenuItem.isEnabled = desktop.tasks.hasTasks
         hideMenuItem.isEnabled = panel.isVisible || origami.isFlying
-        morningFolderMenuItem.title = morningPanel.launcherShown ? "Hide Morning Folder" : "Show Morning Folder"
         stickersMenuItem.title = Self.stickersMenuTitle(hidden: stickersPanel?.hidden == true, count: matters?.stickers.count ?? 0)
         stickersMenuItem.isEnabled = stickersPanel?.hidden == true || (matters?.stickers.count ?? 0) > 0
         origamiMenuItem.title = origami.isFlying ? "Land Noteling   Esc" : "Fold into a Crane"
@@ -342,9 +324,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: the app's life
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        cardGeneration?.stop()
-        calendarReader?.shutdown()
-        morningTasks?.shutdown()
         if control.active { control.stop(reason: "Noteling is quitting"); control.end() }   // withdraws an outstanding activation record
         return .terminateNow
     }
@@ -354,11 +333,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         MainThreadDiagnostics.shared.stop()
         assistant?.showMe?.stop()
         minister?.stop()
-        cardGeneration?.stop()
         origami.cancel()
-        calendarReader?.shutdown()
-        morningTasks?.shutdown()
-        morningPanel?.close()
+        jobsWindow?.close()
         watchDraftWindow.close()
         folderJobs?.stop()
         execution.cancel()
@@ -394,7 +370,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             MascotStyle.current = MascotStyle(rawValue: self.config.mascotStyle) ?? .innocent
             self.panel.sharingType = self.config.hideFromScreenShare ? .none : .readOnly
             self.taskPanel.updateSharing(self.config.hideFromScreenShare)
-            self.morningPanel.updateSharing(self.config.hideFromScreenShare)
+            self.jobsWindow.updateSharing(self.config.hideFromScreenShare)
             self.stickersPanel?.sharingType = self.config.hideFromScreenShare ? .none : .readOnly
             self.watchDraftWindow.updateSharing(self.config.hideFromScreenShare)
             self.control.maxLongEdge = self.config.maxImageLongEdge
@@ -402,10 +378,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.control.preciseClicks = self.config.backgroundDirectClicks
             self.control.asksFirst = self.config.backgroundAsksFirst
             self.wand.hideFromScreenShare = self.config.hideFromScreenShare
-            self.morningPanel.setLauncherShown(self.config.morningFolderOnScreen, notify: false)
             if self.config.notesShortcut { self.notesShortcut.start() } else { self.notesShortcut.stop() }
-            self.morningTasks.wake()
-            self.cardGeneration?.start()
             Log.info("settings saved (connection: \(self.effectiveConfig.connectionMode), ready: \(self.assistant.hasConnection), hotkey: \(self.config.hotkey))")
         }, onOpenTools: { [weak self] in self?.openTools() }, onReloadTools: { [weak self] in self?.reloadTools() })
     }
@@ -480,7 +453,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 + (jobs > 0 ? " Turn on the jobs that are yours in Jobs." : "")
             done.addButton(withTitle: jobs > 0 ? "Open Jobs" : "Done")
             if jobs > 0 { done.addButton(withTitle: "Later") }
-            if done.runModal() == .alertFirstButtonReturn, jobs > 0 { self.morningPanel.showJobs() }
+            if done.runModal() == .alertFirstButtonReturn, jobs > 0 { self.jobsWindow.showJobs() }
         }
     }
 

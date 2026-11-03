@@ -5,7 +5,7 @@
 _Noteling was called Familiar until version 0.4._
 
 Noteling is a small sticky note on your screen. Point at something and ask about it. Let your team's scripts check
-things for you, on your own Mac, as you. And find what needs you as cards in a little Morning folder, while everything
+things for you, on your own Mac, as you. And find what needs you as stickers beside the note, while everything
 else stays out of your way.
 
 [Download Noteling for Mac](https://github.com/noteling/noteling/releases/latest) · [Share feedback](https://github.com/noteling/noteling/issues)
@@ -37,15 +37,14 @@ You'll need a Mac with Apple silicon (M1 or later), macOS 14 Sonoma or later, an
 
 **Using Noteling**
 - [Getting started](docs/use/getting-started.md)
-- [The Morning folder](docs/use/morning-folder.md): cards, and deciding what to do with them
 - [Your team's jobs](docs/use/jobs.md): turning on yours, and reading what they found
-- [Your mail, as stickers](docs/use/reading-jobs.md): the Mail job, and the reading jobs from earlier versions
+- [Your mail, as stickers](docs/use/reading-jobs.md): the Mail job
 - [The pen and chat](docs/use/pen-and-chat.md)
 
 **Keeping a team's tools**
 - [Start here](docs/team/README.md), then [your first job](docs/team/first-job.md) from the
   [template repository](https://github.com/noteling/team-tools-template)
-- [Jobs](docs/team/jobs.md) · [Tool packs](docs/team/packs.md) · [Cards](docs/team/cards.md) ·
+- [Jobs](docs/team/jobs.md) · [Tool packs](docs/team/packs.md) ·
   [Setting up your team](docs/team/setup.md) · [Testing](docs/team/testing.md) · [Examples](docs/team/examples.md)
 
 **Working on Noteling itself**
@@ -54,9 +53,9 @@ You'll need a Mac with Apple silicon (M1 or later), macOS 14 Sonoma or later, an
 
 ## Your information, your control
 
-Your jobs, cards and run history are stored on your Mac, and Noteling sends nothing to its developer. AI features send
+Your jobs, what they found and Noteling's memory are stored on your Mac, and Noteling sends nothing to its developer. AI features send
 what a request needs to your configured Claude connection: depending on the request, screenshots, text from the window
-you're using, what Noteling reads from your sources, and the lessons you teach. Before you send a question, a line over
+you're using, and what your jobs found. Before you send a question, a line over
 the box says whether it will look at your screen. Mouse and keyboard control is off until you turn it on. The
 [privacy notice](PRIVACY.md) lists exactly what is stored, what is sent, and how to delete it.
 

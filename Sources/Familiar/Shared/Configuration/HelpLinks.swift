@@ -1,12 +1,10 @@
 import Foundation
 
 /// The guides the app points to, on GitHub, in one place: `docs/` in Noteling's repository, as on its main branch. Each
-/// is a page someone can read without the source: the "How…" links in Jobs, Settings and the Morning folder's menu.
+/// is a page someone can read without the source: the "How…" links in Jobs and Settings.
 enum HelpLinks {
     static let base = "https://github.com/noteling/noteling/blob/main/docs/"
 
-    /// Every guide, by reader: the Morning folder's Help.
-    static let home = page("README.md")
     /// Linking your team's tools, for Settings.
     static let linkTeamTools = page("use/getting-started.md#link-your-teams-tools")
     /// Turning on your team's jobs and reading what they found, for Jobs.

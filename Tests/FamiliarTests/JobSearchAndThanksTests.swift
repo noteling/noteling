@@ -15,7 +15,7 @@ struct JobSearchAndThanksTests {
     // MARK: finding them
 
     @Test func aSearchFindsTeamJobsByNameOrFolderAndNeverHidesOnesThatAreOn() {
-        let mail = Job(id: UUID(), kind: .mail, name: "Morning mail", does: "", every: "", lastRun: "", status: .ready)
+        let mail = Job(id: UUID(), kind: .job, name: "Morning mail", does: "", every: "", lastRun: "", status: .ready)
         let gm = team("Holiday Oct · GM", path: "holiday/oct/gm")
         let fashion = team("Holiday Oct · Fashion", path: "holiday/oct/fashion")
         let kitchen = team("Kitchen", path: "home/kitchen", on: true)

@@ -55,7 +55,6 @@ To try a job before you push it, copy its folder into `~/.noteling/jobs/` on you
 - [Your first job, step by step](https://github.com/noteling/noteling/blob/main/docs/team/first-job.md)
 - [Jobs: everything a job can do](https://github.com/noteling/noteling/blob/main/docs/team/jobs.md)
 - [Tool packs](https://github.com/noteling/noteling/blob/main/docs/team/packs.md) ·
-  [Cards](https://github.com/noteling/noteling/blob/main/docs/team/cards.md) ·
   [Setting up your team](https://github.com/noteling/noteling/blob/main/docs/team/setup.md) ·
   [Testing and messages](https://github.com/noteling/noteling/blob/main/docs/team/testing.md) ·
   [Examples](https://github.com/noteling/noteling/blob/main/docs/team/examples.md)

@@ -9,7 +9,6 @@ what you were looking for:
 | A first working job | [Your first job](team/first-job.md), from the [template repository](https://github.com/noteling/team-tools-template) |
 | Jobs: `job.json`, `job.py`, the preview, start and end, contributors, moving a watch | [Jobs](team/jobs.md) |
 | `SKILL.md`, scripts, the brief and its glance | [Tool packs](team/packs.md) |
-| Cards from your scripts | [Cards](team/cards.md) |
 | Setup files, tokens, secrets, `noteling.json` | [Setting up your team](team/setup.md) |
 | Trying it before you push | [Testing, and what each message means](team/testing.md) |
 | Patterns to copy | [Examples](team/examples.md) |

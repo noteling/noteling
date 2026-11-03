@@ -23,13 +23,11 @@ your-team-tools/
   noteling.json             optional: your company's Claude gateway
 ```
 
-- **Jobs** check something on a schedule, such as prices, stuck orders or pages that should be up. A job leaves files:
-  what's in its `preview/` shows on screen and puts a card in front of the people who turned it on; everything else is
-  there to download. [Jobs](jobs.md) has it all.
+- **Jobs** check something on a schedule, such as prices, stuck orders or pages that should be up. A job reports what it
+  found as rows; Noteling's minister decides which of them deserve a sticker in front of the people who turned it on,
+  and everything the job left is there to download. [Jobs](jobs.md) has it all.
 - **Tool packs** help on your team's apps and pages. When someone points the pen at an order page, the pack's brief has
   already looked it up, and its docs tell Noteling how your systems work. [Tool packs](packs.md).
-- **Cards** are how anything you write reaches a person's attention. A job gets one for free; any script can write more.
-  [Cards](cards.md).
 
 ## How a person gets it
 
@@ -51,6 +49,6 @@ double-click it, and they're linked. Then each person turns on the jobs that are
 ## Where to go next
 
 1. [Your first job](first-job.md), in ten minutes, from the [template repository](https://github.com/noteling/team-tools-template).
-2. [Jobs](jobs.md), then [Cards](cards.md) and [Tool packs](packs.md) as you need them.
+2. [Jobs](jobs.md), then [Tool packs](packs.md) as you need them.
 3. [Testing, and what each message means](testing.md), before you push.
 4. [Examples](examples.md) to copy.

@@ -58,15 +58,18 @@ def run():
     return f"{len(problems)} of {len(rows)} prices need a look" if problems else f"All {len(rows)} prices are right"
 ```
 
-## Stuck items become cards
+## Stuck items become findings, with a button
 
-When each item deserves its own follow-up, write a card per item instead of a preview. The card's file name is the
-item's id, so the same item keeps the same card, and deleting the files of items that came unstuck resolves their cards.
-Each card also has a button that reminds the warehouse, and resolves the card once it has.
+When each item deserves its own follow-up, report one row per item. The order's id is the row's id, so the same order is
+the same finding next run, and an order that came unstuck is simply no longer reported: Noteling tells the minister it's
+gone, and its sticker comes down. A button on each finding reminds the warehouse, as the person who pressed it.
 
 ```json
-{"name": "Stuck orders", "about": "Orders waiting on us for more than a day, one card each.",
- "every_minutes": 30, "requires": ["ORDERS_API_KEY"], "contributor": "Yang"}
+{"name": "Stuck orders", "about": "Orders waiting on us for more than a day, one row each.",
+ "every_minutes": 30, "requires": ["ORDERS_API_KEY"], "contributor": "Yang",
+ "map": {"id": "order", "about": ["customer"], "where": "https://orders.example.com/order/{order}",
+         "since": "paid_at", "what": "status"},
+ "actions": [{"label": "Nudge the warehouse", "run": "nudge", "args": {"order": "{order}"}, "confirm": true}]}
 ```
 
 ```python
@@ -83,45 +86,37 @@ def run():
     with urllib.request.urlopen(request, timeout=30) as response:
         stuck = json.load(response)["orders"]
 
-    cards = os.environ["NOTELING_CARDS_DIR"]
-    current = set()
-    for order in stuck:
-        name = f"order-{order['id']}.json"
-        current.add(name)
-        card = {"title": f"Order {order['id']} has waited {order['waiting_hours'] // 24} days",
-                "body": f"{order['customer']}: {order['status']}.",
-                "url": f"https://orders.example.com/order/{order['id']}",
-                "severity": "high" if order["waiting_hours"] > 72 else "normal",
-                "actions": [{"label": "Nudge the warehouse", "run": "nudge", "args": {"order": order["id"]},
-                             "confirm": f"This sends the warehouse a reminder about order {order['id']}."},
-                            {"label": "Who can unblock it?", "ask": f"Who can unblock order {order['id']}?"}]}
-        with open(os.path.join(cards, name + ".tmp"), "w") as f:
-            json.dump(card, f)
-        os.replace(os.path.join(cards, name + ".tmp"), os.path.join(cards, name))
-    for name in os.listdir(cards):   # orders no longer stuck: their cards resolve
-        if name.startswith("order-") and name.endswith(".json") and name not in current:
-            os.remove(os.path.join(cards, name))
-
+    # The whole picture, for Excel: everything in the output folder is there to open or save.
     with open(os.path.join(os.environ["NOTELING_OUTPUT"], "stuck.csv"), "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["order", "customer", "status", "hours waiting"])
         writer.writerows([o["id"], o["customer"], o["status"], o["waiting_hours"]] for o in stuck)
-    return f"{len(stuck)} orders stuck" if stuck else "Nothing stuck"
+
+    # The findings: the rows, in the job's own columns. No prose, no state, nothing resolved by the job.
+    return {"source": "the orders API", "read": len(stuck),
+            "findings": [{"order": o["id"], "customer": o["customer"], "status": o["status"],
+                          "waiting_days": o["waiting_hours"] // 24, "paid_at": o["paid_at"]} for o in stuck]}
 
 
 def nudge(order):
-    """The card's button: reminds the warehouse about one order, as the person who pressed it."""
+    """The finding's button: reminds the warehouse about one order, as the person who pressed it."""
     order = int(order)
     request = urllib.request.Request(f"https://api.example.com/orders/{order}/nudge", data=b"{}", method="POST",
                                      headers={"Authorization": "Bearer " + os.environ["ORDERS_API_KEY"],
                                               "Content-Type": "application/json"})
     urllib.request.urlopen(request, timeout=30).close()
-    os.remove(os.path.join(os.environ["NOTELING_CARDS_DIR"], f"order-{order}.json"))
     return f"Reminded the warehouse about order {order}."
 ```
 
-Writing each card under a temporary name and then renaming it means Noteling never reads half a file. The next run
-writes the card again if the order is still stuck, and the person sees it come back.
+A `job.md` beside them tells the minister what a row means:
+
+```
+Each row is a paid order the warehouse hasn't packed. `waiting_days` counts from payment; our SLA is 48 hours.
+`customer` is the account. Normally this serves account managers and the warehouse lead.
+```
+
+The words `nudge()` returns show on the matter's page, which a sticker opens, and go to the log; an exception's first
+line shows in red. Noteling never presses a button by itself.
 
 ## A daily exceptions report
 

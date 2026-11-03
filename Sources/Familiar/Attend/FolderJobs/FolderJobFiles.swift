@@ -234,9 +234,8 @@ struct FolderJobFile: Identifiable, Equatable {
     var shown: Bool { isFindings || (inPreview && FolderJobFiles.previewKinds.contains(kind)) }
     /// Its name as a heading over it: its path under `preview/`, or its name.
     var heading: String { inPreview ? String(path.dropFirst(FolderJobFiles.preview.count + 1)) : path }
-    /// Of a kind that opens in its app without running anything: what a card may carry. Anything else is only saved or
-    /// shown in Finder.
-    var opens: Bool { CardFiles.kinds.contains(kind) }
+    /// Of a kind that opens in its app without running anything. Anything else is only saved or shown in Finder.
+    var opens: Bool { JobFileWords.kinds.contains(kind) }
 }
 
 /// A job's latest output: every file, the preview ones first.

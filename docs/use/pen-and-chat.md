@@ -19,7 +19,7 @@ The pen never takes your mouse or keyboard. It explains, and answers appear as t
 Double-click the note, or click Noteling in the Dock. Each question becomes a sticky note with its answer written on it,
 and follow-ups are tabs under it.
 
-Chat can also look after your jobs and cards: "what did my inbox check find?", "turn on gm", "run pages up now".
+Chat can also look after your jobs: "what did the Mail job find?", "turn on gm", "run pages up now".
 
 ## Explain, Teach me, or Do it for me
 

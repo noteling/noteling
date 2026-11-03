@@ -1,7 +1,7 @@
 # Getting started
 
 Noteling is a small sticky note that lives on your Mac's screen. Ask it about what you're looking at, let your team's
-tools check things for you, and find what needs you as cards in the little Morning folder.
+tools check things for you, and find what needs you as stickers beside the note.
 
 ## What you need
 
@@ -13,10 +13,9 @@ tools check things for you, and find what needs you as cards in the little Morni
 
 1. [Download Noteling](https://github.com/noteling/noteling/releases/latest): the `.dmg` file.
 2. Open it, and drag Noteling into **Applications**.
-3. Open Noteling. A small note appears on your desktop. The Morning folder, where your cards wait, isn't on the screen:
-   open it from the pencil icon in the menu bar (**Morning Files…**). When you ask chat to turn on or run a job, the
-   **Open Jobs** tab under its reply opens the Jobs page. If you'd rather have a small folder near the top-left of your
-   screen, turn on **Settings → Show the Morning folder on the screen**.
+3. Open Noteling. A small note appears on your desktop. What your jobs find comes as stickers beside it; **Jobs…** in the
+   pencil icon in the menu bar opens the Jobs window, with every job and what it found. When you ask chat to turn on or
+   run a job, the **Open Jobs** tab under its reply opens it too.
 
 ## Allow access
 
@@ -49,7 +48,7 @@ up; choose **Set up**. That's all. You can also open one from **Settings → Tea
 **By hand.** In **Settings → Team tools from GitHub**, paste the repository's address and the token they gave you, then
 choose **Save**. The line under the token says which version you have, or what went wrong.
 
-Either way, Noteling checks for changes when you open the Morning folder and every 10 minutes, so a fix reaches you
+Either way, Noteling checks for changes when you open Jobs and every 10 minutes, so a fix reaches you
 without you doing anything. **Update now** checks right away. You don't need git or Terminal.
 
 ## Notifications
@@ -60,14 +59,13 @@ something new. You can change this later in **System Settings → Notifications 
 ## Where things are
 
 - **Chat:** double-click the note, or click Noteling in the Dock.
-- **The Morning folder:** **Morning Files…** in the menu bar's pencil icon. **Jobs** is at the top of its home, in its
-  **⋯** menu, under the pencil icon as **Jobs…**, and under chat's reply as **Open Jobs** when it turns on or runs a
-  job. With **Settings → Show the Morning folder on the screen** on, a small folder near the top-left opens it too.
+- **Jobs:** **Jobs…** in the menu bar's pencil icon, or under chat's reply as **Open Jobs** when it turns on or runs a
+  job. A sticker opens its own page there.
+- **Stickers:** beside the note; drag one to move them, right-click one for more.
 - **Quit:** **Quit Noteling** in the menu bar's menu, or **⌘Q** while Noteling is in front.
 
 ## Read next
 
-- [The Morning folder](morning-folder.md)
 - [Your team's jobs](jobs.md)
 - [The pen and chat](pen-and-chat.md)
 - [What Noteling stores and sends](../../PRIVACY.md)

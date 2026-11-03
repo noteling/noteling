@@ -37,12 +37,9 @@ final class DesktopExecutionService {
                  title: String = "Background task",
                  systemExtra: String = "",
                  resolveFrontmost: Bool = true,
-                 policy: ExecutionTools.Policy = .standard,
                  facts: String? = nil,
                  additionalRoutes: [ToolRoute] = [],
                  recall: Recall? = nil,
-                 trackedItems: [TrackedSourceItem] = [],
-                 onObservation: (() -> Void)? = nil, onNavigation: (() -> Void)? = nil,
                  lookAtScreen: @escaping () async -> ToolResult,
                  readScreen: (() async -> ToolResult)? = nil) async throws -> PreparedExecution {
         guard owner == nil, tasks.activeTask == nil || tasks.activeTask?.id == id else {
@@ -52,17 +49,11 @@ final class DesktopExecutionService {
         owner = id
         requestTitle = title
         control.reset()
-        switch policy {
-        case .standard: control.pressRefusal = nil
-        case .calendarRead: control.pressRefusal = CalendarNavigationPolicy.refusal
-        case .sourceRead: control.pressRefusal = ReadingNavigationPolicy.refusal
-        case .sourceFollowUp: control.pressRefusal = { ReadingNavigationPolicy.followUpRefusal($0, trackedItems: trackedItems) }
-        }
+        control.pressRefusal = nil
         // Snapshot all request capabilities and guard labels before target resolution suspends.
         let router = try ExecutionTools.make(registry: registry, context: context, control: control,
-                                             background: background, policy: policy, facts: facts, additionalRoutes: additionalRoutes,
-                                             recall: recall, trackedItems: trackedItems, onObservation: onObservation, onNavigation: onNavigation,
-                                             lookAtScreen: lookAtScreen, readScreen: readScreen)
+                                             background: background, facts: facts, additionalRoutes: additionalRoutes,
+                                             recall: recall, lookAtScreen: lookAtScreen, readScreen: readScreen)
         control.lane = background ? .background : .foreground
         control.target = target
         control.declaredIrreversible = registry.select(for: context).active.flatMap(\.irreversible)
@@ -78,7 +69,7 @@ final class DesktopExecutionService {
             laneNote = "\n\nThis is a queued task. No window has been selected. Call target_window to list windows and explicitly choose the application/window required by the accepted task. Never infer the task target from the person's current foreground window. If the intended target is ambiguous, stop and explain what is missing."
         }
         // Smooth: the background lane finishes the job without stopping for a yes (Settings: ask first, off).
-        let smooth = background && !control.asksFirst && policy == .standard
+        let smooth = background && !control.asksFirst
         return PreparedExecution(system: Prompt.system + systemExtra + Prompt.control(smooth: smooth) + (background ? Prompt.background(smooth: smooth) + laneNote : ""),
                                  router: router, maxToolRounds: 40, shouldStop: { [weak control] in control?.stopped ?? true })
     }
