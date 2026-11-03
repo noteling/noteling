@@ -17,6 +17,10 @@ the box says how many it shows, such as "Showing 5 of 100". Jobs you've turned o
 
 You can also ask in chat: "turn on gm", "what jobs do I have?".
 
+**Mail**, under Your jobs, is Noteling's own: it reads your unread mail of the last two days, once `MAIL_ADDRESS` and
+`MAIL_APP_PASSWORD` are in Settings ([how](reading-jobs.md)). A job that needs a secret you haven't entered waits, and
+its row says so.
+
 ## Each job, at a glance
 
 A job's row says:

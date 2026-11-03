@@ -1,56 +1,40 @@
-# Jobs that read for you
+# Your mail, as stickers
 
-Besides your team's jobs, Noteling can read your mail for you and turn what matters into cards. You set this up
-yourself, by asking.
+Noteling comes with a **Mail** job, under Your jobs in Jobs. Once your mail is connected, it reads your inbox over IMAP
+every ten minutes, with no window and no mouse, and reports the messages that are still unread from the last two days.
+Noteling's minister reads what changed and puts a sticker beside the note only for the sure things: a message from a
+person who needs something from you, a time that is close. Newsletters and the promotions tab stay quiet in memory,
+where you can ask about them ("anything from Lena?"). A message you read is no longer a finding, so its sticker goes
+away by itself.
 
-## Your mail, without the screen
+It works with Gmail, iCloud, Yahoo, Fastmail and a few others, and it only reads: it never marks mail as read, moves it
+or deletes it.
 
-Noteling comes with a mail pack that reads your inbox over IMAP, with no window and no mouse. It works with Gmail,
-iCloud, Yahoo, Fastmail and a few others. It only reads: it never marks mail as read, moves it or deletes it.
+## Connect your mail
 
 1. Make an app password for your mail account. For Gmail, go to myaccount.google.com/apppasswords (2-Step Verification
-   must be on).
+   must be on). For iCloud, account.apple.com → App-Specific Passwords.
 2. In **Settings → Tool packs**, enter your address as `MAIL_ADDRESS` and the app password as `MAIL_APP_PASSWORD`, then
    **Save**. They're kept in your Mac's Keychain.
-3. In chat, ask for a job, such as "make a Morning mail job that reads my inbox and skips newsletters". Noteling makes it
-   and offers **Run now**.
 
-Each read picks up what arrived since the last one, up to the newest 200 messages.
+Until then the Mail job waits, and its row in Jobs says what it needs; once they're in, it runs within a minute. Its
+page shows every unread message it found as a row. Don't want it? **Show in Finder** on its page and delete its folder:
+it doesn't come back.
 
-Reading jobs you taught with Watch Me in an earlier version keep running, and show in Jobs with the rest. Watch Me
-now keeps what you show it as steps for the pen and chat to follow ([how](pen-and-chat.md#show-it-how-with-watch-me)),
-not as a job.
+## Reading jobs from earlier versions
 
-**Run all reading jobs** in Jobs reads every one of them in turn and opens **Latest run**, which shows what each found.
-**Run history** has the earlier runs. You can also change a job from chat: "change it to only unread email from today".
+Before the Mail job, Noteling read mail, calendars and pages through reading jobs you asked for in chat ("make a Morning
+mail job that reads my inbox and skips newsletters"), and turned what they found into cards in the Morning folder. Those
+jobs keep running and show in Jobs with the rest, until the cards go.
 
-## Cards that carry forward
-
-When a run ends, Noteling turns what it found into cards. Each looks at an item once, so reading the same mail again
-doesn't bring back something it already passed over, unless the item or your rules change. An item missing from a later
-read doesn't mean it's done: its card stays until you decide.
-
-## Teach it what matters to you
-
-What matters to you isn't what matters to someone else, so Noteling learns it from you.
-
-- On a job's page, **Latest run** or any run in **Run history**, each message that didn't become a card has **Matters to
-  me**. Tap it, and say why in a few words if you like.
-- Cards from the mail pack have two thumbs: was this worth your notice? Tap a thumb again for "very". **Let me explain…**
-  in the card's **⋯** menu says why.
-
-Each of these becomes a lesson. The next time Noteling sorts what a job read, it sends that job's 40 newest lessons with
-its rules, so a message like one you marked becomes a card, and one like a thumbs-down doesn't. **What you've taught**
-lists every lesson; **Forget** removes one.
-
-## Is it showing you the right things?
-
-For jobs that read through the mail pack, a line in the Morning folder sums up the latest read, such as "Read 42 →
-showed 5 · you said yes to 3 · 37 in the rest". Tap it to see **the rest**: everything that didn't become a card.
-**This week** checks the week against a bar set in advance: show at most 20% of what was read, and open the folder on
-5 of 7 days. This record stays on your Mac.
+- **Run all reading jobs** in Jobs reads every one of them in turn and opens **Latest run**, which shows what each found.
+  **Run history** has the earlier runs. You can also change a job from chat: "change it to only unread email from today".
+- When a run ends, Noteling turns what it found into cards. Each looks at an item once, so reading the same mail again
+  doesn't bring back something it already passed over, unless the item or your rules change.
+- On a job's page, each message that didn't become a card has **Matters to me**; cards have two thumbs. Each becomes a
+  lesson the next sort uses. **What you've taught** lists every lesson; **Forget** removes one.
 
 ## Read next
 
-- [The Morning folder](morning-folder.md)
+- [Jobs](jobs.md)
 - [The pen and chat](pen-and-chat.md)

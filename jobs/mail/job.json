@@ -1,0 +1,7 @@
+{
+  "name": "Mail",
+  "about": "Your unread mail of the last two days, read over IMAP, so the minister can tell you what needs you.",
+  "every_minutes": 10,
+  "requires": ["MAIL_ADDRESS", "MAIL_APP_PASSWORD"],
+  "map": {"id": "id", "about": ["from"], "where": "url", "since": "received", "what": "subject"}
+}

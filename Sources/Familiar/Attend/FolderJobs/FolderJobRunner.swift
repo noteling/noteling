@@ -108,11 +108,12 @@ final class FolderJobRunner: ObservableObject {
         current?.cancel()
     }
 
-    /// Takes in what changed in the jobs folders and starts the jobs that are due.
+    /// Takes in what changed in the jobs folders and starts the jobs that are due. A job that needs a secret the
+    /// person hasn't entered waits, and its row says so, rather than failing at every turn of its schedule.
     func tick() {
         for id in store.refresh() { cancel(id) }
         let time = now()
-        for job in store.jobs where job.isDue(at: time) { enqueue(job.id) }
+        for job in store.jobs where job.isDue(at: time) && missingSecrets(job).isEmpty { enqueue(job.id) }
         onTick?()
     }
 

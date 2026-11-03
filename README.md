@@ -16,7 +16,7 @@ else stays out of your way.
   On pages your team's tools know, their answer is there the moment you point.
 - **Your team's jobs, on your Mac.** Someone on your team writes a job once. It runs on the Mac of everyone who turned
   it on, as them, and only takes their attention when it finds something.
-- **Cards for what needs you.** What a job finds, and what matters in your mail, becomes a card in the Morning folder.
+- **Stickers for what needs you.** What a job finds, and what's unread in your mail, goes to Noteling's minister, which puts a sticker beside the note only for sure things and keeps the rest in memory for when you ask.
   Decide it, discuss it, or hand it to Noteling.
 - **Show it how.** Use **Watch Me** to show Noteling how you do something once. It keeps the steps, and follows them
   when you ask it to do that for you.
@@ -39,7 +39,7 @@ You'll need a Mac with Apple silicon (M1 or later), macOS 14 Sonoma or later, an
 - [Getting started](docs/use/getting-started.md)
 - [The Morning folder](docs/use/morning-folder.md): cards, and deciding what to do with them
 - [Your team's jobs](docs/use/jobs.md): turning on yours, and reading what they found
-- [Jobs that read for you](docs/use/reading-jobs.md): your mail, a calendar or a page, and teaching it what matters
+- [Your mail, as stickers](docs/use/reading-jobs.md): the Mail job, and the reading jobs from earlier versions
 - [The pen and chat](docs/use/pen-and-chat.md)
 
 **Keeping a team's tools**
@@ -62,8 +62,8 @@ the box says whether it will look at your screen. Mouse and keyboard control is 
 
 ## Still growing
 
-Noteling is an early version. Jobs that read your mail or a page start when you run them; scheduled morning reads aren't
-available yet. Card matching and AI interpretations can make mistakes, so review important findings and actions.
+Noteling is an early version. The minister's judgment and AI interpretations can make mistakes, so review important
+findings and actions before acting on them.
 [Feedback and bug reports](https://github.com/noteling/noteling/issues) help us decide what to improve next.
 
 ---
