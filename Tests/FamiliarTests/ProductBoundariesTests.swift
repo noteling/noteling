@@ -14,8 +14,7 @@ import Testing
 
     /// Types another product may name: the doors. All of them are Act's "do this": `TaskExecutor` and what a task is
     /// made of, `DesktopExecutionService`, what came of a task (`BackgroundTaskOutcome`), and Teach me's entry and
-    /// progress (`ShowMeConversation`, `TourProgress`). Chat uses them for its three verbs; the reading jobs and the
-    /// card queue use them to run.
+    /// progress (`ShowMeConversation`, `TourProgress`). Chat uses them for its three verbs.
     static let doors: Set<String> = [
         "TaskExecutor", "TaskRequest", "TaskPlan", "TaskExecution", "DesktopExecutionService", "BackgroundTaskOutcome",
         "ShowMeConversation", "TourProgress",

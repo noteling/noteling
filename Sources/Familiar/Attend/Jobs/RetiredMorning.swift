@@ -4,7 +4,7 @@ import Foundation
 /// the cards inbox and the files cards carried (`cards/`), the attention test (`attention/`), the reading jobs
 /// (`calendar/`) and their run archive, everything their scripts read (`runs/`). Deleted once, at launch; one that
 /// can't be deleted is said in the log and tried again next time. The Morning folder's own database (`morning/`), with
-/// the notes a person wrote there and the Who's Who that `PeopleStore` brings over, is left for them.
+/// the notes a person wrote there and the Who's Who they kept, is left for them.
 enum RetiredMorning {
     static let folders = ["cards", "attention", "calendar", "runs"]
 

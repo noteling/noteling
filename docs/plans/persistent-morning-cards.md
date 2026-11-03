@@ -1,9 +1,12 @@
 # Persistent morning cards
 
-Implemented in the maintained application. Best-effort item matching is accepted;
-the first version uses one continuing card per source item, with a permanent local
-card ID and an extracted item key. Matching facts are retained for later improvements.
-See [architecture](../architecture/persistent-cards.md).
+> Historical. The cards, their sources and the SQLite store this plan describes were removed in 0.8.1
+> (November 2026), along with the architecture note; what a job finds now goes to the minister
+> ([plan](attention-minister.md)).
+
+Implemented in September 2026. Best-effort item matching was accepted;
+the first version used one continuing card per source item, with a permanent local
+card ID and an extracted item key. Matching facts were retained for later improvements.
 
 1. **Implemented:** scan output includes repeatable item keys, identity evidence,
    and explicit observed state/evidence. Bounded tracked mail rechecks can go beyond
