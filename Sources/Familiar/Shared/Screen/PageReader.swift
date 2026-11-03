@@ -227,8 +227,8 @@ enum PageWalk {
         let domID = node.string("AXDOMIdentifier").flatMap { $0.isEmpty ? nil : $0 }
         // A field is secret by its kind, its name, its placeholder, the page's id for it, or, for one named only by
         // the text beside it, that text.
-        let secret = subrole == "AXSecureTextField" || WatchRecorder.looksSecret(label) || WatchRecorder.looksSecret(placeholder)
-            || WatchRecorder.looksSecret(domID.map(words)) || (editable.contains(role) && label == nil && WatchRecorder.looksSecret(hint))
+        let secret = subrole == "AXSecureTextField" || SecretWords.looksSecret(label) || SecretWords.looksSecret(placeholder)
+            || SecretWords.looksSecret(domID.map(words)) || (editable.contains(role) && label == nil && SecretWords.looksSecret(hint))
         var value = role == "AXHeading" || secret ? nil : clip(node.string(kAXValueAttribute), 200)
         if let shown = value, looksLikeSecretValue(shown) { value = nil }
         return PageElement(kind: kind, role: role, label: label.map { String($0.prefix(200)) }, value: value, domID: domID,
@@ -415,7 +415,7 @@ enum PageReader {
     private static func selectedText(_ axApp: AXUIElement) -> String? {
         guard let focused = AX.element(axApp, kAXFocusedUIElementAttribute),
               AX.string(focused, kAXSubroleAttribute) != "AXSecureTextField",
-              ![kAXTitleAttribute, kAXDescriptionAttribute, kAXPlaceholderValueAttribute].contains(where: { WatchRecorder.looksSecret(AX.string(focused, $0)) }),
+              ![kAXTitleAttribute, kAXDescriptionAttribute, kAXPlaceholderValueAttribute].contains(where: { SecretWords.looksSecret(AX.string(focused, $0)) }),
               let text = AX.string(focused, kAXSelectedTextAttribute)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !text.isEmpty, !PageWalk.looksLikeSecretValue(text) else { return nil }
         return String(text.prefix(1_000))

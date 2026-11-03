@@ -130,7 +130,7 @@ struct LinkedToolsTests {
         // As the app has it: the team's jobs are `jobs/` wherever the registry's linked copy is, and an update reloads it.
         let store = FolderJobStore(directory: f.home.appendingPathComponent("jobs"), results: f.home.appendingPathComponent("job-results"),
                                    teamDirectory: { [weak registry] in registry?.linkedRoot.map { $0.appendingPathComponent("jobs") } })
-        let feature = FolderJobsFeature(registry: registry, notifier: JobNotifier(), store: store, inbox: f.home.appendingPathComponent("cards/inbox"))
+        let feature = FolderJobsFeature(registry: registry, notifier: JobNotifier(), store: store, memory: f.home.appendingPathComponent("memory"))
         updater.onToolsChanged = { registry.linkedRoot = f.folder.root; await registry.reload(); feature.toolsChanged() }
         feature.runner.start()
         defer { feature.runner.stop() }

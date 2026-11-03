@@ -10,8 +10,13 @@ enum FolderJobFiles {
     static let output = "output"
     static let preview = "preview"
     static let state = "run.json"
+    /// The findings a run reported, as a table in its output, and the last run's rows beside the output for the diff.
+    static let findings = "findings.csv"
+    static let findingsState = "findings.json"
+    /// The static description for the minister, beside job.json.
+    static let description = "job.md"
     /// The keys job.json may have. Any other is left alone: a job's data belongs in its folders, not here.
-    static let known: Set<String> = ["name", "about", "every_minutes", "starts", "ends", "requires", "contributor"]
+    static let known: Set<String> = ["name", "about", "every_minutes", "starts", "ends", "requires", "contributor", "map", "actions"]
     /// Names a job's `contributor` keeps, each up to 60 characters.
     static let contributorLimit = 10
     /// Folders looked at under `jobs/`, and how deep.
@@ -124,9 +129,13 @@ enum FolderJobFiles {
             contributors = names.compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }.prefix(contributorLimit).map { JobWords.clip($0, 60) }
         }
+        var map: FindingsMap?
+        if let raw = object["map"], !(raw is NSNull) { map = try FindingsMap.parse(raw) }
+        var actions: [FolderJobAction] = []
+        if let raw = object["actions"], !(raw is NSNull) { actions = try FolderJobAction.parse(raw) }
         return FolderJob(id: id(source, path), source: source, path: path, name: try text("name") ?? path, about: try text("about") ?? "",
                          everyMinutes: every, starts: try moment("starts"), ends: try moment("ends"), requires: requires,
-                         contributors: contributors)
+                         contributors: contributors, map: map, actions: actions)
     }
 
     /// A job's id, the same on every Mac and through every update: made from whose it is and its path.
@@ -157,26 +166,11 @@ enum FolderJobFiles {
                                        modifiedAt: values.contentModificationDate ?? Date()))
         }
         files.sort { a, b in
+            if a.isFindings != b.isFindings { return a.isFindings }
             if a.inPreview != b.inPreview { return a.inPreview }
             return a.path.localizedStandardCompare(b.path) == .orderedAscending
         }
         return (Array(files.prefix(limit)), max(0, files.count - limit))
-    }
-
-    /// A digest of a job's preview files, their paths and contents: a change in any of them is a change of what the
-    /// preview shows. Nil when it has none.
-    static func previewDigest(output: URL) -> String? {
-        let preview = files(in: output.appendingPathComponent(preview), limit: .max).files
-        guard !preview.isEmpty else { return nil }
-        var hash = SHA256()
-        for file in preview.sorted(by: { $0.path < $1.path }) {
-            hash.update(data: Data((file.path + "\u{0}").utf8))
-            guard let handle = try? FileHandle(forReadingFrom: file.url) else { continue }
-            while let chunk = try? handle.read(upToCount: 1 << 20), !chunk.isEmpty { hash.update(data: chunk) }
-            try? handle.close()
-            hash.update(data: Data([0]))
-        }
-        return hash.finalize().prefix(12).map { String(format: "%02x", $0) }.joined()
     }
 
     /// What's in a job's output now: its files, preview first, and how many more there were.
@@ -199,8 +193,12 @@ struct FolderJobFile: Identifiable, Equatable {
     var name: String { (path as NSString).lastPathComponent }
     var kind: String { (path as NSString).pathExtension.lowercased() }
     var inPreview: Bool { path.hasPrefix(FolderJobFiles.preview + "/") }
-    /// In `preview/` and of a kind shown as it is: a table or a text.
-    var shown: Bool { inPreview && FolderJobFiles.previewKinds.contains(kind) }
+    /// The findings a run reported, as Noteling wrote them.
+    var isFindings: Bool { path == FolderJobFiles.findings }
+    /// Shown as it is, a table or a text: the findings, and what is in `preview/` of a kind that can be.
+    var shown: Bool { isFindings || (inPreview && FolderJobFiles.previewKinds.contains(kind)) }
+    /// Its name as a heading over it: its path under `preview/`, or its name.
+    var heading: String { inPreview ? String(path.dropFirst(FolderJobFiles.preview.count + 1)) : path }
     /// Of a kind that opens in its app without running anything: what a card may carry. Anything else is only saved or
     /// shown in Finder.
     var opens: Bool { CardFiles.kinds.contains(kind) }

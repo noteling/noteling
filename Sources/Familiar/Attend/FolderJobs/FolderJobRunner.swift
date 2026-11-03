@@ -3,21 +3,19 @@ import Combine
 import Darwin
 import Foundation
 
-/// What one run of a job gets: its job.py in its folder, its input folder, a fresh empty output folder, its own folder
-/// in the cards inbox, and the folders its job.py may import from. A press of one of its cards' buttons gets the same
-/// but an output folder, and calls that button's function instead of run().
+/// What one run of a job gets: its job.py in its folder, its input folder, a fresh empty output folder, and the folders
+/// its job.py may import from. A press of one of its findings' buttons gets the same but an output folder, and calls
+/// that button's function instead of run().
 struct FolderJobRun {
     var job: FolderJob
     var folder: URL
     var input: URL
     /// For a press, its latest output: not given to the function.
     var output: URL
-    /// Its folder in the cards inbox, for cards its job.py writes itself (NOTELING_CARDS_DIR).
-    var cardsSource: String
     /// Your tools folder, then your team's: a job.py imports helpers from either.
     var importPaths: [URL]
     var timeout: TimeInterval
-    /// A card's button: the function of job.py to call instead of run(), and its arguments as one JSON object.
+    /// A finding's button: the function of job.py to call instead of run(), and its arguments as one JSON object.
     var function: String? = nil
     var args: String? = nil
 
@@ -40,8 +38,7 @@ struct FolderJobRun {
 /// Runs the jobs: every 30 seconds it starts those whose schedule has come round, and again just after the Mac wakes;
 /// Run now and turning a team job on start one at once. One job runs at a time; the rest wait their turn. Each run gets
 /// a fresh output folder; a run that works puts it in place of the last one in one step, and one that fails leaves the
-/// last one as it was and says why on the job's row. Then the job's card follows its output, and when its preview shows
-/// something it didn't before, the person is told.
+/// last one as it was and says why on the job's row. What a run reported goes to the minister (`onFindings`).
 @MainActor
 final class FolderJobRunner: ObservableObject {
     typealias Execute = (FolderJobRun) async throws -> Any
@@ -53,14 +50,12 @@ final class FolderJobRunner: ObservableObject {
     /// What the last run someone started with Run now came to, said where they pressed it until they dismiss it or
     /// start another.
     @Published private(set) var receipt: FolderJobReceipt?
-    /// Writes each job's card file; nil writes none.
-    var cards: FolderJobCards?
-    /// Card files changed: the app takes them into Morning Files.
-    var onCardsChanged: (() -> Void)?
-    /// At each tick and after each run: the app looks at the cards inbox, where a job.py may have written cards of its own.
+    /// At each tick and after each run.
     var onTick: (() -> Void)?
-    /// A run left a preview that shows something it didn't before: the app tells the person.
-    var onNews: ((FolderJob) -> Void)?
+    /// A run reported findings: what is new, changed and gone since the last run (the minister's cue).
+    var onFindings: ((FolderJob, FindingsChange) -> Void)?
+    /// Where each run and each finding's change is written down; nil writes none.
+    var memory: MemoryLog?
     /// Folders a job.py may import from, asked at each run.
     var importPaths: () -> [URL] = { [] }
     var hasSecret: (String) -> Bool = { Secrets.has($0) || ProcessInfo.processInfo.environment[$0] != nil }
@@ -76,8 +71,6 @@ final class FolderJobRunner: ObservableObject {
     private var wakeObserver: NSObjectProtocol?
     private var worker: Task<Void, Never>?
     private var current: Task<Any, Error>?
-    /// Runs that say nothing when they're done: the first after a team job is turned on, which the person is looking at.
-    private var quiet: Set<UUID> = []
     /// Runs someone started with Run now: each leaves a receipt when it ends.
     private var asked: Set<UUID> = []
 
@@ -89,7 +82,6 @@ final class FolderJobRunner: ObservableObject {
 
     func start() {
         guard ticker == nil else { return }
-        reconcileCards()
         ticker = Task { [weak self] in
             while !Task.isCancelled, let runner = self {
                 runner.tick()
@@ -116,12 +108,11 @@ final class FolderJobRunner: ObservableObject {
         current?.cancel()
     }
 
-    /// Takes in what changed in the jobs folders, starts the jobs that are due, and brings the cards in line.
+    /// Takes in what changed in the jobs folders and starts the jobs that are due.
     func tick() {
         for id in store.refresh() { cancel(id) }
         let time = now()
         for job in store.jobs where job.isDue(at: time) { enqueue(job.id) }
-        reconcileCards()
         onTick?()
     }
 
@@ -138,18 +129,15 @@ final class FolderJobRunner: ObservableObject {
 
     func dismissReceipt() { receipt = nil }
 
-    /// Turns a team job on or off. Turned on, it runs right away if it has started, and that first run says nothing:
-    /// the person is looking at it. Turned off, its run stops and its card goes.
+    /// Turns a team job on or off. Turned on, it runs right away if it has started. Turned off, its run stops.
     func turn(_ id: UUID, on: Bool) throws {
         try store.setOn(id, on)
-        if !on { cancel(id) } else if store.job(id: id)?.running(at: now()) == true { enqueue(id, quiet: true) }
-        reconcileCards()
+        if !on { cancel(id) } else if store.job(id: id)?.running(at: now()) == true { enqueue(id) }
     }
 
     /// Stops a job's run, or takes it out of the queue.
     func cancel(_ id: UUID) {
         queued.removeAll { $0 == id }
-        quiet.remove(id)
         asked.remove(id)
         if running == id { current?.cancel() }
     }
@@ -163,48 +151,45 @@ final class FolderJobRunner: ObservableObject {
     /// The work done: the queue empty and nothing running. Tests wait on it.
     func finish() async { await worker?.value }
 
-    private func enqueue(_ id: UUID, quiet: Bool = false) {
+    private func enqueue(_ id: UUID) {
         guard running != id, !queued.contains(id) else { return }
         queued.append(id)
-        if quiet { self.quiet.insert(id) }
         if worker == nil { worker = Task { await self.drain() } }
     }
 
     private func drain() async {
         while !queued.isEmpty {
             let id = queued.removeFirst()
-            let silent = quiet.remove(id) != nil
             guard let job = store.job(id: id), job.running(at: now()) else { continue }
             running = id
-            await perform(job, quiet: silent)
+            await perform(job)
             running = nil
         }
         worker = nil
     }
 
-    private func perform(_ job: FolderJob, quiet: Bool) async {
+    private func perform(_ job: FolderJob) async {
         var state = job.state
-        let before = job.state.preview
         state.lastRunAt = now()
+        var change: FindingsChange?
         do {
-            try await runScript(job, state: &state)
+            change = try await runScript(job, state: &state)
         } catch {
             state.error = Self.reason(error)
+            memory?.failed(job, state.error ?? "It failed without saying why.")
         }
         do { try store.record(job.id, state) } catch { Log.info("jobs: couldn't save how \(job.path) ran: \(error.localizedDescription)") }
         Log.info("jobs: \(job.isTeam ? "the team's " : "")\(job.path) " + (state.error.map { "failed: \($0)" } ?? "ran"))
-        reconcileCards()
         onTick?()
+        if let change, let latest = store.job(id: job.id) { onFindings?(latest, change) }
         if asked.remove(job.id) != nil, let latest = store.job(id: job.id) {
             receipt = FolderJobReceipt(jobID: job.id, text: FolderJobWords.receipt(latest))
         }
-        guard !quiet, state.error == nil, let preview = state.preview, preview != before,
-              let latest = store.job(id: job.id), latest.running(at: now()) else { return }
-        onNews?(latest)
     }
 
-    /// Runs job.py into a fresh output folder, and on success puts it in place of the last one.
-    private func runScript(_ job: FolderJob, state: inout FolderJobState) async throws {
+    /// Runs job.py into a fresh output folder, and on success puts it in place of the last one. A run that reported
+    /// findings leaves them as a table in its output, and what changed since the last run comes back.
+    private func runScript(_ job: FolderJob, state: inout FolderJobState) async throws -> FindingsChange? {
         let missing = missingSecrets(job)
         guard missing.isEmpty else { throw FolderJobError(Jobs.needs(missing)) }
         guard let folder = store.folder(for: job), FileManager.default.fileExists(atPath: folder.appendingPathComponent(FolderJobFiles.entry).path)
@@ -220,7 +205,7 @@ final class FolderJobRunner: ObservableObject {
         try manager.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? manager.removeItem(at: staging) }
         let run = FolderJobRun(job: job, folder: folder, input: folder.appendingPathComponent(FolderJobFiles.input), output: staging,
-                               cardsSource: FolderJobCards.scriptSource(for: job), importPaths: importPaths(), timeout: Self.timeLimit)
+                               importPaths: importPaths(), timeout: Self.timeLimit)
         let task = Task { try await execute(run) }
         current = task
         defer { current = nil }
@@ -230,12 +215,37 @@ final class FolderJobRunner: ObservableObject {
             throw error
         }
         if task.isCancelled { throw FolderJobError("Stopped.") }
+        let outcome = try FindingsOutcome.parse(value, map: job.map)
+        let file = store.findingsFile(for: job)
+        let previous = FindingsSnapshot.read(file)
+        var pending: (change: FindingsChange, snapshot: URL)?
+        if let rows = outcome.rows, let map = job.map {
+            // A run with no findings keeps the last run's columns, so its table has the same header.
+            let columns = rows.isEmpty && previous.columns.count > outcome.columns.count ? previous.columns : outcome.columns
+            try JobFiles.write(FolderJobFindings.csv(rows, columns: columns), to: staging.appendingPathComponent(FolderJobFiles.findings))
+            // The next run's snapshot is written before the output is put in place, so a run leaves both or neither.
+            let (change, snapshot) = FolderJobFindings.diff(previous: previous, rows: rows, map: map, at: now())
+            let written = file.deletingLastPathComponent().appendingPathComponent(".\(FolderJobFiles.findingsState)-\(UUID().uuidString).tmp")
+            try snapshot.write(to: written)
+            pending = (change, written)
+        }
+        defer { if let pending { try? manager.removeItem(at: pending.snapshot) } }   // gone once it's in place; otherwise cleaned up
         let output = store.output(for: job)
         try Self.swap(staging, into: output)
         state.lastSuccessAt = now()
         state.error = nil
-        state.said = Self.said(value)
-        state.preview = FolderJobFiles.previewDigest(output: output)
+        state.said = outcome.said
+        state.source = outcome.source
+        state.read = outcome.read
+        state.found = outcome.rows?.count
+        state.note = outcome.notes.isEmpty ? nil : outcome.notes.joined(separator: " ")
+        memory?.ran(job, outcome: outcome)
+        guard let pending else { return nil }
+        if rename(pending.snapshot.path, file.path) != 0 {
+            Log.info("jobs: couldn't keep \(job.path)'s findings for its next run: \(String(cString: strerror(errno)))")
+        }
+        memory?.record(job, change: pending.change)
+        return pending.change
     }
 
     /// Puts the new output in place of the old in one step: the two folders swap names, and the old one, now at the
@@ -248,27 +258,15 @@ final class FolderJobRunner: ObservableObject {
     }
 
     /// What a run's `run()` said, when it returned words (or a number): trimmed, and not too long.
-    static func said(_ value: Any) -> String? {
-        let text: String
-        switch value {
-        case let string as String: text = string
-        case let number as NSNumber where CFGetTypeID(number) != CFBooleanGetTypeID(): text = number.stringValue
-        default: return nil
-        }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : JobWords.clip(trimmed, 1_000)
-    }
+    static func said(_ value: Any) -> String? { FolderJobFindings.said(value) }
 
     /// Why a run failed, in its first line.
+
     static func reason(_ error: Error) -> String {
         if let error = error as? ScriptRunnerError, error.timedOut { return "It took longer than \(Int(timeLimit / 60)) minutes, so it was stopped." }
         if error is CancellationError { return "Stopped." }
         if let error = error as? FolderJobError { return error.message }
         return JobWords.reason(error.localizedDescription) ?? "It failed without saying why."
-    }
-
-    private func reconcileCards() {
-        if cards?.reconcile(store.jobs, at: now()) == true { onCardsChanged?() }
     }
 }
 
@@ -278,30 +276,32 @@ struct FolderJobReceipt: Equatable {
     var text: String
 }
 
-/// What Morning Files needs to show the jobs kept as folders: where they're kept, what runs them and their cards'
+/// What the pages need to show the jobs kept as folders: where they're kept, what runs them and their findings'
 /// buttons, and whether notifications are on.
 struct FolderJobsPanel {
     let store: FolderJobStore
     let runner: FolderJobRunner
     var notifier: JobNotifier? = nil
-    /// What the buttons on the jobs' cards run; nil shows them unable to run.
+    /// What the buttons on the jobs' findings run; nil shows them unable to run.
     var buttons: FolderJobButtons? = nil
+    /// The matters the minister made of the findings, for their pages.
+    var matters: Matters? = nil
 }
 
-/// The jobs kept as folders, put together once by the app: where they're kept, what runs them, their cards, the
-/// notification when a preview has something new, and their tools in chat.
+/// The jobs kept as folders, put together once by the app: where they're kept, what runs them, what their findings'
+/// buttons run, and their tools in chat.
 @MainActor
 final class FolderJobsFeature {
     let store: FolderJobStore
     let runner: FolderJobRunner
-    /// What the buttons on its jobs' cards run.
+    /// What the buttons on its jobs' findings run.
     let buttons: FolderJobButtons
     let notifier: JobNotifier
     let conversation: FolderJobConversation
 
-    /// `inbox` is the cards inbox its cards are written into.
+    /// `memory` is the log its runs and findings are written to.
     init(registry: ToolRegistry, notifier: JobNotifier, store: FolderJobStore? = nil,
-         inbox: URL = Config.dir.appendingPathComponent("cards/inbox")) {
+         memory: URL = Config.dir.appendingPathComponent(MemoryLog.folder)) {
         // Your team's jobs are `jobs/` in the linked tools, wherever the latest update put them.
         let store = store ?? FolderJobStore(teamDirectory: { [weak registry] in
             registry?.linkedRoot.map { $0.appendingPathComponent(ToolRegistry.jobsFolder) }
@@ -312,7 +312,7 @@ final class FolderJobsFeature {
                                     fileName: FolderJobFiles.entry, path: run.script, description: run.job.about,
                                     inputSchema: ["type": "object", "properties": [:]], dependencies: [])
             return try await scripts.result(script, args: run.arguments, function: run.function, secrets: run.job.requires,
-                                            timeout: run.timeout, toolDir: run.folder, cardsSource: run.cardsSource, env: run.env)
+                                            timeout: run.timeout, toolDir: run.folder, cards: false, env: run.env)
         }
         let runner = FolderJobRunner(store: store, execute: execute)
         let importPaths = { [weak registry] () -> [URL] in
@@ -322,10 +322,7 @@ final class FolderJobsFeature {
         runner.importPaths = importPaths
         let buttons = FolderJobButtons(store: store, execute: execute)
         buttons.importPaths = importPaths
-        runner.cards = FolderJobCards(root: inbox)
-        runner.onNews = { [weak notifier] job in
-            notifier?.post(job: job.id, title: job.name, body: job.state.said ?? FolderJobWords.somethingNew)
-        }
+        runner.memory = MemoryLog(directory: memory)
         let conversation = FolderJobConversation(store: store, runner: runner)
         conversation.notificationLine = { [weak notifier] in await notifier?.line() ?? "on" }
         conversation.askForNotifications = { [weak notifier] in notifier?.requestPermission() }
@@ -349,20 +346,4 @@ final class FolderJobsFeature {
 
     /// A new copy of the team's tools, or none: their jobs as it has them, now rather than at the next tick.
     func toolsChanged() { runner.tick() }
-
-    /// The card view's folder name for a job's folders in the inbox: the job's name.
-    func cardFolderName(_ source: String) -> String? {
-        store.jobs.first { FolderJobCards.source(for: $0) == source || FolderJobCards.scriptSource(for: $0) == source }?.name
-    }
-
-    /// Whether the cards in a folder of the inbox are put away for now: the cards a job's script wrote, while the job is
-    /// off, or before its start or after its end. A folder that isn't a job's is never held.
-    func holds(_ source: String, at now: Date = Date()) -> Bool {
-        store.jobs.first { FolderJobCards.scriptSource(for: $0) == source }.map { !$0.running(at: now) } ?? false
-    }
-
-    /// The job a card is about, when it is a job's preview card.
-    func job(forCard key: String) -> FolderJob? {
-        store.jobs.first { FolderJobCards.key(for: $0) == key }
-    }
 }

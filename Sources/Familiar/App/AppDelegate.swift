@@ -60,8 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var cardGeneration: CardGenerationService!
     var folderJobs: FolderJobsFeature?
     var cardInbox: CardInbox?
-    var runStickers: RunStickers?
-    var stickersPanel: RunStickersPanel?
+    var matters: Matters!
+    var minister: Minister!
+    var stickersPanel: StickersPanel?
     var stickersScreenObserver: NSObjectProtocol?
 
     var watcherMenuItem: NSMenuItem!
@@ -334,6 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         MainThreadDiagnostics.shared.stop()
         assistant?.showMe?.stop()
+        minister?.stop()
         cardGeneration?.stop()
         origami.cancel()
         calendarReader?.shutdown()

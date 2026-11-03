@@ -26,7 +26,7 @@ import Testing
     /// - `ToolRegistry` and `ScriptTool` are the harness as much as the packs: the team repository's layout, the runner
     ///   and a script as a tool move to `Shared/Harness`, and `ToolRegistry` keeps the packs and the page leads.
     /// - `NoteAnchor` names an element on a page: it belongs in `Shared/Screen`, beside `PageKey`.
-    /// - `WatchRecorder.looksSecret` and `CaptureSpace` are screen-reading rules living in Act; they move to `Shared/Screen`.
+    /// - `CaptureSpace` is a screen-reading rule living in Act; it moves to `Shared/Screen`, as `SecretWords` did.
     /// - `Intent` and `IntentWords` are read from `noteling.json` and the config: the words move to `Shared/Configuration`.
     /// - `Prompt.watchSystem` goes to WatchLearn; `ShowPath` loading leaves the registry; `PackWriter` leaves WatchLearn.
     /// - Chat's hold on `WatchLearnSession`, `PackDraft`, `PeekFeed` and `ComputerController` becomes part of the Act door.
@@ -49,7 +49,6 @@ import Testing
         "Ask/Packs/ToolRegistry.swift": ["ShowPath", "ShowPathStore"],
         "Ask/Pen/Notes.swift": ["PackWriter"],
         "Attend/FolderJobs/FolderJobRunner.swift": ["ScriptTool", "ToolRegistry"],
-        "Attend/FolderJobs/FolderJobStore.swift": ["ToolRegistry"],
         "Attend/Morning/JobsRender.swift": ["ComputerController", "NativeActivityGate", "ToolRegistry"],
         "Attend/Morning/LatestRunRender.swift": ["ComputerController", "NativeActivityGate", "ToolRegistry"],
         "Attend/Morning/MorningFilesView.swift": ["TaskResultText"],
@@ -62,11 +61,10 @@ import Testing
         "Shared/Configuration/Config.swift": ["IntentWords"],
         "Shared/Configuration/NotelingSetup.swift": ["FolderJobFiles", "ToolRegistry"],
         "Shared/Configuration/TeamSettings.swift": ["Intent", "IntentWords"],
-        "Shared/Harness/BuiltinTools.swift": ["ToolRegistry", "WatchRecorder"],
+        "Shared/Harness/BuiltinTools.swift": ["ToolRegistry"],
         "Shared/Harness/LinkedTools.swift": ["ToolRegistry"],
         "Shared/Harness/ScriptRunner.swift": ["CardInboxFormat", "ScriptTool"],
         "Shared/Harness/SecretScripts.swift": ["ScriptTool", "ToolRegistry"],
-        "Shared/Screen/PageReader.swift": ["WatchRecorder"],
         "Shared/Screen/ScreenCapture.swift": ["CaptureSpace"],
         "Shared/Settings/SettingsWindow.swift": ["FolderJob", "ToolPack"],
     ]

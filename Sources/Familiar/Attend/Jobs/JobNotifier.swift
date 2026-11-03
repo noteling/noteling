@@ -9,8 +9,10 @@ import UserNotifications
 final class JobNotifier: NSObject, ObservableObject {
     /// Why notifications won't show, in plain words; nil when they will (or nobody has been asked yet).
     @Published private(set) var offReason: String?
-    /// A job's notification was clicked (`post(job:title:body:)`): the job.
+    /// A job's notification was clicked (`post(job:title:body:)`, from earlier versions): the job.
     var onOpenJob: ((UUID) -> Void)?
+    /// A matter's notification was clicked (`post(matter:title:body:)`): the matter.
+    var onOpenMatter: ((String) -> Void)?
     private var asked = false
 
     static var available: Bool {
@@ -64,8 +66,12 @@ final class JobNotifier: NSObject, ObservableObject {
         }
     }
 
-    /// That a job's preview has something new: one per job, a newer one replacing it in Notification Center.
-    func post(job: UUID, title: String, body: String) {
+    /// An urgent sticker: one per matter, a newer one replacing it in Notification Center.
+    func post(matter: String, title: String, body: String) {
+        post(identifier: "matter-\(matter)", thread: matter, userInfo: ["matter": matter], title: title, body: body)
+    }
+
+    private func post(identifier: String, thread: String, userInfo: [String: String], title: String, body: String) {
         guard let center else {
             Log.info("jobs: not shown as a notification: Noteling isn't running as an app")
             return
@@ -74,9 +80,9 @@ final class JobNotifier: NSObject, ObservableObject {
         content.title = title
         content.body = body
         content.sound = .default
-        content.threadIdentifier = job.uuidString
-        content.userInfo = ["job": job.uuidString]
-        center.add(UNNotificationRequest(identifier: "job-\(job.uuidString)", content: content, trigger: nil)) { error in
+        content.threadIdentifier = thread
+        content.userInfo = userInfo
+        center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil)) { error in
             if let error { Log.info("jobs: couldn't show a notification: \(error.localizedDescription)") }
         }
     }
@@ -91,10 +97,13 @@ extension JobNotifier: UNUserNotificationCenterDelegate {
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
-        let job = (response.notification.request.content.userInfo["job"] as? String).flatMap(UUID.init(uuidString:))
+        let info = response.notification.request.content.userInfo
+        let job = (info["job"] as? String).flatMap(UUID.init(uuidString:))
+        let matter = info["matter"] as? String
         let clicked = response.actionIdentifier == UNNotificationDefaultActionIdentifier
         Task { @MainActor in
-            if clicked, let job { self.onOpenJob?(job) }
+            if clicked, let matter { self.onOpenMatter?(matter) }
+            else if clicked, let job { self.onOpenJob?(job) }
             completionHandler()
         }
     }

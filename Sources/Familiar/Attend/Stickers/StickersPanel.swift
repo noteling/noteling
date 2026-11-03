@@ -1,13 +1,13 @@
 import AppKit
 import SwiftUI
 
-/// The sticky notes beside the bubble: up to three, newest nearest the orb, and "and N more" above them when there
-/// are more. Clicking one opens its job; the small x puts it away.
-struct RunStickersView: View {
-    @ObservedObject var model: RunStickers
-    var open: (UUID) -> Void
+/// The sticky notes beside the bubble: the open matters with a sticker, urgent ones first, up to three, and "and N more"
+/// above them when there are more. Clicking one opens its matter; the small x puts it away.
+struct StickersView: View {
+    @ObservedObject var model: Matters
+    var open: (String) -> Void
     var more: () -> Void
-    var putAway: (UUID) -> Void
+    var putAway: (String) -> Void
 
     /// Room around the stack for the paper's shadow and its tilt.
     nonisolated static let margin: CGFloat = 8
@@ -24,14 +24,14 @@ struct RunStickersView: View {
                     .transition(.opacity)
             }
             ForEach(Array(model.shown.reversed().enumerated()), id: \.element.id) { index, sticker in
-                RunStickerView(sticker: sticker, index: index, open: { open(sticker.id) }, putAway: { putAway(sticker.id) })
+                StickerView(sticker: sticker, index: index, open: { open(sticker.id) }, putAway: { putAway(sticker.id) })
                     .zIndex(Double(index))
                     .transition(.scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
             }
         }
         .padding(Self.margin)
         // Pinned to the bottom edge, so a panel held taller than the stack for a moment keeps the stickers beside the orb.
-        .frame(width: RunStickersPanel.width)
+        .frame(width: StickersPanel.width)
         .frame(maxHeight: .infinity, alignment: .bottomTrailing)
         .animation(.spring(response: 0.4, dampingFraction: 0.7), value: model.stickers.map(\.id))
         .environment(\.colorScheme, .light)
@@ -41,25 +41,26 @@ struct RunStickersView: View {
     nonisolated static func moreWords(_ count: Int) -> String { "and \(count) more" }
 }
 
-/// One sticker: the job's name, what it found, and who shared it with the time.
-struct RunStickerView: View {
-    let sticker: RunSticker
+/// One sticker: the job's name, the minister's words, and who shared it with the time. An urgent one is on the amber
+/// paper the warnings use.
+struct StickerView: View {
+    let sticker: Sticker
     let index: Int
     var open: () -> Void
     var putAway: () -> Void
     @State private var hovering = false
 
-    nonisolated static let width: CGFloat = RunStickersPanel.width - 16
+    nonisolated static let width: CGFloat = StickersPanel.width - 16
     /// Stickers lean a little either way down the stack, as stuck-on paper does.
     nonisolated static let tilts: [Double] = [-1.2, 0.8, -0.6]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(sticker.jobName)
+            Text(sticker.title)
                 .font(HandFont.font(size: 13)).lineLimit(1).truncationMode(.tail)
                 .padding(.trailing, 12)   // clear of the x
-            Text(sticker.said)
-                .font(Font(StickerPaper.font(13))).lineLimit(3)
+            Text(sticker.text)
+                .font(Font(StickerPaper.font(13))).lineLimit(4)
                 .fixedSize(horizontal: false, vertical: true)
             Text(Self.byline(sticker))
                 .font(Font(StickerPaper.font(10.5))).foregroundStyle(Color(nsColor: StickerPaper.inkSoft))
@@ -68,7 +69,7 @@ struct RunStickerView: View {
         .foregroundStyle(Color(nsColor: StickerPaper.ink))
         .padding(10)
         .frame(width: Self.width, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 2).fill(Color(cgColor: StickerPaper.tip)))
+        .background(RoundedRectangle(cornerRadius: 2).fill(Color(cgColor: sticker.urgent ? StickerPaper.warning : StickerPaper.tip)))
         .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Color(cgColor: StickerPaper.edge), lineWidth: 0.7))
         .overlay(alignment: .topTrailing) {
             if hovering {
@@ -85,16 +86,16 @@ struct RunStickerView: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: open)
         .onHover { hovering = $0 }
-        .help("Open \(sticker.jobName)")
+        .help("Open \(sticker.title)")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(sticker.jobName): \(sticker.said)")
+        .accessibilityLabel("\(sticker.title): \(sticker.text)")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { open() }
         .accessibilityAction(named: "Put away") { putAway() }
     }
 
     /// "Yang · 3:12 PM", or just the time for your own jobs.
-    nonisolated static func byline(_ sticker: RunSticker) -> String {
+    nonisolated static func byline(_ sticker: Sticker) -> String {
         let time = JobWords.clock(sticker.at)
         return sticker.byline.map { $0 + " · " + time } ?? time
     }
@@ -104,18 +105,18 @@ struct RunStickerView: View {
 }
 
 /// The panel that holds them, beside the orb; the app places it and shows or hides it.
-final class RunStickersPanel: NSPanel {
+final class StickersPanel: NSPanel {
     nonisolated static let width: CGFloat = 216
-    private let host: FirstClickHost<RunStickersView>
+    private let host: FirstClickHost<StickersView>
     /// Where the orb was when the panel was last placed, for the shrink that waits for a leaving sticker.
     private var orb = NSRect.zero
     private weak var screenHint: NSScreen?
     private var shrink: DispatchWorkItem?
 
-    init(model: RunStickers, hideFromScreenShare: Bool, open: @escaping (UUID) -> Void, more: @escaping () -> Void,
-         putAway: @escaping (UUID) -> Void) {
-        host = FirstClickHost(rootView: RunStickersView(model: model, open: open, more: more, putAway: putAway))
-        super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 2 * RunStickersView.margin),
+    init(model: Matters, hideFromScreenShare: Bool, open: @escaping (String) -> Void, more: @escaping () -> Void,
+         putAway: @escaping (String) -> Void) {
+        host = FirstClickHost(rootView: StickersView(model: model, open: open, more: more, putAway: putAway))
+        super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 2 * StickersView.margin),
                    styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView],
                    backing: .buffered, defer: false)
         level = .floating
@@ -134,8 +135,8 @@ final class RunStickersPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    /// Whether the stickers are on the screen: the bubble is collapsed and fully shown, no crane is flying, and a job
-    /// has something to show.
+    /// Whether the stickers are on the screen: the bubble is collapsed and fully shown, no crane is flying, and a
+    /// matter has something to show.
     nonisolated static func shows(bubbleVisible: Bool, alpha: CGFloat, expanded: Bool, flying: Bool, count: Int) -> Bool {
         bubbleVisible && alpha == 1 && !expanded && !flying && count > 0
     }
@@ -158,7 +159,7 @@ final class RunStickersPanel: NSPanel {
         shrink?.cancel()
         shrink = nil
         host.layoutSubtreeIfNeeded()
-        let height = max(host.fittingSize.height, 2 * RunStickersView.margin)
+        let height = max(host.fittingSize.height, 2 * StickersView.margin)
         let visible = (screen ?? NSScreen.screens.first { $0.frame.intersects(orb) } ?? NSScreen.main)?.visibleFrame
             ?? NSRect(x: orb.minX - Self.width - 4, y: orb.minY, width: Self.width + 4 + orb.width, height: max(height, orb.height))
         var target = Self.frame(contentHeight: height, orb: orb, visible: visible)

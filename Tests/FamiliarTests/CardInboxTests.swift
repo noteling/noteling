@@ -56,27 +56,6 @@ struct CardInboxTests {
         #expect(CardInboxFormat.webAddress("http:///no-host") == "" && CardInboxFormat.webAddress("mailto:a@example.com") == "")
     }
 
-    @Test func onlyAJobsOwnCardMayHaveAButtonAndItOnlyNamesAFunction() throws {
-        let big = String(repeating: "x", count: 5_000)
-        let text = """
-        {"title": "Item 4417 has the wrong price",
-         "actions": [{"label": "Mark as fixed", "run": "mark_fixed", "args": {"price": 12.5, "item": "4417"},
-                      "confirm": "  This changes 4417 on the live site.  "},
-                     {"label": "Check again", "run": " recheck "}, {"label": "Helper", "run": "_fetch"}, {"label": "Again", "run": "run"},
-                     {"label": "Path", "run": "../fashion/job.py:delete_all"}, {"label": "Module", "run": "os.remove"},
-                     {"label": "Shell", "run": "rm -rf ~"}, {"label": "List", "run": "fix", "args": ["4417"]},
-                     {"label": "Big", "run": "fix", "args": {"rows": "\(big)"}}]}
-        """
-        let own = try CardInboxFormat.parse(Data(text.utf8), source: "jobcards-team-holiday-oct-gm", id: "4417", modifiedAt: at)
-        #expect(own.actions == [CardInboxAction(label: "Mark as fixed", run: "mark_fixed", args: #"{"item":"4417","price":12.5}"#,
-                                                confirm: "This changes 4417 on the live site."),
-                                CardInboxAction(label: "Check again", run: "recheck")])
-        // Anywhere else, such as a pack's folder or the card Noteling writes for a job's preview, no button runs anything.
-        for source in ["pack-shop", "job-team-holiday-oct-gm", "brief-shop"] {
-            #expect(try CardInboxFormat.parse(Data(text.utf8), source: source, id: "4417", modifiedAt: at).actions.isEmpty)
-        }
-    }
-
     @Test func aFileThatIsntACardSaysWhyInPlainWords() {
         #expect(throws: CardInboxError("it needs a title.")) { try parse(#"{"body": "No title"}"#) }
         #expect(throws: CardInboxError("it needs a title.")) { try parse(#"{"title": "   "}"#) }
@@ -246,7 +225,7 @@ struct CardInboxTests {
         #expect(folder("empty") == nil)   // no cards, no folder
         #expect(fixture.store.cards.count == 3)
         #expect(fixture.store.cards.first { $0.title == "B" }?.folderID == CardInboxFormat.folderID("deals"))
-        #expect(fixture.store.cards.first { $0.title.hasPrefix("Not as expected") }?.sources.first?.kind == "Job")
+        #expect(fixture.store.cards.first { $0.title.hasPrefix("Not as expected") }?.sources.first?.kind == "Card")   // jobs make none now
         #expect(fixture.store.cards.first { $0.title == "A" }?.sources.first?.kind == "Card")
         #expect(fixture.store.folders.map(\.name).prefix(3) == ["Replies", "Unfinished", "Housekeeping"])   // the person's folders stay
     }
@@ -368,10 +347,6 @@ struct CardInboxTests {
         }
         #expect(runner.cardsFolder("pack-../watch-sale-items")?.lastPathComponent != "watch-sale-items")
         #expect(CardInboxFormat.safe("pack-" + "my pack") == "pack-my-pack")
-        let job = FolderJob(id: UUID(), source: .own, path: "holiday/oct/fashion", name: "Fashion")
-        #expect(FolderJobCards.source(for: job) == "job-own-holiday-oct-fashion")
-        #expect(FolderJobCards.scriptSource(for: FolderJob(id: UUID(), source: .team, path: "holiday/oct/fashion", name: "Fashion"))
-                == "jobcards-team-holiday-oct-fashion")
 
         runner.cardsRoot = nil
         #expect(runner.cardsFolder("pack-shop") == nil)

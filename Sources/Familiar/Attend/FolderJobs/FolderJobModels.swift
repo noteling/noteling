@@ -21,6 +21,10 @@ struct FolderJob: Identifiable, Equatable {
     var requires: [String] = []
     /// Who wrote it and shares it, by name, as its job.json says (`contributor`): thanked on its card and its row.
     var contributors: [String] = []
+    /// Which of its columns mean what to Noteling (`map`), when it reports findings.
+    var map: FindingsMap?
+    /// The buttons its findings can have: functions of its job.py (`actions`).
+    var actions: [FolderJobAction] = []
     /// Yours always are; your team's only once you turn them on.
     var on = true
     /// How its runs went, as kept on this Mac.
@@ -60,19 +64,26 @@ struct FolderJob: Identifiable, Equatable {
 }
 
 /// How a job's runs went, kept in `run.json` beside its output: when it last ran and last succeeded, what its `run()`
-/// said, why the last run failed, and a digest of its preview files, so a card reopens only when they change.
+/// said, why the last run failed, and the receipt of what it reported.
 struct FolderJobState: Codable, Equatable {
     var lastRunAt: Date?
     var lastSuccessAt: Date?
-    /// What the last run that worked returned, when it was words: shown on its row and its card.
+    /// What the last run that worked returned, when it was words: shown on its row and its page.
     var said: String?
     /// The first line of why the last run failed; nil once a run works.
     var error: String?
-    /// A digest of the latest output's preview files; nil when it has none.
-    var preview: String?
+    /// The receipt of a run that reported findings: what it read, how many it read, how many findings it reported.
+    var source: String?
+    var read: Int?
+    var found: Int?
+    /// What its findings had to leave out or cut, for its page; nil when nothing did.
+    var note: String?
+
+    /// Whether its last run that worked reported findings, rather than words alone.
+    var reportsFindings: Bool { source != nil || read != nil || found != nil }
 
     enum CodingKeys: String, CodingKey {
-        case lastRunAt = "last_run_at", lastSuccessAt = "last_success_at", said, error, preview
+        case lastRunAt = "last_run_at", lastSuccessAt = "last_success_at", said, error, source, read, found, note
     }
 }
 

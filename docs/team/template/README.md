@@ -4,7 +4,7 @@ A starting point for your team's [Noteling](https://github.com/noteling/noteling
 schedule and one tool pack. Everyone who links this repository gets them on their own Mac, and runs them as
 themselves. You never need a server.
 
-## Five minutes to your first card
+## Five minutes to your first sticker
 
 1. **Make your own copy.** On GitHub, choose **Use this template → Create a new repository**. Make it private and put it
    where your team keeps its code.
@@ -13,23 +13,24 @@ themselves. You never need a server.
    same, on your company's GitHub.
 3. **Link it in Noteling.** Open Noteling's **Settings → Team tools from GitHub**. Paste the repository's address and the
    token, then choose **Save**. A line under the token says which version Noteling has.
-4. **Turn on the job.** Open the Morning folder, then **Jobs**. Under "From your team's tools", turn on **Pages up**. It
-   runs at once.
-5. **See the card.** A few seconds later, Morning Files has a **Pages up** folder with a card: "1 of 3 pages need a
-   look". The third page in `jobs/examples/pages-up/input/pages.csv` is wrong on purpose: it expects text that page
-   doesn't have.
+4. **Turn on the job.** In Noteling's menu bar icon choose **Jobs…**. Under "From your team's tools", turn on **Pages
+   up**. It runs at once.
+5. **See the sticker.** Within a minute or two, a sticky note appears beside Noteling's note on your screen, about the
+   third page in `jobs/examples/pages-up/input/pages.csv`, which is wrong on purpose: it expects text that page doesn't
+   have. The job's page in Jobs shows all three pages checked, and the one that needs a look as a row.
 
 Now delete that third row and push. Within 10 minutes, or right away with **Update now** in Settings, the next run finds
-nothing wrong, and the card goes away by itself. That's the whole loop: you push, everyone's Mac runs it, and people only
-hear about what needs them.
+nothing wrong, and the sticker goes away by itself. That's the whole loop: you push, everyone's Mac runs it, and people
+only hear about what needs them.
 
 ## What's in here
 
 ```
 jobs/                         jobs: one folder each, nested as you like
   examples/pages-up/
-    job.json                  what the job is and when it runs, nothing else
-    job.py                    run(): the one thing Noteling calls
+    job.json                  what the job is, when it runs, and which column of its findings is which
+    job.md                    what the findings mean, in plain words, for Noteling to read
+    job.py                    run(): the one thing Noteling calls; it returns the findings
     input/pages.csv           what it reads: the pages, and the text each should show
 example-pages/                a tool pack: any top-level folder except jobs/
   SKILL.md                    which pages it's for, and how Noteling should answer about them
@@ -41,7 +42,7 @@ example-pages/                a tool pack: any top-level folder except jobs/
 
 ## Make it yours
 
-- **Put your name in `job.json`'s `contributor`.** Noteling shows "Shared by …" on the job, and thanks you on its card.
+- **Put your name in `job.json`'s `contributor`.** Noteling shows "Shared by …" on the job and under its stickers.
 - **Copy `jobs/examples/pages-up/`** to start a job of your own, and change `job.py` to check what your team cares about.
 - **Copy `example-pages/`** to start a pack for one of your team's apps or sites.
 

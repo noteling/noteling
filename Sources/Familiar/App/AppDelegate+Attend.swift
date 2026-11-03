@@ -43,10 +43,12 @@ extension AppDelegate {
         assistant.onOpenJobs = { [weak self] in self?.morningPanel.showJobs(trigger: .chat) }
         assistant.onRunSource = { [weak self] id in self?.runSavedSource(id) }
         setupFolderJobs()   // before the panel, which shows them among the jobs
+        var jobsPanel = folderJobs?.panel
+        jobsPanel?.matters = matters
         morningPanel = MorningPanelController(store: morning, hideFromScreenShare: config.hideFromScreenShare,
                                              calendarSources: calendarSources, calendarRunner: calendarReader, cardGeneration: cardGeneration,
                                              attention: attention, jobs: jobsSetup,
-                                             showLauncher: config.morningFolderOnScreen, folderJobs: folderJobs?.panel)
+                                             showLauncher: config.morningFolderOnScreen, folderJobs: jobsPanel)
         morningPanel.onLauncherShownChanged = { [weak self] shown in
             guard let self else { return }
             self.config.morningFolderOnScreen = shown
@@ -105,58 +107,72 @@ extension AppDelegate {
 
     // MARK: jobs kept as folders
 
-    /// Jobs kept as folders: yours in `jobs/`, your team's in the linked tools' `jobs/`, run on schedule, with a card
-    /// while their output has a preview, a notification when it has something new, and their tools in chat. Set up
-    /// before the Morning panel, which shows them; the schedule starts once the packs have loaded (`startAttend`).
+    /// Jobs kept as folders: yours in `jobs/`, your team's in the linked tools' `jobs/`, run on schedule, reporting
+    /// their findings, with their tools in chat. Set up before the Morning panel, which shows them; the schedule starts
+    /// once the packs have loaded (`startAttend`).
     func setupFolderJobs() {
         let notifier = JobNotifier()
         notifier.activate()
         let feature = FolderJobsFeature(registry: registry, notifier: notifier)
         notifier.onOpenJob = { [weak self, weak feature] id in
-            guard let self, let job = feature?.store.job(id: id) else { self?.morningPanel?.showJobs(); return }
-            let card = CardInboxFormat.cardID(FolderJobCards.key(for: job))
-            if self.morning.cards.contains(where: { $0.id == card }) { self.morningPanel?.showCard(id: card, trigger: nil) }
-            else { self.morningPanel?.showFolderJob(id: id) }
+            guard let self, feature?.store.job(id: id) != nil else { self?.morningPanel?.showJobs(); return }
+            self.morningPanel?.showFolderJob(id: id)
         }
+        notifier.onOpenMatter = { [weak self] id in self?.morningPanel?.showMatter(id: id) }
         assistant.folderJobs = feature.conversation
         folderJobs = feature
+        setupMinister(feature, notifier: notifier)
+    }
+
+    /// The minister: the findings the jobs report become matters and stickers, in its two turns; an urgent sticker is
+    /// also a notification; what a button on a finding came to stays on its matter and in the log.
+    func setupMinister(_ feature: FolderJobsFeature, notifier: JobNotifier) {
+        let memory = feature.runner.memory ?? MemoryLog(directory: Config.dir.appendingPathComponent(MemoryLog.folder))
+        matters = Matters(directory: Config.dir.appendingPathComponent(Matters.folder))
+        minister = Minister(matters: matters, memory: memory, store: feature.store, config: { [weak self] in self?.effectiveConfig ?? Config() })
+        minister.onUrgent = { [weak notifier] matter in
+            notifier?.post(matter: matter.id, title: matter.jobName, body: matter.view?.text ?? "")
+        }
+        feature.runner.onFindings = { [weak self] job, change in self?.minister.notice(job, change: change) }
+        feature.buttons.record = { [weak self] job, row, action, press in
+            guard let self else { return }
+            let ref = FindingRef(job: job, id: row.id)
+            self.matters.record(press, on: ref)
+            memory.append(["finding": ref.key, "matter": self.matters.matter(containing: ref)?.id ?? "", "pressed": action.label,
+                           "said": press.said, "failed": press.failed])
+        }
     }
 
     /// The menu bar's Jobs…: every job, the reading jobs and those kept as folders, in one list.
     @objc func menuShowJobs() { morningPanel.showJobs() }
 
-    // MARK: run stickers
+    // MARK: stickers
 
-    /// A job's latest finding as a sticky note beside the bubble, from whoever shared the job: the stickers follow the
-    /// orb, step aside while the pad is open or the bubble is away, and a click opens the job's page.
+    /// The minister's stickers as sticky notes beside the bubble: they follow the orb, step aside while the pad is open
+    /// or the bubble is away, a click opens the matter, and the x puts it away.
     func setupRunStickers() {
-        let model = RunStickers(file: Config.dir.appendingPathComponent("job-results/stickers.json"))
-        runStickers = model
-        stickersPanel = RunStickersPanel(model: model, hideFromScreenShare: config.hideFromScreenShare,
-                                         open: { [weak self] id in self?.morningPanel.showFolderJob(id: id) },
-                                         more: { [weak self] in self?.morningPanel.showJobs() },
-                                         putAway: { [weak model] id in model?.putAway(id) })
-        model.$stickers
+        let model: Matters = matters
+        stickersPanel = StickersPanel(model: model, hideFromScreenShare: config.hideFromScreenShare,
+                                      open: { [weak self] id in self?.morningPanel.showMatter(id: id) },
+                                      more: { [weak self] in self?.morningPanel.showJobs() },
+                                      putAway: { [weak model, weak self] id in
+                                          model?.putAway(id)
+                                          self?.folderJobs?.runner.memory?.append(["matter": id, "put_away": true])
+                                      })
+        model.$all
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.placeRunStickers() }
             .store(in: &cancellables)
         stickersScreenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in MainActor.assumeIsolated { self?.placeRunStickers() } }
-        refreshRunStickers()
     }
 
-    /// The jobs as they stand: at launch, at each tick and after each run.
-    func refreshRunStickers() {
-        guard let jobs = folderJobs?.store.jobs else { return }
-        runStickers?.update(jobs)
-    }
-
-    /// Beside the orb while the bubble is collapsed and on the screen and a job has something to show; away otherwise.
+    /// Beside the orb while the bubble is collapsed and on the screen and a matter has something to show; away otherwise.
     func placeRunStickers() {
-        guard let stickersPanel, let runStickers else { return }
-        let shown = RunStickersPanel.shows(bubbleVisible: panel.isVisible, alpha: panel.alphaValue, expanded: shell.expanded,
-                                           flying: origami.isFlying, count: runStickers.stickers.count)
+        guard let stickersPanel, let matters else { return }
+        let shown = StickersPanel.shows(bubbleVisible: panel.isVisible, alpha: panel.alphaValue, expanded: shell.expanded,
+                                        flying: origami.isFlying, count: matters.stickers.count)
         guard shown else { stickersPanel.orderOut(nil); return }
         stickersPanel.place(besideOrb: panel.frame, on: panel.screen)
         stickersPanel.orderFrontRegardless()
@@ -164,23 +180,11 @@ extension AppDelegate {
 
     // MARK: cards inbox
 
-    /// Cards that scripts and jobs write into `cards/inbox/`, picked up into Morning Files at the jobs' tick, after each
-    /// run, right after a job's card changes, and after a press of a button on a job's card. A card's buttons open its
-    /// page, ask about it in chat, or run a function of its job's job.py. What watches wrote there goes first: they no
-    /// longer run.
+    /// Cards that tool-pack scripts write into `cards/inbox/`, picked up into Morning Files at the jobs' tick. A card's
+    /// buttons open its page or ask about it in chat.
     func setupCardInbox() {
-        RetiredWatchCards.cleanUp(inbox: Config.dir.appendingPathComponent("cards/inbox"))
         let inbox = CardInbox(store: morning)
-        inbox.folderName = { [weak self] source in self?.folderJobs?.cardFolderName(source) }
-        inbox.held = { [weak self] source in self?.folderJobs?.holds(source) ?? false }
-        folderJobs?.runner.onTick = { [weak inbox, weak self] in inbox?.scan(); self?.refreshRunStickers() }
-        folderJobs?.runner.onCardsChanged = { [weak inbox, weak self] in inbox?.scan(); self?.refreshRunStickers() }
-        // A card's button that runs its job's code: what it came to stays on the card, and the card follows its file.
-        folderJobs?.buttons.onCardsChanged = { [weak inbox] in inbox?.scan() }
-        folderJobs?.buttons.record = { [weak self] id, press in
-            do { try self?.morning.recordPress(cardID: id, press) }
-            catch { Log.info("cards: couldn't keep what a button came to: \(error.localizedDescription)") }
-        }
+        folderJobs?.runner.onTick = { [weak inbox] in inbox?.scan() }
         morningPanel.onAskAboutCard = { [weak self] card, question in self?.askAboutCard(card, question: question) }
         cardInbox = inbox
         inbox.scan()

@@ -97,22 +97,13 @@ extension MorningRender {
             let preview = jobStore.output(for: job).appendingPathComponent("preview")
             try FileManager.default.createDirectory(at: preview, withIntermediateDirectories: true)
             try rows.write(to: preview.appendingPathComponent("problems.csv"), atomically: true, encoding: .utf8)
-            try jobStore.record(job.id, FolderJobState(lastRunAt: at, lastSuccessAt: at, said: said,
-                                                       preview: FolderJobFiles.previewDigest(output: jobStore.output(for: job))))
+            try jobStore.record(job.id, FolderJobState(lastRunAt: at, lastSuccessAt: at, said: said))
         }
         try jobStore.setOn(kitchen.id, true)
         try found(kitchen, at: ran, said: "1 of 2 items needs a look", rows: "item,what's wrong\nK-1,price shows 12 – expected 9\n")
         try jobStore.setOn(autumn.id, true)
         try found(autumn, at: before, said: "1 of 3 items needs a look", rows: "item,what's wrong\nA-1,price shows 24 – expected 19\n")
         try jobStore.record(stuck.id, FolderJobState(lastRunAt: ran.addingTimeInterval(-3_600), error: "The orders service asked to sign in again."))
-        let inboxFolder = root.appendingPathComponent("cards-inbox")
-        let cards = FolderJobCards(root: inboxFolder)
-        let inbox = CardInbox(store: store, directory: inboxFolder)
-        inbox.folderName = { source in jobStore.jobs.first { FolderJobCards.source(for: $0) == source }?.name }
-        cards.reconcile(jobStore.jobs, at: before)
-        inbox.scan(at: before)
-        cards.reconcile(jobStore.jobs)
-        inbox.scan()
 
         let panel = FolderJobsPanel(store: jobStore, runner: jobRunner, notifier: JobNotifier())
         let setup = JobsSetup(missingSecrets: { $0.id == bank.id ? ["BANK_MAIL_PASSWORD"] : [] }, openSettings: {})
@@ -132,8 +123,6 @@ extension MorningRender {
         try save("job-team.png", .folderJob(kitchen.id))
         try save("job-ended.png", .folderJob(autumn.id))
         if let winter = jobStore.jobs.first(where: { $0.path == "winter/launch" }) { try save("job-upcoming.png", .folderJob(winter.id)) }
-        let putAway = CardInboxFormat.cardID(FolderJobCards.key(for: autumn))
-        if store.cards.contains(where: { $0.id == putAway }) { try save("card-put-away.png", .card(putAway)) }
         try image(JobsPage(morning: store, sources: sources, runner: runner, setup: setup, navigation: navigation,
                            showingOutside: true, folderJobs: panel)
             .foregroundStyle(Pad.ink).background(Pad.fieldPaper), size: NSSize(width: 650, height: 1_700),

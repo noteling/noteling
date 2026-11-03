@@ -58,15 +58,6 @@ enum CardInboxFormat {
     static let askLimit = 1_000
     static let partLimit = 1_000
     static let partLength = 300
-    static let argsLimit = 4_000
-    static let confirmLimit = 300
-
-    /// A button's function: a plain name a job.py can define, not a `_helper`, and not `run`, which is the job's own.
-    static func buttonFunction(_ text: String) -> String? {
-        let name = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard name != "run", name.range(of: #"^[A-Za-z][A-Za-z0-9_]{0,63}$"#, options: .regularExpression) != nil else { return nil }
-        return name
-    }
 
     /// Reads one card file. Only `title` is required; keys it doesn't know are left out, and so is any button that
     /// would do more than open a web page, ask a question, or run a function of its job's job.py. Only a job's script
@@ -112,17 +103,8 @@ enum CardInboxFormat {
                 entry.actions.append(CardInboxAction(label: short, url: webAddress(url)))
             } else if let ask = (action["ask"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !ask.isEmpty {
                 entry.actions.append(CardInboxAction(label: short, ask: ask.count > askLimit ? String(ask.prefix(askLimit - 1)) + "…" : ask))
-            } else if let run = action["run"] as? String, source.hasPrefix(FolderJobCards.scriptPrefix), let function = buttonFunction(run) {
-                var args: String?
-                if let value = action["args"], !(value is NSNull) {
-                    guard value is [String: Any], let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
-                          data.count <= argsLimit else { continue }
-                    args = String(decoding: data, as: UTF8.self)
-                }
-                let confirm = ((action["confirm"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                entry.actions.append(CardInboxAction(label: short, run: function, args: args,
-                    confirm: confirm.isEmpty ? nil : confirm.count > confirmLimit ? String(confirm.prefix(confirmLimit - 1)) + "…" : confirm))
             }
+            // A button that would run something is left out: a job's buttons are in its job.json, on its findings.
         }
         let parts = (object["parts"] as? [Any] ?? []).compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
         entry.parts = Array(parts.filter { !$0.isEmpty && $0.count <= partLength }.prefix(partLimit))
@@ -153,11 +135,8 @@ enum CardInboxFormat {
 
     /// A card's id, the same every time for the same `<source>/<id>`.
     static func cardID(_ key: String) -> UUID { uuid("noteling-card-inbox:" + key) }
-    /// The card view's folder for a source. The cards a job's script writes itself share its job's folder.
-    static func folderID(_ source: String) -> UUID {
-        let shared = source.hasPrefix(FolderJobCards.scriptPrefix) ? FolderJobCards.prefix + source.dropFirst(FolderJobCards.scriptPrefix.count) : source
-        return uuid("noteling-card-inbox-folder:" + shared)
-    }
+    /// The card view's folder for a source.
+    static func folderID(_ source: String) -> UUID { uuid("noteling-card-inbox-folder:" + source) }
     static func sourceID(_ key: String, _ index: Int) -> UUID { uuid("noteling-card-inbox-source:\(index):" + key) }
 
     private static func uuid(_ text: String) -> UUID {
@@ -258,7 +237,7 @@ enum CardInboxFormat {
         card.title = entry.title
         card.summary = entry.body
         card.rationale = ""
-        let kind = entry.source.hasPrefix(FolderJobCards.prefix) || entry.source.hasPrefix(FolderJobCards.scriptPrefix) ? "Job" : "Card"
+        let kind = "Card"
         var sources = [MorningSource(id: sourceID(entry.key, 0), title: entry.title, kind: kind, excerpt: entry.body, url: entry.url,
                                      capturedAt: entry.modifiedAt)]
         if !entry.details.isEmpty {
@@ -429,37 +408,3 @@ final class CardInbox {
     }
 }
 
-/// Watches wrote their cards into the inbox themselves: `watch-<path>/job.json`, the CSV files it carried (`problems.csv`,
-/// `all.csv` and their numbered parts) and, in earlier versions, one `item-….json` per item. Watches no longer run, so
-/// at launch Noteling deletes what they wrote there, and those cards resolve as any card whose file went away does.
-/// Anything else in those folders, such as a card a watch's own check.py wrote, is left as it is; an emptied folder goes.
-enum RetiredWatchCards {
-    /// Deletes the files watches wrote into `inbox`. Returns how many it deleted; none once they're gone.
-    @discardableResult
-    static func cleanUp(inbox: URL) -> Int {
-        let manager = FileManager.default
-        let folders = ((try? manager.contentsOfDirectory(atPath: inbox.path)) ?? []).filter { $0.hasPrefix("watch-") }
-        var deleted = 0
-        for folder in folders {
-            let url = inbox.appendingPathComponent(folder)
-            for name in (try? manager.contentsOfDirectory(atPath: url.path)) ?? [] where watchWrote(name) {
-                if (try? manager.removeItem(at: url.appendingPathComponent(name))) != nil { deleted += 1 }
-            }
-            if ((try? manager.contentsOfDirectory(atPath: url.path)) ?? ["?"]).isEmpty { try? manager.removeItem(at: url) }
-        }
-        if deleted > 0 { Log.info("cards inbox: watches no longer run, so the \(deleted) file(s) they wrote were deleted") }
-        return deleted
-    }
-
-    /// One of the files a watch wrote: job.json, an item file, or one of its CSV files.
-    static func watchWrote(_ name: String) -> Bool {
-        if name == "job.json" || name.hasPrefix("item-") && name.hasSuffix(".json") { return true }
-        guard name.hasSuffix(".csv") else { return false }
-        let stem = name.dropLast(4)
-        for kind in ["problems", "all"] {
-            if stem == kind { return true }
-            if stem.hasPrefix(kind + "-"), let number = Int(stem.dropFirst(kind.count + 1)), number > 0 { return true }
-        }
-        return false
-    }
-}

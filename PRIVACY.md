@@ -15,8 +15,10 @@ The app stores its data in `~/.noteling`, or in `$NOTELING_HOME` if you set it. 
 | The jobs you set up that read your mail, a page or a calendar (shown in Jobs), their run history and findings, including everything a script read returned | `calendar/`, `runs/` |
 | Watch lists from earlier versions, which no longer run: Noteling no longer reads or writes them, and leaves them until you delete them | `watches/`, `team-watches/` |
 | Your jobs kept as folders, one folder each: what the job is (`job.json`), its script (`job.py`) and its input files (see Team jobs below) | `jobs/` |
-| What jobs kept as folders left: the latest output of each job that ran (yours and the team's you turned on), how its last run went, and which of the team's jobs you turned on | `job-results/` |
-| Cards that tool-pack scripts and jobs write for Morning Files, one file each, and the files they list (see The cards inbox below) | `cards/inbox/` |
+| What jobs kept as folders left: the latest output of each job that ran (yours and the team's you turned on), with the findings it reported as a table (`findings.csv`) and the last run's rows (`findings.json`, so the next run can tell new, changed and gone apart), how its last run went, and which of the team's jobs you turned on | `job-results/` |
+| The memory log, one file a day: each job's runs (what it checked, how many it read and how many it found) and each finding that is new, changed or gone, as the row the job reported it, with anything that looks like a secret hidden; the minister's verdict on each finding and why; each sticker it wrote; what you put away or pressed | `memory/` |
+| Cards that tool-pack scripts write for Morning Files, one file each, and the files they list (see The cards inbox below) | `cards/inbox/` |
+| The minister's matters, one folder each: which findings it is made of, its state (on a sticker, quiet, or over), the sticker's words, and the minister's notes on why | `matters/` |
 | A copy of the files each card carries, only those its latest card file listed (see The cards inbox below) | `cards/files/` |
 | Cards, your decisions and context, Who's Who, queued work, what the card step has already judged, and the lessons you teach | `morning/` |
 | Watch Me recordings, only while a draft is being written | `recordings/` |
@@ -26,7 +28,7 @@ The app stores its data in `~/.noteling`, or in `$NOTELING_HOME` if you set it. 
 | Freeze diagnostics: the steps chat goes through, and a record of each time the app stopped responding | `diagnostics/main-thread/` |
 | How you use notes: arriving where there are notes, showing them, pointing at things with the pen, checks run and what they found, notes kept or removed. Counts, kinds and note ids only, never a note's words, a page's address or anything on screen | `usage/` |
 
-Watch Me recordings, developer-build secrets, the attention test and the activity log can be read only by your macOS user account, and so can the freeze diagnostics.
+Watch Me recordings, developer-build secrets, the memory log, the attention test and the activity log can be read only by your macOS user account, and so can the freeze diagnostics.
 
 The attention test measures whether cards show you what matters and leave the rest out. Noteling creates its file only once a mail job that reads through a script has run, and only ever adds to it. It stops adding what you do once a week passes with no such read, for example after you remove the job, and starts again with the next one. The file never leaves your Mac: Noteling doesn't send it anywhere. What you teach while the test runs, your thumbs, explanations and “Matters to me” marks, is also kept as lessons with your cards, and lessons are sent with the card step; see Lessons below. To erase the test, quit the app and delete the `attention` folder; the test starts again with the next read.
 

@@ -27,6 +27,8 @@ def main():
         with contextlib.redirect_stdout(buf):
             spec.loader.exec_module(mod)
             result = function(mod, name, path)(**args)
+        if isinstance(result, dict) and isinstance(result.get("findings"), list):
+            result["_columns"] = columns(result["findings"])
         out = {"result": result}
         if buf.getvalue().strip():
             out["stdout"] = buf.getvalue()[-4000:]
@@ -38,6 +40,15 @@ def main():
             out["stdout"] = buf.getvalue()[-4000:]
         print(json.dumps(out, default=str))
         return 1
+
+
+def columns(rows):
+    """The columns of a job's findings in the job's own order, which JSON keeps but a Swift dictionary doesn't."""
+    seen = []
+    for row in rows:
+        if isinstance(row, dict):
+            seen.extend(key for key in row if key not in seen)
+    return seen
 
 
 def function(mod, name, path):

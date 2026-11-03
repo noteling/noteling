@@ -9,6 +9,8 @@ import SwiftUI
         case jobs, sourceJob(UUID)
         /// A job kept as a folder's page.
         case folderJob(UUID)
+        /// A matter's page, from its sticker.
+        case matter(String)
     }
     /// Where Back goes from a screen opened from somewhere other than its usual place, such as a card or a run opened
     /// from a job's page.
@@ -125,8 +127,6 @@ struct MorningFilesView: View {
     @State private var showingQuietFolders = false
     /// The files a decision for several changed, as they were, for its Undo.
     @State private var batchUndo: [MorningCard]?
-    /// A card's button that runs its job's code and asks first, while it asks.
-    @State private var confirming: CardRunConfirm?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -283,6 +283,7 @@ struct MorningFilesView: View {
         case .editFolder(let id): return id == nil ? "A new folder" : "Rename folder"
         case .jobs: return "Jobs"
         case .sourceJob(let id), .folderJob(let id): return jobName(id) ?? "Job"
+        case .matter: return "On your note"
         }
     }
 
@@ -331,6 +332,10 @@ struct MorningFilesView: View {
                               openCard: { navigation.open(.card($0), returningTo: .folderJob(id)) }, files: cardFiles, setup: jobs,
                               notifier: folderJobs.notifier).id(id)
             } else { empty("Jobs are unavailable.") }
+        case .matter(let id):
+            if let folderJobs, let matters = folderJobs.matters {
+                MatterPage(matters: matters, store: folderJobs.store, buttons: folderJobs.buttons, id: id).id(id)
+            } else { empty("Stickers are unavailable.") }
         case .attention(let screen):
             if let attention {
                 AttentionScreenView(ledger: attention, store: store, navigation: navigation, screen: screen,
@@ -463,11 +468,6 @@ struct MorningFilesView: View {
         let cards = store.cards.filter { $0.folderID == id && $0.displayDisposition == navigation.disposition }
         return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                // A job's folder: when it last ran, Run now, and its page, from which Back comes here.
-                if let folderJobs, let job = Self.job(forFolder: id, in: folderJobs.store.jobs) {
-                    FolderJobFolderLine(store: folderJobs.store, runner: folderJobs.runner, jobID: job.id,
-                                        openJob: { navigation.open(.folderJob(job.id), returningTo: .folder(id)) })
-                }
                 HStack {
                     Text(navigation.selecting ? "Click files to choose them, or ⌘-click any time." : "Pick up a file. Put it back whenever you like.")
                         .font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
@@ -557,17 +557,9 @@ struct MorningFilesView: View {
             .contextMenu { if !card.isFromInbox { Button("Edit note") { navigation.route = .editCard(card.id) } } }
     }
 
-    /// The job kept as a folder whose cards a Morning Files folder holds, if any: its preview card's and the ones its
-    /// job.py wrote share it.
-    static func job(forFolder id: UUID, in jobs: [FolderJob]) -> FolderJob? {
-        jobs.first { CardInboxFormat.folderID(FolderJobCards.source(for: $0)) == id }
-    }
-
-    /// Why a card from the inbox went away: its job ended (or hasn't started, or is off), so its card was put away;
-    /// otherwise its script no longer reports it.
+    /// Why a card from the inbox went away: its script no longer reports it.
     static func goneLine(_ card: MorningCard, gone: Date, jobs: [FolderJob], now: Date) -> String {
-        if let job = job(forFolder: card.folderID, in: jobs), let line = FolderJobWords.putAway(job, gone: gone, now: now) { return line }
-        return "Its script no longer reports this (\(gone.formatted(date: .abbreviated, time: .shortened)))."
+        "Its script no longer reports this (\(gone.formatted(date: .abbreviated, time: .shortened)))."
     }
 
     /// "2 files attached", for a card that carries files; nil for one that carries none.
@@ -616,16 +608,6 @@ struct MorningFilesView: View {
                         Text(card.meaning).font(.system(size: 15)).lineSpacing(4).lineLimit(card.isFromInbox ? nil : 4).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: card.isFromInbox)
                     }
-                    // A job's card thanks whoever shared the job, once per run.
-                    if let job = folderJob(of: card), let thanks = FolderJobWords.thanks(job, run: job.state.lastSuccessAt) {
-                        Text(thanks).font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
-                    }
-                    // What pressing one of its buttons that run its job's code came to, last time.
-                    if let press = card.inbox?.presses?.last {
-                        Label(CardRunWords.line(press, now: Date()), systemImage: press.failed ? "exclamationmark.triangle" : "checkmark.circle")
-                            .font(.system(size: 12)).foregroundStyle(press.failed ? Pad.redInk : Pad.inkSoft)
-                            .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-                    }
                     if let gone = card.inbox?.goneAt {
                         Label(Self.goneLine(card, gone: gone, jobs: folderJobs?.store.jobs ?? [], now: Date()), systemImage: "tray")
                             .font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
@@ -647,11 +629,8 @@ struct MorningFilesView: View {
                         if pending.status == .queued { Button("Remove from queue") { perform { try store.cancelQueued(id: pending.id) } }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk) }
                     }
                 } else if card.isResolved {
-                    HStack(spacing: 9) {
-                        Button("Reopen this card") { perform { try store.setCardResolution(cardID: card.id, resolved: false) } }
-                            .buttonStyle(MorningActionButton())
-                        if let job = folderJob(of: card) { openJobButton(job, card: card, primary: false) }
-                    }
+                    Button("Reopen this card") { perform { try store.setCardResolution(cardID: card.id, resolved: false) } }
+                        .buttonStyle(MorningActionButton())
                 } else {
                     if let previous = history.first, let warning = retryWarning(previous) {
                         Label(warning, systemImage: "exclamationmark.circle").font(.system(size: 12)).foregroundStyle(Pad.redInk).fixedSize(horizontal: false, vertical: true)
@@ -661,7 +640,6 @@ struct MorningFilesView: View {
                             HStack(spacing: 9) { inboxButtons(card) }
                             VStack(alignment: .leading, spacing: 8) { inboxButtons(card) }
                         }
-                        runButtonNotes(card)
                     } else {
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: 9) { optionButtons(card, history: history) }
@@ -673,12 +651,6 @@ struct MorningFilesView: View {
                         Button("Ignore") { decide(card, .ignored) }
                         Button("I’ve handled this") { perform { try store.setCardResolution(cardID: card.id, resolved: true) } }
                     }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
-                }
-                // A job's card shows its job's latest result: the preview as it is, and the files to take away.
-                if let job = folderJob(of: card), let result = folderJobs?.store.result(for: job) {
-                    FolderJobResultView(result: result, actions: cardFiles, report: { message, problem in
-                        if problem { localError = message } else { localError = nil; undo = nil; batchUndo = nil; notice = message }
-                    })
                 }
                 // The files it carries stay with it, resolved or not.
                 if !card.files.isEmpty || card.inbox?.fileNotes != nil {
@@ -710,55 +682,17 @@ struct MorningFilesView: View {
         }
     }
 
-    /// An inbox card's buttons: each opens a web page or asks Noteling about the card in chat, and nothing else; a job's
-    /// card also opens its job's page. A card with a page and no button for it gets Open page.
+    /// An inbox card's buttons: each opens a web page or asks Noteling about the card in chat, and nothing else. A card
+    /// with a page and no button for it gets Open page.
     @ViewBuilder private func inboxButtons(_ card: MorningCard) -> some View {
-        if let job = folderJob(of: card) { openJobButton(job, card: card, primary: true) }
         ForEach(Array(Self.inboxActions(card).enumerated()), id: \.offset) { index, action in
             if let url = action.url.flatMap(URL.init(string:)) {
                 Button(action.label) { NSWorkspace.shared.open(url) }.buttonStyle(MorningActionButton(primary: index == 0)).help(url.absoluteString)
             } else if let ask = action.ask {
                 Button(action.label) { askAboutCard?(card, ask) }.buttonStyle(MorningActionButton(primary: index == 0)).help(ask)
                     .disabled(askAboutCard == nil)
-            } else if action.run != nil {
-                if let buttons = folderJobs?.buttons {
-                    CardRunButton(card: card, action: action, buttons: buttons, primary: index == 0) {
-                        confirming = CardRunConfirm(card: card.id, action: action.id)
-                    }
-                } else {
-                    Button(action.label) {}.buttonStyle(MorningActionButton(primary: index == 0)).disabled(true)
-                }
             }
         }
-    }
-
-    /// Under a card's buttons: what one that runs its job's code asks before it runs, and why such buttons can't run now.
-    @ViewBuilder private func runButtonNotes(_ card: MorningCard) -> some View {
-        if let buttons = folderJobs?.buttons, card.inbox?.actions.contains(where: { $0.run != nil }) == true {
-            if let confirming, confirming.card == card.id, let action = card.inbox?.actions.first(where: { $0.id == confirming.action }) {
-                CardRunConfirmRow(action: action, run: {
-                    self.confirming = nil
-                    Task { await buttons.press(card, action) }
-                }, cancel: { self.confirming = nil })
-            }
-            if let why = buttons.unavailable(card) {
-                Label(why, systemImage: "exclamationmark.circle").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    /// A job's card always has Open job: from the simple thing on the card to all the job did, its input, every file
-    /// of its output and its last run, in one click.
-    private func openJobButton(_ job: FolderJob, card: MorningCard, primary: Bool) -> some View {
-        Button("Open job") { navigation.open(.folderJob(job.id), returningTo: .card(card.id)) }
-            .buttonStyle(MorningActionButton(primary: primary)).help("Open this job’s page: its input, every file of its output, and its last run")
-    }
-
-    /// The job kept as a folder whose preview card this is.
-    private func folderJob(of card: MorningCard) -> FolderJob? {
-        guard let key = card.inbox?.key, key.hasPrefix(FolderJobCards.prefix) else { return nil }
-        return folderJobs?.store.jobs.first { FolderJobCards.key(for: $0) == key }
     }
 
     /// What an inbox card's buttons are: its file's, and Open page for its page when none opens it.

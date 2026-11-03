@@ -82,42 +82,6 @@ struct FolderJobChatTests {
         #expect(FolderJobConversation.csvField("a, b") == "\"a, b\"" && FolderJobConversation.csvField("say \"hi\"") == "\"say \"\"hi\"\"\"")
     }
 
-    @Test func whatWatchesWroteIntoTheInboxGoesAndTheirCardsResolve() throws {
-        let place = ChatPlace()
-        defer { place.remove() }
-        let inbox = place.root.appendingPathComponent("cards/inbox")
-        func write(_ path: String, _ text: String = "{\"title\": \"T\"}") throws {
-            let url = inbox.appendingPathComponent(path)
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try text.write(to: url, atomically: true, encoding: .utf8)
-        }
-        try write("watch-team-holiday-oct-gm/job.json", #"{"title": "Holiday Oct · GM: couldn't check 5 of 5", "files": ["problems.csv"]}"#)
-        try write("watch-team-holiday-oct-gm/problems.csv", "item\n1\n")
-        try write("watch-sale/job.json")
-        try write("watch-sale/all-2.csv", "item\n")
-        try write("watch-sale/item-ab12.json")
-        try write("watch-sale/deal.json")                         // a card the watch's own check wrote: not Noteling's
-        try write("pack-shop/job.json")                           // not a watch's folder at all
-        let morning = MorningStore(directory: place.root.appendingPathComponent("morning"))
-        let scan = CardInbox(store: morning, directory: inbox)
-        scan.scan()
-        #expect(morning.cards.filter { !$0.isResolved }.count == 5)
-
-        #expect(RetiredWatchCards.cleanUp(inbox: inbox) == 5)
-        let manager = FileManager.default
-        #expect(!manager.fileExists(atPath: inbox.appendingPathComponent("watch-team-holiday-oct-gm").path))   // emptied, so gone
-        #expect(try manager.contentsOfDirectory(atPath: inbox.appendingPathComponent("watch-sale").path) == ["deal.json"])
-        #expect(manager.fileExists(atPath: inbox.appendingPathComponent("pack-shop/job.json").path))
-        #expect(RetiredWatchCards.cleanUp(inbox: inbox) == 0)   // once they're gone, nothing more
-
-        // Their cards resolve as any card whose file went away does; the others stay.
-        scan.scan()
-        let open = morning.cards.filter { !$0.isResolved }.compactMap { $0.inbox?.key }.sorted()
-        #expect(open == ["pack-shop/job", "watch-sale/deal"])
-        #expect(RetiredWatchCards.watchWrote("problems-3.csv") && RetiredWatchCards.watchWrote("all.csv"))
-        #expect(!RetiredWatchCards.watchWrote("problems-x.csv") && !RetiredWatchCards.watchWrote("report.csv") && !RetiredWatchCards.watchWrote("deal.json"))
-    }
-
     @Test func aCardsOldWatchButtonDecodesAndShowsNothing() throws {
         let saved = Data(#"{"label": "Open job", "watch": "63850AEF-35A5-55FF-B4C0-81B2263EB3DE"}"#.utf8)
         let action = try JSONDecoder().decode(CardInboxAction.self, from: saved)
