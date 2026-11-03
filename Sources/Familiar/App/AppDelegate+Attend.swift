@@ -149,14 +149,28 @@ extension AppDelegate {
 
     // MARK: stickers
 
-    /// The minister's stickers as sticky notes beside the bubble: they follow the orb, step aside while the pad is open
-    /// or the bubble is away, a click opens the matter, and the x puts it away.
+    /// The minister's stickers as sticky notes beside the bubble: they follow the orb and step aside while the pad is
+    /// open or the bubble is away, until the person drags them to a spot of their own, which is remembered, as their
+    /// size is. A click opens the matter, the x puts it away, and the right-click menu has the rest.
     func setupRunStickers() {
         let model: Matters = matters
-        stickersPanel = StickersPanel(model: model, hideFromScreenShare: config.hideFromScreenShare,
-                                      open: { [weak self] id in self?.morningPanel.showMatter(id: id) },
-                                      more: { [weak self] in self?.morningPanel.showJobs() },
-                                      putAway: { [weak model] id in model?.putAway(id) })
+        var home: NSPoint?
+        if let x = config.stickersX, let y = config.stickersY, x.isFinite, y.isFinite { home = NSPoint(x: x, y: y) }
+        let stickers = StickersPanel(model: model, look: StickersLook(scale: CGFloat(config.stickerScale)), home: home,
+                                     hideFromScreenShare: config.hideFromScreenShare,
+                                     open: { [weak self] id in self?.morningPanel.showMatter(id: id) },
+                                     more: { [weak self] in self?.morningPanel.showJobs() },
+                                     putAway: { [weak model] id in model?.putAway(id) })
+        stickers.onChange = { [weak self] in
+            guard let self, let stickers = self.stickersPanel else { return }
+            self.config.stickersX = stickers.home.map { Double($0.x) }
+            self.config.stickersY = stickers.home.map { Double($0.y) }
+            self.config.stickerScale = Double(stickers.look.scale)
+            self.config.save()
+            self.placeRunStickers()
+        }
+        stickers.onHide = { [weak self] in self?.showStickersHiddenHint() }
+        stickersPanel = stickers
         model.$all
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.placeRunStickers() }
@@ -166,14 +180,32 @@ extension AppDelegate {
         ) { [weak self] _ in MainActor.assumeIsolated { self?.placeRunStickers() } }
     }
 
-    /// Beside the orb while the bubble is collapsed and on the screen and a matter has something to show; away otherwise.
+    /// On the screen while a matter has something to show and the person hasn't hidden them: beside the orb only while
+    /// the bubble is collapsed and there, at their own spot whatever the bubble does; away otherwise.
     func placeRunStickers() {
         guard let stickersPanel, let matters else { return }
-        let shown = StickersPanel.shows(bubbleVisible: panel.isVisible, alpha: panel.alphaValue, expanded: shell.expanded,
-                                        flying: origami.isFlying, count: matters.stickers.count)
+        let shown = StickersPanel.shows(count: matters.stickers.count, hidden: stickersPanel.hidden, controlling: stickersPanel.hiddenForControl,
+                                        detached: stickersPanel.isDetached, bubbleVisible: panel.isVisible, alpha: panel.alphaValue,
+                                        expanded: shell.expanded, flying: origami.isFlying)
         guard shown else { stickersPanel.orderOut(nil); return }
         stickersPanel.place(besideOrb: panel.frame, on: panel.screen)
         stickersPanel.orderFrontRegardless()
+    }
+
+    /// The menu bar's Hide Stickers / Show Stickers.
+    @objc func toggleStickers() {
+        guard let stickersPanel else { return }
+        stickersPanel.hidden.toggle()
+        placeRunStickers()
+    }
+
+    /// The stickers were hidden from their own menu: a callout under the menu bar icon says where they come back from.
+    func showStickersHiddenHint() {
+        guard let target = statusItemRect else { return }
+        hideHint.show(under: target, title: "The stickers are hidden", subtitle: "Show Stickers, in this menu, brings them back", seconds: 4.5) { [weak self] in
+            self?.stickersPanel?.hidden = false
+            self?.placeRunStickers()
+        }
     }
 
     // MARK: cards inbox

@@ -379,7 +379,8 @@ func runRenderPen() {
 }
 
 /// `Noteling --render-stickers <dir>`: the sticky notes beside the bubble with fictional jobs, one, three and five of
-/// them (the last with "and 2 more"), drawn into PNGs. For eyeballing the paper without a job having run.
+/// them (the last with "and 2 more"), and three at the smallest and the biggest size, drawn into PNGs. For eyeballing
+/// the paper without a job having run.
 @MainActor
 func runRenderStickers() {
     let args = CommandLine.arguments
@@ -401,10 +402,10 @@ func runRenderStickers() {
                matter("Reviews under 3 stars", by: "Yang", "One new two-star review, about a late delivery.", minutesAgo: 200)]
 
     // The host is an off-screen window drawn into a 2x bitmap, as the pad is: the tab and the x are buttons.
-    func render(_ count: Int, _ name: String) {
+    func render(_ count: Int, _ name: String, scale: CGFloat = 1) {
         let model = Matters(directory: nil)
         for matter in all.prefix(count) { model.save(matter) }
-        let view = StickersView(model: model, open: { _ in }, more: {}, putAway: { _ in })
+        let view = StickersView(model: model, look: StickersLook(scale: scale), open: { _ in }, more: {}, putAway: { _ in })
             .padding(12).background(Color(white: 0.96))
         let hosting = NSHostingView(rootView: view)
         hosting.layoutSubtreeIfNeeded()
@@ -430,5 +431,7 @@ func runRenderStickers() {
     render(1, "stickers-1.png")
     render(3, "stickers-3.png")
     render(5, "stickers-5.png")
+    render(3, "stickers-3-smallest.png", scale: StickersLook.steps[0])
+    render(3, "stickers-3-biggest.png", scale: StickersLook.steps[StickersLook.steps.count - 1])
     exit(0)
 }

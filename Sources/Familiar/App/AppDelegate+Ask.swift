@@ -145,7 +145,7 @@ extension AppDelegate {
         origami.cancel()
         shell.expanded = false
         wand.deactivate()
-        stickersPanel?.orderOut(nil)
+        if stickersPanel?.isDetached == false { stickersPanel?.orderOut(nil) }   // stickers at their own spot stay
         guard let target = statusItemRect else { panel.orderOut(nil); return }
         let start = panel.frame
         savedBubbleFrame = start
@@ -158,7 +158,7 @@ extension AppDelegate {
         }, completionHandler: { [weak self] in
             guard let self else { return }
             self.panel.orderOut(nil)
-            self.stickersPanel?.orderOut(nil)
+            if self.stickersPanel?.isDetached == false { self.stickersPanel?.orderOut(nil) }
             self.panel.alphaValue = 1
             self.panel.setFrame(start, display: false)
             self.hideHint.show(under: target) { [weak self] in self?.showBubble() }

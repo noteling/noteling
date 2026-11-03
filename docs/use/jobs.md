@@ -55,6 +55,11 @@ quiet in Noteling's memory, with the reason, and you can ask in chat: "anything 
   the minister thinks you should see it again.
 - A sticker leaves by itself when the job no longer reports what it was about.
 - An urgent sticker is also a notification. Clicking the notification opens the sticker.
+- Drag a sticker to move the whole stack. Beside the note, the stickers go where the note goes; once you've put them
+  somewhere else they stay there, whatever the note does, until **Put back beside Noteling** in their right-click menu.
+- Right-click a sticker for **Open**, **Put away**, **Bigger** and **Smaller** (the size is remembered) and **Hide
+  stickers**. Hidden stickers come back from **Show Stickers** in the menu bar, and when Noteling next starts; an urgent
+  one still notifies you meanwhile.
 
 ## Before it starts, and after it ends
 
