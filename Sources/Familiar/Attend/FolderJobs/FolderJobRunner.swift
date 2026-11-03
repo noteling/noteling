@@ -313,7 +313,7 @@ final class FolderJobsFeature {
                                     fileName: FolderJobFiles.entry, path: run.script, description: run.job.about,
                                     inputSchema: ["type": "object", "properties": [:]], dependencies: [])
             return try await scripts.result(script, args: run.arguments, function: run.function, secrets: run.job.requires,
-                                            timeout: run.timeout, toolDir: run.folder, cards: false, env: run.env)
+                                            timeout: run.timeout, toolDir: run.folder, env: run.env)
         }
         let runner = FolderJobRunner(store: store, execute: execute)
         let importPaths = { [weak registry] () -> [URL] in

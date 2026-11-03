@@ -112,11 +112,6 @@ struct DocsExamplesTests {
                 } else if keys.contains("glance") {
                     #expect(PageGlance.parse(block) != nil, "\(place)")
                     checked["glance", default: 0] += 1
-                } else if keys.contains("title") {
-                    // As a pack's script writes it: its buttons open a page or ask in chat.
-                    let card = try CardInboxFormat.parse(data, source: "pack-docs", id: "example", modifiedAt: Date())
-                    #expect(!card.title.isEmpty && card.actions.count == (object["actions"] as? [Any])?.count ?? 0, "\(place)")
-                    checked["card", default: 0] += 1
                 } else {
                     #expect(keys.isSubset(of: FolderJobFiles.known), "\(place) has keys a job.json doesn't: \(keys.subtracting(FolderJobFiles.known))")
                     _ = try FolderJobFiles.parse(data, path: "docs/example", source: .team)
@@ -124,7 +119,7 @@ struct DocsExamplesTests {
                 }
             }
         }
-        #expect(checked["job.json", default: 0] >= 4 && checked["card", default: 0] >= 1 && checked["setup", default: 0] >= 1
+        #expect(checked["job.json", default: 0] >= 4 && checked["setup", default: 0] >= 1
                 && checked["noteling.json", default: 0] >= 1 && checked["glance", default: 0] >= 1, "\(checked)")
         // And the template's own.
         _ = try FolderJobFiles.parse(Data(contentsOf: Self.pagesUp.appendingPathComponent("job.json")), path: "examples/pages-up", source: .team)

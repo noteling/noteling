@@ -3,7 +3,7 @@ import SwiftUI
 
 // The paper every product draws on: the pad's colours and type, the handwriting, the yellow sheet with its curl, the
 // ruled lines, the ink line, the paper tabs and the row that wraps them. The chat's notes (`NotePad`, in Ask) are
-// composed from these, and so are the stickers, the Morning panel and the task panel.
+// composed from these, and so are the stickers, the Jobs window and the task panel.
 
 /// Palette and type of the pad. Paper stays yellow in both appearances; only the desk around it darkens.
 enum Pad {
@@ -318,5 +318,29 @@ enum ShimmerBorder {
         t.frame = CGRect(x: 8, y: 8, width: width - 16, height: 20)
         pill.addSublayer(t)
         return (pill, t)
+    }
+}
+
+/// A button on the paper: a small rounded label, filled with the pen's ink when it is the main one. A button that can't
+/// be used now looks it.
+struct PaperActionButton: ButtonStyle {
+    var primary = false
+    func makeBody(configuration: Configuration) -> some View {
+        Face(configuration: configuration, primary: primary)
+    }
+
+    private struct Face: View {
+        let configuration: ButtonStyleConfiguration
+        let primary: Bool
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label.font(.system(size: 12, weight: .medium))
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .foregroundStyle(primary ? Color.white : Pad.ink)
+                .background(primary ? Pad.penInk : Color.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(primary ? Color.clear : Pad.tabEdge.opacity(0.7)))
+                .opacity(configuration.isPressed ? 0.7 : isEnabled ? 1 : 0.45)
+        }
     }
 }

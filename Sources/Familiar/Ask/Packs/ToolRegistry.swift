@@ -473,13 +473,6 @@ final class ToolRegistry {
         }
     }
 
-    /// Scripts a saved job can read through, with the pack that holds each.
-    func sourceScripts() -> [(pack: ToolPack, script: ScriptTool)] {
-        packs.flatMap { pack in
-            pack.scripts.filter { pack.sources.contains(($0.fileName as NSString).deletingPathExtension) }.map { (pack, $0) }
-        }
-    }
-
     /// A pack's named script (`brief:` in its SKILL.md), when the pack has it.
     func script(_ name: String?, in pack: ToolPack) -> ScriptTool? {
         guard let name, !name.isEmpty else { return nil }

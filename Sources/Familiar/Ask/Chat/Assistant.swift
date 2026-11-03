@@ -59,19 +59,9 @@ final class Assistant: ObservableObject {
     var briefs: PageBriefs?
     var onOpenWatchDraft: ((_ title: String, _ markdown: String) -> Void)?
     var onSetControlLane: ((_ allow: Bool, _ background: Bool) -> Void)?   // the app persists both and reconfigures
-    var cardConversation: CardConversation?
-    /// Saved sources ("jobs") in general chat: listed every turn, changeable through tools, runnable only by a tap.
-    var sourceConversation: SourceConversation? {
-        didSet {
-            sourceConversation?.onChange = { [weak self] receipt in self?.sourceChanged(receipt) }
-            sourceConversation?.onOfferRun = { [weak self] id, name in self?.offerSourceRun(id: id, name: name) }
-            sourceConversation?.onOfferConnect = { [weak self] _ in self?.offerConnect() }
-        }
-    }
-    /// The Open Jobs tab: Jobs in Morning Files, every job in one list.
+    /// The Open Jobs tab: the Jobs window, every job in one list.
     var onOpenJobs: (() -> Void)?
     var onOpenSettings: (() -> Void)?
-    var onRunSource: ((UUID) -> Void)?
     /// The jobs kept as folders in general chat: tools to list them, run one now, turn one of the team's on or off, and
     /// read one's latest result.
     var folderJobs: FolderJobConversation? {
@@ -102,7 +92,6 @@ final class Assistant: ObservableObject {
     /// A way was taught to its end: the app lets the folded note say so.
     var onTourDone: (() -> Void)?
     private var pendingSourceTabs: [String] = []   // added to the reply's tabs when the turn ends
-    private var offeredRuns: [String: UUID] = [:]  // Run now tab title → job
 
     let learning: WatchLearnSession
     let notes: ContextNotesService
@@ -207,7 +196,6 @@ final class Assistant: ObservableObject {
     }
 
     func clearConversation() {
-        cardConversation?.clear()
         pendingPick?.ready.cancel()
         pendingPick = nil
         pendingPickID = nil
@@ -224,7 +212,6 @@ final class Assistant: ObservableObject {
         purposeMessageID = nil
         contextMessageID = nil
         pendingSourceTabs = []
-        offeredRuns = [:]
         showMe?.clear()
     }
 
@@ -239,18 +226,6 @@ final class Assistant: ObservableObject {
         if s == Self.openJobsTab, let onOpenJobs { onOpenJobs(); return }
         if s == Self.openSettingsTab, let onOpenSettings { onOpenSettings(); return }
         if pendingPick != nil { answerPick(s); return }
-        if let id = offeredRuns.removeValue(forKey: s) {
-            suggestions.removeAll { $0 == s }
-            onRunSource?(id)
-            return
-        }
-        if s == "Back to general chat", cardConversation?.cardID != nil {
-            cardConversation?.clear()
-            execution.conversation.clear()
-            suggestions = []
-            status = "Back to general chat."
-            return
-        }
         if awaitingPurpose {
             if s == Self.continueTab {
                 if learning.submitDescription(nil) { question = "" }
@@ -295,9 +270,6 @@ final class Assistant: ObservableObject {
             return sugg + [Self.fullDraftTab, draft.parsed ? Self.keepTab : Self.retryTab, Self.discardTab]
         }
         if draftFailed { return sugg + [Self.retryTab, Self.discardTab] }
-        if cardConversation?.cardID != nil {
-            return sugg.filter { $0 != "Back to general chat" } + ["Back to general chat"]
-        }
         return sugg
     }
 
@@ -492,7 +464,7 @@ final class Assistant: ObservableObject {
         let ctx = watcher.current ?? watcher.sample()
         chatBusy = true
         let generation = captureGeneration
-        let briefing = cardConversation?.card == nil && briefs?.source(for: ctx) != nil
+        let briefing = briefs?.source(for: ctx) != nil
         if briefing { briefs?.prefetch(ctx) }
 
         let evidence = evidence(for: q, ctx: ctx)
@@ -554,8 +526,7 @@ final class Assistant: ObservableObject {
                 if let b = await briefs?.brief(for: ctx, wait: 10) { brief = Prompt.brief(b); facts = b.facts }
                 guard generation == captureGeneration else { finishRequest(); return }
             }
-            let context = cardConversation?.card == nil
-                ? Prompt.context(ctx, recent: watcher.history) + packsSection(ctx) + (sourceConversation?.context ?? "") : ""
+            let context = Prompt.context(ctx, recent: watcher.history) + packsSection(ctx)
             let text = context + brief + page + "\n## Question\n\(q)\n"
             content.append(["type": "text", "text": text])
             diagnoseChat(.contextReady)
@@ -839,24 +810,6 @@ final class Assistant: ObservableObject {
 
     // MARK: internals
 
-    @discardableResult
-    func discussCard(_ card: MorningCard) -> Bool {
-        guard !busy, !watching, !awaitingPurpose, !awaitingContext, pendingDraft == nil, !draftFailed,
-              let cardConversation else {
-            status = "Finish the current conversation or Watch Me step before discussing this card."
-            return false
-        }
-        dismissPick()
-        cardConversation.select(card.id)
-        execution.conversation.clear()
-        transcript.append(ChatMessage(role: .assistant, text: "Let’s discuss “\(card.title)”. Tell me what you’d like to change or understand."))
-        suggestions = ["What should I do?", "Adjust the action", "Back to general chat"]
-        shell.expanded = true
-        status = "Discussing this card"
-        diagnoseChat(.chatPanelShown)
-        return true
-    }
-
     /// What a typed question takes from the screen: nothing, the page's text, or a picture. In a browser a question
     /// about the screen gets the page itself, read through Accessibility, which is exact on small text, numbers and
     /// links and sends no image; a picture only when the question is about how something looks. Other apps, and the
@@ -864,10 +817,9 @@ final class Assistant: ObservableObject {
     /// look_at_screen, or for the page with read_screen.
     enum ScreenEvidence: Equatable { case none, page, screenshot }
 
-    /// What a typed question will take from the screen: nothing while a card is discussed; the person's choice when they
-    /// made one (the input's "Looks at" line); else the guess from the question's words and the screenshot setting.
+    /// What a typed question will take from the screen: the person's choice when they made one (the input's "Looks at"
+    /// line); else the guess from the question's words and the screenshot setting.
     func evidence(for question: String, ctx: ScreenContext?) -> ScreenEvidence {
-        if cardConversation?.card != nil { return .none }
         switch lookOverride {
         case false?:
             return .none
@@ -880,9 +832,9 @@ final class Assistant: ObservableObject {
     }
 
     /// The line over the input: whether the question being written will take the screen, and what is in front. Nil when
-    /// a typed question can't take it (a card is discussed, a pick or Watch Me is waiting) or nothing is in front.
+    /// a typed question can't take it (a pick or Watch Me is waiting) or nothing is in front.
     func lookLine(for question: String) -> (looks: Bool, text: String)? {
-        guard cardConversation?.card == nil, pendingPickID == nil, !awaitingPurpose, !awaitingContext, pendingDraft == nil,
+        guard pendingPickID == nil, !awaitingPurpose, !awaitingContext, pendingDraft == nil,
               let scene = inFront else { return nil }
         let looks = evidence(for: question, ctx: scene) != .none
         return (looks, looks ? "Looks at \(Self.sceneName(scene))" : "Doesn't look at your screen")
@@ -897,7 +849,7 @@ final class Assistant: ObservableObject {
     /// Whether the line over the input offers the three verbs: not while a card is discussed, or a pick or Watch Me is
     /// waiting, since those messages aren't a request of their own.
     var offersIntents: Bool {
-        cardConversation?.card == nil && pendingPickID == nil && !awaitingPurpose && !awaitingContext && pendingDraft == nil
+        pendingPickID == nil && !awaitingPurpose && !awaitingContext && pendingDraft == nil
     }
 
     /// A click on a verb pins it for the next message; clicking the pinned one lets the model judge again.
@@ -990,7 +942,7 @@ final class Assistant: ObservableObject {
     /// Whether an answer now could take the mouse and keyboard on the person's own screen: control on, in the
     /// foreground lane. Such an answer has to see what its actions did, so it doesn't hold the screen.
     private var controlsForeground: Bool {
-        config.allowControl && desktop != nil && !watching && cardConversation?.card == nil && !backgroundControl
+        config.allowControl && desktop != nil && !watching && !backgroundControl
     }
 
     private func setSeen(_ seen: SeenScreen, on id: UUID?) {
@@ -1076,8 +1028,7 @@ final class Assistant: ObservableObject {
                 client.effort = usual.effort
             }
         }
-        let discussingCard = cardConversation?.card != nil
-        let controlAllowed = allowsControl && intent != .explain && intent != .teach && config.allowControl && desktop != nil && !watching && !discussingCard
+        let controlAllowed = allowsControl && intent != .explain && intent != .teach && config.allowControl && desktop != nil && !watching
         // The answer shows on the pad as it is written (when the connection can), at most about twelve times a second.
         // Not yet for a turn that may control the computer: its work moves to the task screen.
         let streams = controlAllowed ? nil : client as? StreamsText
@@ -1096,15 +1047,7 @@ final class Assistant: ObservableObject {
         let generation = captureGeneration
         var task: TaskExecution?
         do {
-            var turnContent = content
-            if discussingCard, let cardConversation {
-                turnContent.append(["type": "text", "text": cardConversation.context])
-            }
-            let plan = TaskPlan(content: turnContent, prepareImages: true, prepare: { [self] in
-                if discussingCard, let cardConversation {
-                    return PreparedExecution(system: Self.cardConversationSystem,
-                        router: try ToolRouter(routes: cardConversation.routes()))
-                }
+            let plan = TaskPlan(content: content, prepareImages: true, prepare: { [self] in
                 let holding = controlAllowed && !background ? nil : held
                 let chip = seenOn ?? messageID
                 let capture: () async -> ToolResult = { [weak self] in
@@ -1118,7 +1061,7 @@ final class Assistant: ObservableObject {
                 let words = intentWords
                 let wanted = Prompt.intents(words, pinned: intent)
                 let teaching = intent == .explain || intent == .act ? [] : (showMe?.routes(context: ctx, words: words) ?? [])
-                let sourceRoutes = (sourceConversation?.routes() ?? []) + (folderJobs?.routes() ?? []) + teaching
+                let sourceRoutes = (folderJobs?.routes() ?? []) + teaching
                 if controlAllowed, let desktop {
                     return try await desktop.prepare(id: id, registry: registry, context: ctx, background: background,
                                                      title: title, systemExtra: wanted, facts: facts, additionalRoutes: sourceRoutes,
@@ -1222,28 +1165,10 @@ final class Assistant: ObservableObject {
 
     // MARK: saved jobs
 
-    /// A saved-job tool changed something: a factual line on the pad, and a way to see it in Jobs.
-    private func sourceChanged(_ receipt: String) {
-        transcript.append(ChatMessage(role: .receipt, text: receipt))
-        if !pendingSourceTabs.contains(Self.openJobsTab) { pendingSourceTabs.append(Self.openJobsTab) }
-    }
-
     /// A job tool ran or turned on a job: a factual line on the pad, and a way to see it in Jobs.
     private func jobChanged(_ receipt: String) {
         transcript.append(ChatMessage(role: .receipt, text: receipt))
         if !pendingSourceTabs.contains(Self.openJobsTab) { pendingSourceTabs.append(Self.openJobsTab) }
-    }
-
-    /// The chat offered to run a job: a tab the person can tap. Nothing runs until they do.
-    private func offerSourceRun(id: UUID, name: String) {
-        let tab = "Run “\(Self.reviewExcerpt(name, limit: 40))” now"
-        offeredRuns[tab] = id
-        if !pendingSourceTabs.contains(tab) { pendingSourceTabs.append(tab) }
-    }
-
-    /// A new job needs connecting: secrets go in Settings, never through the chat.
-    private func offerConnect() {
-        if !pendingSourceTabs.contains(Self.openSettingsTab) { pendingSourceTabs.append(Self.openSettingsTab) }
     }
 
     /// The tabs saved-job tools asked for during this turn, handed out once.
@@ -1263,10 +1188,8 @@ final class Assistant: ObservableObject {
         MainThreadDiagnostics.shared.mark(phase, itemCount: transcript.count, characterCount: characters)
         let longest = transcript.map { $0.text.utf8.count }.max() ?? 0
         let lines = transcript.reduce(0) { $0 + $1.text.reduce(1) { $1 == "\n" ? $0 + 1 : $0 } }
-        Log.info("[chat] turn=\(diagnosticTurnID?.uuidString ?? "none") phase=\(phase.rawValue) messages=\(transcript.count) bytes=\(characters) longest=\(longest) lines=\(lines) notes=\(Note.group(transcript).count) tabs=\(suggestions.count) busy=\(chatBusy) card=\(cardConversation?.card != nil) size=\(Int(shell.cardSize.width))x\(Int(shell.cardSize.height))")
+        Log.info("[chat] turn=\(diagnosticTurnID?.uuidString ?? "none") phase=\(phase.rawValue) messages=\(transcript.count) bytes=\(characters) longest=\(longest) lines=\(lines) notes=\(Note.group(transcript).count) tabs=\(suggestions.count) busy=\(chatBusy) size=\(Int(shell.cardSize.width))x\(Int(shell.cardSize.height))")
     }
-
-    private static var cardConversationSystem: String { CardConversation.system }
 
     /// The answer so far on the pad, while it is being written: never the Suggestions line, even half written.
     private func showWriting(_ text: String) {

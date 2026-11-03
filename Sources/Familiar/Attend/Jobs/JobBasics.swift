@@ -24,7 +24,7 @@ struct JobMoment: Equatable {
         guard !trimmed.isEmpty else { return nil }
         let offset = trimmed.replacingOccurrences(of: #"([+-]\d{2})(\d{2})$"#, with: "$1:$2", options: .regularExpression)
             .replacingOccurrences(of: #"(T\d{2}:\d{2})(Z|[+-]\d{2}:\d{2})$"#, with: "$1:00$2", options: .regularExpression)
-        if let date = try? CalendarSubmission.timestamp(offset) { return JobMoment(text: trimmed, date: date) }
+        if let date = iso(offset) { return JobMoment(text: trimmed, date: date) }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = .current
@@ -34,6 +34,15 @@ struct JobMoment: Equatable {
             if let date = formatter.date(from: plain) { return JobMoment(text: trimmed, date: date) }
         }
         return nil
+    }
+
+    /// An ISO 8601 moment with an explicit offset, with or without fractional seconds; nil for anything else.
+    private static func iso(_ text: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        if let date = formatter.date(from: text) { return date }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: text)
     }
 
     /// "Mon Oct 5, 12:00 AM", in this Mac's time.

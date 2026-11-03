@@ -153,7 +153,7 @@ struct LinkedToolsTests {
         #expect(store.jobs.map(\.name).sorted() == ["Fashion", "GM items"])
     }
 
-    @Test func openingMorningFilesChecksAtMostOnceAMinute() async throws {
+    @Test func openingJobsChecksAtMostOnceAMinute() async throws {
         let f = Fixture()
         defer { f.remove() }
         f.serve(sha: Self.first, archive: try Self.archive(["shop/SKILL.md": "---\nname: Shop\n---\n"]))

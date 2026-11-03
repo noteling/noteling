@@ -66,19 +66,6 @@ final class ScriptRunner {
     var extraEnv: [String: String] = [:]   // non-secret config env
     /// The Mac's proxy and trusted certificates for scripts and uv (`ScriptNetwork`); Settings' `env` wins over it.
     var networkEnv: [String: String] = [:]
-    /// The cards inbox (`CardInbox`). Each script gets a folder of its own in it, as NOTELING_CARDS_DIR: a pack's
-    /// scripts `pack-<pack folder>`, a watch's check the watch's. Nil gives scripts none.
-    var cardsRoot: URL? = Config.dir.appendingPathComponent("cards/inbox")
-
-    /// The folder a script writes its cards into, made when needed: `source` made safe, so it is always one folder
-    /// directly in the inbox and never another source's.
-    func cardsFolder(_ source: String) -> URL? {
-        guard let cardsRoot else { return nil }
-        let folder = cardsRoot.appendingPathComponent(CardInboxFormat.safe(source))
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        return folder
-    }
-
     /// `timeout` stops the script once it has run that long; `stopsWithCaller` stops it when the calling task is cancelled.
     /// `env` is what this run alone gets besides, such as the page's brief facts as `NOTELING_FACTS`.
     func run(_ tool: ScriptTool, args: [String: Any], context: ScreenContext?, secrets: [String] = [],
@@ -94,20 +81,17 @@ final class ScriptRunner {
     /// with no size cap. It stops with its caller, and at `timeout`. `toolDir` is the folder a script outside a pack
     /// (a watch's own check.py) calls home, instead of its pack's. Such a script writes no bytecode cache beside
     /// itself: its folder is a person's, or the team's copy, which Noteling never writes into.
-    /// `cardsSource` names its folder in the cards inbox, instead of its pack's. `env` is what this run alone gets
-    /// besides, such as a job's input and output folders; a PYTHONPATH in it comes before one from Settings.
-    /// `function` calls one the script defines instead of run(), as a card's button does.
+    /// `env` is what this run alone gets besides, such as a job's input and output folders; a PYTHONPATH in it comes
+    /// before one from Settings. `function` calls one the script defines instead of run(), as a finding's button does.
     func result(_ tool: ScriptTool, args: [String: Any] = [:], function: String? = nil, context: ScreenContext? = nil, secrets: [String] = [],
-                timeout: TimeInterval = 90, toolDir: URL? = nil, cardsSource: String? = nil, cards: Bool = true,
-                env: [String: String] = [:]) async throws -> Any {
+                timeout: TimeInterval = 90, toolDir: URL? = nil, env: [String: String] = [:]) async throws -> Any {
         try await execute(tool, args: args, function: function, context: context, secrets: secrets, timeout: timeout, stopsWithCaller: true,
-                          toolDir: toolDir, cardsSource: cardsSource, cards: cards, env: env)["result"] ?? NSNull()
+                          toolDir: toolDir, env: env)["result"] ?? NSNull()
     }
 
-    /// `cards` false gives the script no cards folder at all: a job reports findings instead.
     private func execute(_ tool: ScriptTool, args: [String: Any], function: String? = nil, context: ScreenContext?, secrets: [String],
                          timeout: TimeInterval = 90, stopsWithCaller: Bool = false, toolDir home: URL? = nil,
-                         cardsSource: String? = nil, cards: Bool = true, env own: [String: String] = [:]) async throws -> [String: Any] {
+                         env own: [String: String] = [:]) async throws -> [String: Any] {
         guard let (exe, cmdArgs) = command(helper: "run_tool.py", script: tool.path, deps: tool.dependencies, function: function) else {
             throw ScriptRunnerError(message: "no Python runtime")
         }
@@ -119,7 +103,6 @@ final class ScriptRunner {
         if env["PYTHONDONTWRITEBYTECODE"] == nil { env["PYTHONDONTWRITEBYTECODE"] = "1" }
         env["NOTELING_TOOL_DIR"] = toolDir
         env["FAMILIAR_TOOL_DIR"] = toolDir   // earlier name, kept for existing packs
-        if cards, let folder = cardsFolder(cardsSource ?? "pack-" + tool.packDir) { env["NOTELING_CARDS_DIR"] = folder.path }
         for key in secrets { if let v = Secrets.get(key) { env[key] = v } }
         if let context, let d = try? JSONSerialization.data(withJSONObject: context.json), let s = String(data: d, encoding: .utf8) {
             env["NOTELING_CONTEXT"] = s

@@ -4,7 +4,7 @@ import FamiliarRuntime
 
 /// The jobs kept as folders in general chat, so whatever Jobs shows can be talked about there: list them, run one now,
 /// turn one of the team's on or off, and read one's latest result. The chat never makes a job: jobs are written by
-/// whoever keeps the team's tools, as folders. Changes go through the same store and runner as Jobs in Morning Files,
+/// whoever keeps the team's tools, as folders. Changes go through the same store and runner as the Jobs window,
 /// so they show there at once. A run the chat starts is waited for (at most `waitLimit`) and its result returned.
 @MainActor
 final class FolderJobConversation {

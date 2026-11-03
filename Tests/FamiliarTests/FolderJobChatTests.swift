@@ -81,12 +81,6 @@ struct FolderJobChatTests {
         #expect(missing.error && missing.text.hasPrefix("No job is called “shoes”. Jobs:"))
         #expect(FolderJobConversation.csvField("a, b") == "\"a, b\"" && FolderJobConversation.csvField("say \"hi\"") == "\"say \"\"hi\"\"\"")
     }
-
-    @Test func aCardsOldWatchButtonDecodesAndShowsNothing() throws {
-        let saved = Data(#"{"label": "Open job", "watch": "63850AEF-35A5-55FF-B4C0-81B2263EB3DE"}"#.utf8)
-        let action = try JSONDecoder().decode(CardInboxAction.self, from: saved)
-        #expect(action.label == "Open job" && action.url == nil && action.ask == nil)
-    }
 }
 
 /// Jobs folders, yours and your team's, in a temp folder.

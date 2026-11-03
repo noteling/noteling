@@ -21,19 +21,6 @@ Until then the Mail job waits, and its row in Jobs says what it needs; once they
 page shows every unread message it found as a row. Don't want it? **Show in Finder** on its page and delete its folder:
 it doesn't come back.
 
-## Reading jobs from earlier versions
-
-Before the Mail job, Noteling read mail, calendars and pages through reading jobs you asked for in chat ("make a Morning
-mail job that reads my inbox and skips newsletters"), and turned what they found into cards in the Morning folder. Those
-jobs keep running and show in Jobs with the rest, until the cards go.
-
-- **Run all reading jobs** in Jobs reads every one of them in turn and opens **Latest run**, which shows what each found.
-  **Run history** has the earlier runs. You can also change a job from chat: "change it to only unread email from today".
-- When a run ends, Noteling turns what it found into cards. Each looks at an item once, so reading the same mail again
-  doesn't bring back something it already passed over, unless the item or your rules change.
-- On a job's page, each message that didn't become a card has **Matters to me**; cards have two thumbs. Each becomes a
-  lesson the next sort uses. **What you've taught** lists every lesson; **Forget** removes one.
-
 ## Read next
 
 - [Jobs](jobs.md)

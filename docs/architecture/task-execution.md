@@ -2,87 +2,48 @@
 
 ## Producers and execution
 
-Source ingestion, card generation, accepted Morning Files actions, and chat produce work for the
-same app execution entry point. Their domain rules remain separate:
+Chat is the producer of model work that may control the computer, and it goes through the app's one execution entry
+point. The other model work in the app keeps its own rules and never reaches the desktop:
 
-- `CalendarCollectionRunner` captures source requests, dispatches a batch in
-  order, validates submitted observations, and saves run history.
-  `SourceCollectionTask` supplies each source's prompt and constrained tool policy.
-- `CardGenerationService` reviews saved observations through a structured proposal
-  tool, then reconciles proposals and commits generation receipts. It has no desktop
-  tools and does not execute the suggested actions.
-- `MorningTaskRunner` dispatches accepted `MorningWorkItem` records and saves their
-  outcomes. Preparation actions have no desktop tools; desktop actions use the
-  existing target selection and approval controls.
-- `Assistant` supplies chat content and interprets replies. It passes its existing
-  conversation coordinator so follow-up messages retain conversation history.
+- `Assistant` supplies chat content and interprets replies. It passes its existing conversation coordinator so
+  follow-up messages retain conversation history. A turn that may control the computer becomes a background task.
+- `Minister` (Attend) runs its two turns, triage and compose, through its own client with the four reading tools and
+  one answering tool each. It has no desktop tools and never runs anything; see [the minister](../plans/attention-minister.md).
+- A job's `job.py` runs through `FolderJobRunner` and the script runner, with no model at all.
 
-`TaskRequest` identifies one execution and its presentation: ID, title, initial
-status, and task-panel or conversation placement. `TaskPlan` supplies input content,
-image preparation, and a lazy preparation closure returning `PreparedExecution`.
-That closure selects the system instructions and tool capabilities appropriate to
-the producer; the executor does not infer a source policy or an action's authority.
+`TaskRequest` identifies one execution and its presentation: ID, title, initial status, and task-panel or conversation
+placement. `TaskPlan` supplies input content, image preparation, and a lazy preparation closure returning
+`PreparedExecution`. That closure selects the system instructions and tool capabilities appropriate to the producer;
+the executor does not infer an action's authority.
 
 ```mermaid
 flowchart TD
-    Sources[Source ingestion] --> Plan[TaskRequest + TaskPlan]
-    Generation[Card generation from saved observations] --> Plan
-    Cards[Accepted Morning Files action] --> Plan
-    Chat[Chat] --> Plan
+    Chat[Chat] --> Plan[TaskRequest + TaskPlan]
     Plan --> Executor[TaskExecutor / TaskExecution]
     Executor --> Coordinator[ExecutionCoordinator]
     Executor --> Desktop[DesktopExecutionService]
-    Executor --> Result[Producer validates and saves outcome]
+    Executor --> Result[Producer interprets and saves outcome]
     Result --> Finish[TaskExecution.finish]
 ```
 
 ## Ownership and completion
 
-`TaskExecutor.begin` reserves an execution and returns a `TaskExecution` handle.
-The handle runs its plan once through `ExecutionCoordinator`, connects cancellation
-and native cleanup to `DesktopExecutionService`, and owns task-panel progress and
-completion. Native background work can promote a conversation onto the task panel
-without creating another execution. Headless chat, which has no desktop service or
-task panel, continues to use the coordinator directly.
+`TaskExecutor.begin` reserves an execution and returns a `TaskExecution` handle. The handle runs its plan once through
+`ExecutionCoordinator`, connects cancellation and native cleanup to `DesktopExecutionService`, and owns task-panel
+progress and completion. Native background work can promote a conversation onto the task panel without creating
+another execution. Headless chat, which has no desktop service or task panel, continues to use the coordinator directly.
 
-The producer interprets the returned `ExecutionResult` before calling
-`TaskExecution.finish`. Source ingestion requires a fresh structured submission
-with valid identity, scope, evidence and coverage, then commits the collected
-result. A model reply alone cannot make ingestion successful. Morning Files saves
-the work item's final status and result before presenting completion; if saving
-fails, the task shows an unsaved failure and dispatch pauses. Chat interprets the
-reply for its conversation or promoted task surface.
+The producer interprets the returned `ExecutionResult` before calling `TaskExecution.finish`. Chat interprets the reply
+for its conversation or promoted task surface; a model reply alone never counts as the task having done what was asked.
 
-Native cleanup occurs as the coordinator completes; explicit `finish` records the
-producer's final outcome and releases task presentation ownership. The executor
-does not own source validation, card decisions, batch scheduling, or persistence.
-Those decisions cannot be replaced by a generic successful provider response.
+Native cleanup occurs as the coordinator completes; explicit `finish` records the producer's final outcome and releases
+task presentation ownership. The executor does not own persistence or scheduling; those stay with each producer.
 
 ## Storage and views
 
-`CalendarStore` owns source-definition validation and transactions. It depends on
-`SourceRulesRepository`; the current `FileSourceRulesRepository` preserves
-`~/.noteling/calendar/workspace.json` version 4. `SourceRulesSnapshot` contains
-reusable definitions only. Older embedded observations arrive separately for
-migration into run history before the rules file is replaced.
+The task panel displays execution progress and outcomes for up to 20 tasks, until Noteling quits. What jobs find lives
+with the jobs (`job-results/`), the minister's matters in `matters/` and its log in `memory/`; the Jobs window presents
+them. These surfaces are not separate execution engines.
 
-`SourceRunStore` owns run lifecycle and observable records. It depends on
-`SourceRunRepository`; `FileSourceRunRepository` owns timestamped folders under
-`~/.noteling/runs`, authoritative `run.json`, generated per-source JSON and
-`report.md`, and atomic file replacement. The contracts permit repositories with
-no folder location. Current files, permissions and migration behavior are retained;
-this separation does not move synchronous file work off the main actor.
-
-The task panel displays execution progress and outcomes. Morning folders and cards
-present saved work; source-result and history views present saved run records.
-These surfaces are not separate execution engines. Morning card/work persistence
-remains in `MorningStore`; source repositories do not store accepted card jobs.
-
-## Card generation and future personalization
-
-`CardGenerationService` is now a separate producer that turns saved observations
-and supplied context into persistent suggested cards. Generation does not accept
-or execute a card's action. See [persistent cards](persistent-cards.md) for identity,
-reconciliation, storage and human decisions. A future personalization stage can use
-the same producer boundary; inferred preferences and relationships are not yet
-implemented.
+Earlier versions' source ingestion, card generation and the Morning folder's work queue were producers here too; they
+were removed in 0.8.1 with the Morning folder.

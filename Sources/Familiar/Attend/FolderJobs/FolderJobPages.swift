@@ -66,7 +66,7 @@ enum FolderJobWords {
 
     private static func lowercased(_ text: String) -> String { text.prefix(1).lowercased() + text.dropFirst() }
 
-    /// The line on a job's folder in Morning Files: "Last run 6:31 PM · every hour", or "Running now · every hour".
+    /// The line under a job's name: "Last run 6:31 PM · every hour", or "Running now · every hour".
     static func folderLine(_ job: FolderJob, running: Bool, now: Date) -> String {
         (running ? "Running now" : job.state.lastRunAt.map { "Last run " + JobWords.time($0, now: now) } ?? Jobs.notRunYet)
             + " · " + every(job)
@@ -124,15 +124,13 @@ enum FolderJobWords {
 }
 
 /// A job's page among the jobs: the header every job's page has (its name, what it does and how often, its last run and
-/// how it stands, Run now or the on/off switch, and its card), what it is for, what's wrong, its input files, and its
+/// how it stands, Run now or the on/off switch), what it is for, what's wrong, its input files, and its
 /// latest result: the preview's files shown as they are, then every file to open or save.
 struct FolderJobPage: View {
     @ObservedObject var store: FolderJobStore
     @ObservedObject var runner: FolderJobRunner
-    @ObservedObject var morning: MorningStore
     let id: UUID
-    var openCard: (UUID) -> Void = { _ in }
-    var files = CardFileActions()
+    var files = JobFileActions()
     var setup = JobsSetup()
     var now: () -> Date = Date.init
     /// Asked for permission when a team job is turned on here.
@@ -141,7 +139,7 @@ struct FolderJobPage: View {
     @State private var notice: String?
 
     private var panel: FolderJobsPanel { FolderJobsPanel(store: store, runner: runner, notifier: notifier) }
-    private var input: Jobs.Input { Jobs.Input(sources: nil, morning: morning, setup: setup, now: now(), folderJobs: panel) }
+    private var input: Jobs.Input { Jobs.Input(setup: setup, now: now(), folderJobs: panel) }
 
     var body: some View {
         if let folderJob = store.job(id: id) {
@@ -156,14 +154,13 @@ struct FolderJobPage: View {
             VStack(alignment: .leading, spacing: 16) {
                 JobHeader(job: job,
                           controls: JobControls(job: job, actions: JobActions(now: now, folderJobs: panel), openSettings: setup.openSettings,
-                                                problem: { problem = $0 }),
-                          card: JobCardLink(cards: Jobs.cards(for: job, input), open: openCard))
+                                                problem: { problem = $0 }))
                 // All of what it's for, when its line above had to shorten it.
                 if Jobs.aboutShortened(folderJob) {
                     Text(folderJob.about).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 }
                 if !folderJob.isTeam, let folder = store.folder(for: folderJob) {
-                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }.buttonStyle(MorningActionButton())
+                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }.buttonStyle(PaperActionButton())
                 }
                 if let problem { Text(problem).font(.system(size: 12)).foregroundStyle(Pad.redInk).textSelection(.enabled) }
                 if let notice { Text(notice).font(.system(size: 12)).foregroundStyle(Pad.penInk) }
@@ -230,7 +227,7 @@ struct FolderJobSection<Content: View>: View {
 /// to open or save. A job's page and its card show the same.
 struct FolderJobResultView: View {
     let result: FolderJobResult
-    var actions = CardFileActions()
+    var actions = JobFileActions()
     var report: (_ message: String, _ problem: Bool) -> Void = { _, _ in }
 
     var body: some View {
@@ -350,13 +347,13 @@ final class FolderJobPreviewCache {
 struct FolderJobFilesList: View {
     let files: [FolderJobFile]
     var more = 0
-    var actions = CardFileActions()
+    var actions = JobFileActions()
     var report: (_ message: String, _ problem: Bool) -> Void = { _, _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(files) { file in
-                FileRow(icon: CardFiles.icon(file.name), name: file.path, size: CardFiles.size(file.size),
+                FileRow(icon: JobFileWords.icon(file.name), name: file.path, size: JobFileWords.size(file.size),
                         open: file.opens ? { if !actions.open(file.url) { report("No app on this Mac opened \(file.name).", true) } } : nil,
                         save: { save(file) }, reveal: { actions.reveal(file.url) })
             }

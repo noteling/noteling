@@ -4,7 +4,7 @@ A job is a small program someone on your team wrote to check something for you, 
 items during a sale, orders stuck for more than a day, pages that should be up. It runs on your Mac, as you, and only
 takes your attention when it finds something.
 
-Open **Jobs** from the top of the Morning folder's home, or **Jobs…** in the menu bar.
+Open **Jobs…** from the pencil icon in the menu bar, or **Open Jobs** under a chat reply that turned on or ran a job.
 
 ## Turn on the ones that are yours
 
@@ -64,11 +64,11 @@ quiet in Noteling's memory, with the reason, and you can ask in chat: "anything 
 ## Before it starts, and after it ends
 
 A job can have a start and an end, such as a sale that runs for four days. Before its start and after its end, it stays
-out of your way: it doesn't run, doesn't notify you, and its cards are put away.
+out of your way: it doesn't run, doesn't notify you, and its stickers are taken down.
 
 In Jobs, such jobs wait under one line at the bottom: **Upcoming (1) · Ended (2) · Show**. Click it to look at them. You
-can turn on an upcoming job ahead of time, and it runs from its start. If your team moves an end later, the job and its
-cards come back.
+can turn on an upcoming job ahead of time, and it runs from its start. If your team moves an end later, the job comes
+back and reports afresh.
 
 ## When something's wrong
 
@@ -81,5 +81,5 @@ cards come back.
 
 ## Read next
 
-- [The Morning folder](morning-folder.md)
+- [Your mail, as stickers](reading-jobs.md)
 - [Writing jobs for your team](../team/README.md)

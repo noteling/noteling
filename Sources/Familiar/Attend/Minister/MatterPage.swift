@@ -173,7 +173,7 @@ struct MatterControls: View {
             VStack(alignment: .leading, spacing: 8) {
                 Label("\(action.label)? \(job.name) runs this as you.", systemImage: "exclamationmark.circle").font(.system(size: 12))
                 HStack(spacing: 12) {
-                    Button(action.label) { confirming = nil; press(job, row, action) }.buttonStyle(MorningActionButton(primary: true))
+                    Button(action.label) { confirming = nil; press(job, row, action) }.buttonStyle(PaperActionButton(primary: true))
                     Button("Cancel") { confirming = nil }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
                 }
             }.padding(12).background(Pad.paperTop.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
@@ -183,7 +183,7 @@ struct MatterControls: View {
             } label: {
                 if running { HStack(spacing: 6) { ProgressView().controlSize(.small); Text(action.label) } } else { Text(action.label) }
             }
-            .buttonStyle(MorningActionButton(primary: primary))
+            .buttonStyle(PaperActionButton(primary: primary))
             .disabled(running || why != nil)
             .help(why ?? "Runs \(action.run)() in \(job.name)'s job.py, as you")
         }
@@ -196,7 +196,7 @@ struct MatterControls: View {
     /// The buttons every matter has, with or without a way to press its job's: Open page and Put away.
     @ViewBuilder static func common(matters: Matters, matter: Matter, findings: [(job: FolderJob, row: FindingRow)]) -> some View {
         if let page = MatterPage.page(of: matter, findings: findings), let url = URL(string: page) {
-            Button("Open page") { NSWorkspace.shared.open(url) }.buttonStyle(MorningActionButton()).help(page)
+            Button("Open page") { NSWorkspace.shared.open(url) }.buttonStyle(PaperActionButton()).help(page)
         }
         Button("Put away") { matters.putAway(matter.id) }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
             .help("Takes the sticker down. It comes back only if something about this changes and the minister thinks you should see it.")
@@ -206,7 +206,7 @@ struct MatterControls: View {
     @ViewBuilder static func plain(matters: Matters, matter: Matter, findings: [(job: FolderJob, row: FindingRow)]) -> some View {
         HStack(spacing: 9) {
             ForEach(Array(findings.enumerated()), id: \.offset) { _, finding in
-                ForEach(finding.job.actions) { action in Button(action.label) {}.buttonStyle(MorningActionButton()).disabled(true) }
+                ForEach(finding.job.actions) { action in Button(action.label) {}.buttonStyle(PaperActionButton()).disabled(true) }
             }
             common(matters: matters, matter: matter, findings: findings)
         }

@@ -1,6 +1,6 @@
 # Your first job
 
-From nothing to a card on your screen in about ten minutes. You need Noteling on your Mac and a GitHub account (or your
+From nothing to a sticker on your screen in about ten minutes. You need Noteling on your Mac and a GitHub account (or your
 company's GitHub Enterprise).
 
 ## 1. Make a repository from the template
@@ -24,18 +24,18 @@ In Noteling, open **Settings → Team tools from GitHub**, paste the repository'
 
 ## 4. Turn the job on
 
-Open the Morning folder, then **Jobs**. Under "From your team's tools" you'll see **Pages up**, shared by "Your name".
-Turn it on. It runs at once.
+Open **Jobs…** from the pencil icon in the menu bar. Under "From your team's tools" you'll see **Pages up**, shared by
+"Your name". Turn it on. It runs at once.
 
 ## 5. Look at what it found
 
-A few seconds later, its row says "Last run … · 1 of 3 pages need a look", and the Morning folder has a **Pages up**
-folder with one card. Open it:
+A few seconds later, its row says "Checked the pages in pages.csv: read 3, found 1 · 9:02 AM · next 10:02 AM". The third
+page doesn't show "Hello from Noteling"; that row in `input/pages.csv` is wrong on purpose. Within a minute, Noteling's
+minister has read the finding, and a sticker appears beside the note in its own words: which page is down, and why.
 
-- The table is `preview/problems.csv`, written by the job: the third page doesn't show "Hello from Noteling". That row
-  in `input/pages.csv` is wrong on purpose.
-- Under **Files** is `all.csv`, with every page and when it was checked. It's there to open or save, never shown by itself.
-- **Open job** shows the job's page: what it reads, and everything its last run left.
+- Click the sticker to open it: the words, why you're seeing it, the row the job reported, and **Open page**.
+- Click the job's row in Jobs for its page: the finding as a table (`findings.csv`), and under **Files**, `all.csv`,
+  with every page and when it was checked, there to open or save.
 
 ## 6. Change it, and push
 
@@ -43,9 +43,9 @@ folder with one card. Open it:
 2. In `job.json`, put your own name in `contributor`.
 3. Commit and push.
 
-Close the Morning folder and open it again, and in a few seconds Noteling has the new version (or choose **Update now**
-in Settings). The next run (choose
-**Run now**) finds nothing wrong, writes no preview, and the card goes away by itself. "Shared by" now shows your name.
+Close Jobs and open it again, and in a few seconds Noteling has the new version (or choose **Update now** in Settings).
+The next run (choose **Run now**) finds nothing wrong: the finding is gone, so the sticker goes away by itself. "Shared
+by" now shows your name.
 
 That's the whole loop: you push, every Mac that turned the job on runs it, and people only hear about what needs them.
 
@@ -55,18 +55,19 @@ Look at `job.py`. It's one function, `run()`, which:
 
 1. reads `input/pages.csv` from the folder in `NOTELING_INPUT`;
 2. checks each page, four at a time, with a timeout;
-3. writes the pages that need a look into `preview/problems.csv`, and every page into `all.csv`, in the folder in
-   `NOTELING_OUTPUT`;
-4. returns one line, such as "1 of 3 pages need a look", which shows on the job's row and its card.
+3. writes every page into `all.csv`, in the folder in `NOTELING_OUTPUT`;
+4. returns what it read and the pages that need a look as rows: `{"source": "the pages in pages.csv", "read": 3,
+   "findings": [{"page": …, "status": …, "problem": …}]}`. In `job.json`, `map` says which column is a row's id
+   (`page`) and which is the page it lives on; `job.md` beside them tells the minister what a row means.
 
 Swap step 2 for whatever your team checks by hand today: an API, a report, a list of items against a live page. Keep the
-same shape, and Noteling does the rest.
+same shape, and Noteling does the rest: the table on the job's page, new findings told from old, and the stickers.
 
 To try a change before you push it, copy the job's folder into `~/.noteling/jobs/` on your Mac: it shows in Jobs at once,
 and **Run now** runs it. See [Testing](testing.md).
 
 ## Next
 
-- [Jobs](jobs.md): schedules, start and end dates, secrets, cards and everything else a job can do.
+- [Jobs](jobs.md): schedules, start and end dates, secrets, findings, actions and everything else a job can do.
 - [Setting up your team](setup.md): giving your team a setup file, so they're linked with one double-click.
 - [Examples](examples.md): more jobs to copy.

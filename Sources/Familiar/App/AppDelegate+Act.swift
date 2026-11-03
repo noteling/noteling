@@ -15,8 +15,6 @@ extension AppDelegate {
             self.config.controlInBackground = background
             self.config.save()
             self.assistant.reconfigure(self.effectiveConfig)
-            self.morningTasks?.wake()
-            self.cardGeneration?.start()
             Log.info("control lane: allow=\(allow) background=\(background)")
         }
         control.maxLongEdge = config.maxImageLongEdge
@@ -39,7 +37,7 @@ extension AppDelegate {
                 self.desktop.executor.nativeDidBegin()
                 return
             }
-            self.morningPanel?.setHiddenForForegroundGrant(true)
+            self.jobsWindow?.setHiddenForForegroundGrant(true)
             self.bubbleWasVisibleBeforeControl = self.panel.isVisible
             self.shell.expanded = false
             self.panel.orderOut(nil)          // keep our own windows out of the way of clicks
@@ -48,7 +46,7 @@ extension AppDelegate {
         }
         control.onEnd = { [weak self] in
             guard let self else { return }
-            self.morningPanel?.setHiddenForForegroundGrant(false)
+            self.jobsWindow?.setHiddenForForegroundGrant(false)
             if self.control.lane == .background {
                 self.taskPanel.setHiddenForForegroundGrant(false)
                 return
@@ -61,7 +59,7 @@ extension AppDelegate {
         control.onGrant = { [weak self] entering in
             guard let self else { return }
             self.taskPanel.setHiddenForForegroundGrant(entering)
-            self.morningPanel?.setHiddenForForegroundGrant(entering)
+            self.jobsWindow?.setHiddenForForegroundGrant(entering)
             if entering {
                 self.bubbleWasVisibleBeforeControl = self.panel.isVisible
                 self.panel.orderOut(nil)
@@ -71,10 +69,7 @@ extension AppDelegate {
             self.stickersPanel?.hiddenForControl = entering
             self.placeRunStickers()
         }
-        taskPanel = BackgroundTaskPanelController(
-            store: desktop.tasks, hideFromScreenShare: config.hideFromScreenShare, morning: morning,
-            onCancelQueued: { [weak self] id in self?.morningTasks.cancel(id: id) },
-            onOpenCard: { [weak self] id in self?.morningPanel.showCard(id: id) })
+        taskPanel = BackgroundTaskPanelController(store: desktop.tasks, hideFromScreenShare: config.hideFromScreenShare)
         let showMe = ShowMeConversation(registry: registry)
         showMe.hideFromScreenShare = { [weak self] in self?.config.hideFromScreenShare ?? false }
         assistant.showMe = showMe

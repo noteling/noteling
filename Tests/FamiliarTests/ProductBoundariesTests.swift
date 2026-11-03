@@ -30,39 +30,26 @@ import Testing
     /// - `Intent` and `IntentWords` are read from `noteling.json` and the config: the words move to `Shared/Configuration`.
     /// - `Prompt.watchSystem` goes to WatchLearn; `ShowPath` loading leaves the registry; `PackWriter` leaves WatchLearn.
     /// - Chat's hold on `WatchLearnSession`, `PackDraft`, `PeekFeed` and `ComputerController` becomes part of the Act door.
-    /// - Everything that names Morning, the card queue, the cards inbox or the reading jobs' screens goes with the
-    ///   minister (`docs/plans/attention-minister.md`), and `SettingsWindow` takes rows instead of `FolderJob` and `ToolPack`.
+    /// - `SettingsWindow` takes rows instead of `FolderJob` and `ToolPack`.
     static let debt: [String: Set<String>] = [
         "Act/Control/Background/ActionVerifier.swift": ["NoteAnchor"],
         "Act/Control/Background/IrreversibleGuard.swift": ["NoteAnchor"],
         "Act/ShowMe/ShowFinder.swift": ["NoteAnchor"],
         "Act/ShowMe/ShowMeConversation.swift": ["IntentWords", "ToolRegistry"],
         "Act/ShowMe/ShowPath.swift": ["NoteAnchor"],
-        "Act/Tasks/BackgroundTaskPanel.swift": ["MorningStore", "MorningWorkItem"],
-        "Act/Tasks/BackgroundTaskStore.swift": ["MorningWorkItem"],
-        "Act/Tasks/DesktopExecutionService.swift": ["Prompt", "ReadingNavigationPolicy", "ToolRegistry", "TrackedSourceItem"],
+        "Act/Tasks/DesktopExecutionService.swift": ["Prompt", "ToolRegistry"],
         "Act/WatchLearn/WatchLearnComposition.swift": ["ToolRegistry"],
         "Act/WatchLearn/WatchRecorder.swift": ["NoteAnchor"],
         "Act/WatchLearn/WatchSummarizer.swift": ["Prompt"],
-        "Ask/Chat/Assistant.swift": ["CardConversation", "ComputerController", "FolderJobConversation", "MorningCard", "PackDraft",
-                                     "PeekFeed", "SourceConversation", "WatchLearnSession"],
+        "Ask/Chat/Assistant.swift": ["ComputerController", "FolderJobConversation", "PackDraft", "PeekFeed", "WatchLearnSession"],
         "Ask/Packs/ToolRegistry.swift": ["ShowPath", "ShowPathStore"],
         "Ask/Pen/Notes.swift": ["PackWriter"],
         "Attend/FolderJobs/FolderJobRunner.swift": ["ScriptTool", "ToolRegistry"],
-        "Attend/Morning/JobsRender.swift": ["ComputerController", "NativeActivityGate", "ToolRegistry"],
-        "Attend/Morning/LatestRunRender.swift": ["ComputerController", "NativeActivityGate", "ToolRegistry"],
-        "Attend/Morning/MorningFilesView.swift": ["TaskResultText"],
-        "Attend/Morning/MorningRender.swift": ["BackgroundTaskPanelView", "BackgroundTaskStore", "PeekFeed"],
-        "Attend/Morning/MorningTaskRunner.swift": ["NativeActivityGate", "ToolRegistry"],
-        "Attend/Reading/CalendarCollectionRunner.swift": ["NativeActivityGate", "ToolRegistry"],
-        "Attend/Reading/ReadingNavigationPolicy.swift": ["IrreversibleGuard"],
-        "Attend/Reading/ScriptReadWindow.swift": ["ScriptTool"],
-        "Attend/Reading/SourceCollectionTask.swift": ["ToolRegistry"],
         "Shared/Configuration/Config.swift": ["IntentWords"],
         "Shared/Configuration/NotelingSetup.swift": ["FolderJobFiles", "ToolRegistry"],
         "Shared/Configuration/TeamSettings.swift": ["Intent", "IntentWords"],
         "Shared/Harness/LinkedTools.swift": ["ToolRegistry"],
-        "Shared/Harness/ScriptRunner.swift": ["CardInboxFormat", "ScriptTool"],
+        "Shared/Harness/ScriptRunner.swift": ["ScriptTool"],
         "Shared/Harness/SecretScripts.swift": ["ScriptTool", "ToolRegistry"],
         "Shared/Screen/ScreenCapture.swift": ["CaptureSpace"],
         "Shared/Settings/SettingsWindow.swift": ["FolderJob", "ToolPack"],

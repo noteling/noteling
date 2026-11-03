@@ -3,6 +3,10 @@
 Written 2026-11-02, at 0.7.13, on `feature/morning-folder-next`. Decided in discussion; the leans at the end are mine
 and open.
 
+**Status (2026-11-03):** steps 1–4 shipped in 0.8.0; step 5, the removal, is in 0.8.1: the Morning folder, the cards
+inbox, the card step, the attention test and the reading jobs of earlier versions are gone, and the Jobs window and
+Who's Who (`people.json`) took their place.
+
 ## Why
 
 The Morning folder is the one feature its own maker turns off. The pieces are sound (a script's card file, "delete the
