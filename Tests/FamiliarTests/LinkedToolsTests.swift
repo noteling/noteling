@@ -450,24 +450,29 @@ struct LinkedToolsTests {
         defer { f.remove() }
         let linked = f.folder.root
         try Self.write("Mine: the shop's returns take a week.", to: f.personal.appendingPathComponent("shop/docs/mine.md"))
-        try Self.write("Theirs: hidden by yours.", to: linked.appendingPathComponent("shop/docs/theirs.md"))
+        try Self.write("Theirs: beside yours.", to: linked.appendingPathComponent("shop/docs/theirs.md"))
         try Self.write("Approvals take two days.", to: linked.appendingPathComponent("crm/docs/guide.md"))
         try Self.write("Never read.", to: f.home.appendingPathComponent("tools-other/secret.md"))
+        let recall = Recall.standard(home: f.home, tools: f.personal, team: { linked })
         func run(_ name: String, _ input: [String: Any]) -> (text: String, isError: Bool) {
-            let r = BuiltinTools.execute(name, input, root: f.personal, linkedRoot: linked)
+            let r = recall.execute(name, input)
             return (r.content as? String ?? "", r.isError)
         }
 
-        #expect(run("read_file", ["path": "crm/docs/guide.md"]) == ("Approvals take two days.", false))
-        #expect(run("read_file", ["path": "shop/docs/mine.md"]) == ("Mine: the shop's returns take a week.", false))
-        #expect(run("read_file", ["path": "shop/docs/theirs.md"]).isError)   // your shop is the one in use
-        for path in ["../tools-other/secret.md", "crm/../../tools-other/secret.md", "../linked-tools/../tools-other/secret.md", "../linked-tools.json"] {
-            #expect(run("read_file", ["path": path]) == ("Invalid path.", true), "\(path)")
+        // A pack's docs as the prompt lists them: under tools/ (yours) or team/ (the linked copy), or with no root in
+        // front, yours first.
+        #expect(run("read", ["path": "team/crm/docs/guide.md"]) == ("Approvals take two days.", false))
+        #expect(run("read", ["path": "crm/docs/guide.md"]) == ("Approvals take two days.", false))
+        #expect(run("read", ["path": "shop/docs/mine.md"]) == ("Mine: the shop's returns take a week.", false))
+        #expect(run("read", ["path": "team/shop/docs/theirs.md"]) == ("Theirs: beside yours.", false))
+        for path in ["../tools-other/secret.md", "crm/../../tools-other/secret.md", "tools/../tools-other/secret.md", "../linked-tools.json"] {
+            #expect(run("read", ["path": path]).isError, "\(path)")
         }
-        let hits = run("grep", ["pattern": "take|hidden"]).text.components(separatedBy: "\n").sorted()
-        #expect(hits == ["crm/docs/guide.md:1: Approvals take two days.", "shop/docs/mine.md:1: Mine: the shop's returns take a week."])
-        #expect(run("grep", ["pattern": "take", "path": "crm"]).text == "crm/docs/guide.md:1: Approvals take two days.")
-        #expect(run("grep", ["pattern": "take"]).text == run("grep", ["pattern": "take", "path": "../tools-other"]).text)   // outside: everything, as before
+        let hits = run("search", ["pattern": "take|beside"]).text.components(separatedBy: "\n").sorted()
+        #expect(hits == ["team/crm/docs/guide.md:1: Approvals take two days.", "team/shop/docs/theirs.md:1: Theirs: beside yours.",
+                         "tools/shop/docs/mine.md:1: Mine: the shop's returns take a week."])
+        #expect(run("search", ["pattern": "take", "path": "team/crm"]).text == "team/crm/docs/guide.md:1: Approvals take two days.")
+        #expect(run("search", ["pattern": "take", "path": "../tools-other"]).isError)   // outside: nothing, not everything
     }
 
     @Test func nothingWritesIntoTheLinkedFolder() async throws {

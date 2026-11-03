@@ -61,7 +61,6 @@ import Testing
         "Shared/Configuration/Config.swift": ["IntentWords"],
         "Shared/Configuration/NotelingSetup.swift": ["FolderJobFiles", "ToolRegistry"],
         "Shared/Configuration/TeamSettings.swift": ["Intent", "IntentWords"],
-        "Shared/Harness/BuiltinTools.swift": ["ToolRegistry"],
         "Shared/Harness/LinkedTools.swift": ["ToolRegistry"],
         "Shared/Harness/ScriptRunner.swift": ["CardInboxFormat", "ScriptTool"],
         "Shared/Harness/SecretScripts.swift": ["ScriptTool", "ToolRegistry"],

@@ -147,6 +147,7 @@ func runHeadlessAsk() async {
             } else {
                 let router = try ExecutionTools.make(registry: registry, context: ctx, control: nil,
                                                      background: false, additionalRoutes: showMe?.routes(context: ctx, words: config.intentWords) ?? [],
+                                                     recall: Recall.standard(home: Config.dir, tools: registry.root, team: { LinkedTools.root(for: config) }),
                                                      lookAtScreen: capture)
                 prepared = PreparedExecution(system: Prompt.system + Prompt.intents(config.intentWords, pinned: nil), router: router)
             }

@@ -77,6 +77,8 @@ final class Assistant: ObservableObject {
     var folderJobs: FolderJobConversation? {
         didSet { folderJobs?.onChange = { [weak self] receipt in self?.jobChanged(receipt) } }
     }
+    /// The four reading tools: the packs' docs, the memory log, the matters, the jobs and what they found.
+    var recall: Recall?
     /// Showing the way on screen: the show_me tool, and the list of its steps on the pad. The pad folds to its note
     /// when a way starts, so the chat isn't in the way of the screen it is taught on; the steps are on the pad when
     /// it is opened again.
@@ -1120,11 +1122,11 @@ final class Assistant: ObservableObject {
                 if controlAllowed, let desktop {
                     return try await desktop.prepare(id: id, registry: registry, context: ctx, background: background,
                                                      title: title, systemExtra: wanted, facts: facts, additionalRoutes: sourceRoutes,
-                                                     lookAtScreen: capture, readScreen: read)
+                                                     recall: recall, lookAtScreen: capture, readScreen: read)
                 }
                 let router = try ExecutionTools.make(registry: registry, context: ctx, control: nil, background: false,
                                                      packScripts: packScripts, facts: facts, additionalRoutes: sourceRoutes,
-                                                     lookAtScreen: capture, readScreen: read)
+                                                     recall: recall, lookAtScreen: capture, readScreen: read)
                 // Control is off: a request to do something is told how to turn it on, unless this turn couldn't do
                 // things anyway (a pen glance, or a pinned Explain or Teach).
                 let noControl = pen || intent == .explain || intent == .teach || config.allowControl ? "" : Prompt.noControl

@@ -269,6 +269,19 @@ enum PageWalk {
         }
     }
 
+    /// The text with each key or token a service issues, and each card number, replaced by "(hidden)".
+    static func hidingSecrets(_ text: String) -> String {
+        let range = NSRange(text.startIndex..., in: text)
+        var found = keyPattern.matches(in: text, range: range).map(\.range)
+        found += digitRun.matches(in: text, range: range).map(\.range).filter { match in
+            Range(match, in: text).map { luhn(text[$0].filter(\.isNumber)) } ?? false
+        }
+        guard !found.isEmpty else { return text }
+        let result = NSMutableString(string: text)
+        for match in found.sorted(by: { $0.location > $1.location }) { result.replaceCharacters(in: match, with: "(hidden)") }
+        return result as String
+    }
+
     static func luhn(_ digits: String) -> Bool {
         guard (13...19).contains(digits.count) else { return false }
         var sum = 0

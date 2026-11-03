@@ -30,7 +30,9 @@ func runSelfTest() async {
         do { print("\n\(id) ->\n\(try await runner.run(tool, args: input, context: ctx))") }
         catch { print("\n\(id) FAILED: \(error.localizedDescription)") }
     }
-    print("\ngrep 'meal' ->\n\(BuiltinTools.execute("grep", ["pattern": "meal"], root: root).content)")
+    let recall = Recall.standard(home: Config.dir, tools: root, team: { LinkedTools.root(for: config) })
+    print("\nrecall roots ->\n\(recall.execute("list", [:]).content)")
+    print("\nsearch 'meal' in tools ->\n\(recall.execute("search", ["pattern": "meal", "path": "tools"]).content)")
     print("\nsplitSuggestions -> \(Assistant.splitSuggestions("Answer line.\n\nSuggestions: Why is it greyed out? | Show my reports | Open the wiki"))")
     await selfTestNotes()
 }

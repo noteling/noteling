@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // The harness: scripts, the team's tools, and the secrets their scripts make.
     var runner: ScriptRunner!
     var registry: ToolRegistry!
+    /// The four reading tools, for the chat and the minister.
+    var recall: Recall!
     lazy var linkedTools = LinkedToolsUpdater(config: { [weak self] in self?.config ?? Config() })
     /// Your settings with the Claude settings the team's tools set: what reaches Claude. Never saved; `config` is.
     var effectiveConfig: Config { config.applying(linkedTools.team.settings) }
@@ -121,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         registry = ToolRegistry(root: config.resolvedToolsDir, runner: runner)
         registry.linkedRoot = LinkedTools.root(for: config)   // the team's tools, once Settings links a repository
         registry.secretScripts = { [weak self] in self.map { Set($0.effectiveConfig.secretScripts.values) } ?? [] }
+        recall = Recall.standard(home: Config.dir, tools: registry.root, team: { [weak self] in self?.registry.linkedRoot })
         ScriptedSecrets.shared.runner = runner   // a gateway's token is made with the Mac's proxy and certificates too
         linkedTools.onToolsChanged = { [weak self] in await self?.linkedToolsChanged() }
         runner.extraEnv = config.env

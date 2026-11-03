@@ -13,6 +13,7 @@ enum ExecutionTools {
     static func make(registry: ToolRegistry, context: ScreenContext?,
                      control: ComputerController?, background: Bool,
                      policy: Policy = .standard, packScripts: Bool = true, facts: String? = nil, additionalRoutes: [ToolRoute] = [],
+                     recall: Recall? = nil,
                      trackedItems: [TrackedSourceItem] = [],
                      onObservation: (() -> Void)? = nil, onNavigation: (() -> Void)? = nil,
                      lookAtScreen: @escaping () async -> ToolResult,
@@ -42,7 +43,6 @@ enum ExecutionTools {
             }
         }
 
-        let root = registry.root, linkedRoot = registry.linkedRoot
         for definition in BuiltinTools.definitions(background: background && control != nil) {
             guard let name = definition["name"] as? String else { continue }
             routes.append(ToolRoute(match: .tool(name: name), definition: definition) { _, input, _ in
@@ -55,9 +55,11 @@ enum ExecutionTools {
                     if let readScreen { return await readScreen() }
                     return await ScreenText.readFrontmost()
                 }
-                return BuiltinTools.execute(name, input, root: root, linkedRoot: linkedRoot)
+                return BuiltinTools.execute(name, input)
             })
         }
+        // The four reading tools: the packs' docs, the memory log, the matters, the jobs and what they found.
+        if let recall { routes += recall.routes() }
 
         if let control {
             routes.append(ToolRoute(match: .tool(name: "find_on_screen"), definition: ComputerController.findDefinition) { _, input, _ in

@@ -121,23 +121,25 @@ struct ExecutionToolsTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         var captureCalls = 0
+        let root = fixture.root
         let router = try ExecutionTools.make(registry: fixture.registry(), context: nil, control: nil,
-                                             background: true, lookAtScreen: {
+                                             background: true, recall: Recall(roots: { [Recall.Root(name: "tools", url: root, about: "the packs")] }),
+                                             lookAtScreen: {
             captureCalls += 1
             return .text("capture fixture")
         })
 
         for toolset in ["computer", "unexpected"] {
-            let file = await router.execute("read_file", ["path": "proof.txt"], toolset: toolset)
+            let file = await router.execute("read", ["path": "tools/proof.txt"], toolset: toolset)
             #expect(file.isError)
-            #expect(file.content as? String == "Unknown tool read_file")
+            #expect(file.content as? String == "Unknown tool read")
             let capture = await router.execute("look_at_screen", [:], toolset: toolset)
             #expect(capture.isError)
             #expect(capture.content as? String == "Unknown tool look_at_screen")
         }
         #expect(captureCalls == 0)
 
-        let allowed = await router.execute("read_file", ["path": "proof.txt"])
+        let allowed = await router.execute("read", ["path": "tools/proof.txt"])
         #expect(!allowed.isError)
         #expect(allowed.content as? String == "fixture file reached")
     }

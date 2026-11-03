@@ -69,7 +69,8 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    It folds, flaps around the current screen once, lands at the same spot, and unfolds. The flight is click-through;
    **Esc** or menu bar → **Land Noteling** brings it back early. Starting work brings it back too. Available while idle;
    with macOS Reduce Motion enabled, the fold and gentle flap stay at home.
-6. Claude can call the pack's scripts, `read_file` / `grep` over the docs, and `read_screen` (accessibility text).
+6. Claude can call the pack's scripts, the four reading tools (`list`, `read`, `search`, `rows`) over the docs, Noteling's
+   memory log, the matters and what the jobs found, and `read_screen` (accessibility text).
    General chat also knows the saved sources (the reading jobs created in chat, or taught with Watch Me in earlier versions).
    - **Context:** every turn carries a short "Your saved jobs" list: name, kind, address, reading rules, and when each was taught and last run.
    - **Tools** (`SourceConversation`): `get_source` shows one job with its latest findings, `update_source` edits it through the same store and checks as Edit on its page in Jobs, `remove_source` / `restore_source` take it out of future runs and bring it back, `create_source` starts a job that reads through a pack script, with no teaching, and `offer_run_source` adds a Run now tab, which runs the job and opens its page in Jobs.
@@ -460,8 +461,8 @@ current by itself, without git (`Sources/Familiar/Shared/Harness/LinkedTools.swi
 - **Read only.** Nothing writes into `linked-tools/`: each update replaces it. Notes the pen leaves go to the notes store;
   a team pack's `notes.json` is taken into it after each update and never renamed, and a team note you edit or remove
   is changed only in your notes. A Watch Me draft or a new pack for a note whose folder name only the team has goes to
-  `<name>-mine` in your own folder, so it doesn't hide theirs. `read_file` and `grep` read a pack's files from
-  the folder its pack is loaded from, and never outside it. Scripts run as they do from your own folder;
+  `<name>-mine` in your own folder, so it doesn't hide theirs. `read` and `search` read a pack's files under
+  `tools/` (yours) or `team/` (the linked copy), and never outside Noteling's roots. Scripts run as they do from your own folder;
   `NOTELING_TOOL_DIR` points into the copy, which each update replaces, so a script should keep state elsewhere.
 
 ### Setup files (`.notelingsetup`)
@@ -680,7 +681,7 @@ and `CardFilesView.swift` for its Files section) and `Attend/FolderJobs/FolderJo
 | hideFromScreenShare | false | true makes the bubble invisible in screenshots, screen shares and recordings |
 | morningFolderOnScreen | false | the little Morning folder on the screen (Settings → Show the Morning folder on the screen); off, Morning Files opens from the menu bar's pencil icon, and its Jobs page also from the Open Jobs tab chat offers after it runs or turns on a job. A new key: the old `showMorningFolder` was rewritten as true on every launch, so it is ignored |
 | toolsDir | "" | override tool packs folder |
-| docsStuffLimitChars | 24000 | how much doc text to paste before switching to read_file |
+| docsStuffLimitChars | 24000 | how much doc text to paste before switching to read |
 | uvPath | "" | override the uv binary |
 | wandHoldSeconds | 0.8 | how long to hold the bubble to pick up the pen |
 | mascotStyle | innocent | character brows: `innocent` (v2, the default), `innocentV1`, `innocentV3` (experiment), `innocentV4` (bashful), or `sharp` (the original merge) |

@@ -109,23 +109,10 @@ final class MemoryLog {
 
     /// A row with anything that looks like a secret hidden: a column named like one, or a value that looks like a key, a
     /// token or a card number. Lists and objects inside a row are looked through the same way.
-    static func redact(_ row: [String: Any]) -> [String: Any] {
-        row.reduce(into: [:]) { out, pair in
-            out[pair.key] = SecretWords.looksSecret(pair.key) ? hidden : redact(value: pair.value)
-        }
-    }
+    static func redact(_ row: [String: Any]) -> [String: Any] { SecretText.redacted(row) }
 
-    static let hidden = "(hidden)"
+    static let hidden = SecretText.hidden
 
     /// A piece of text with a key, a token or a card number hidden.
     static func redacted(_ text: String) -> String { PageWalk.looksLikeSecretValue(text) ? hidden : text }
-
-    private static func redact(value: Any) -> Any {
-        switch value {
-        case let text as String: return PageWalk.looksLikeSecretValue(text) ? hidden : text
-        case let object as [String: Any]: return redact(object)
-        case let list as [Any]: return list.map { redact(value: $0) }
-        default: return value
-        }
-    }
 }

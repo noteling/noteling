@@ -130,6 +130,7 @@ extension AppDelegate {
         let memory = feature.runner.memory ?? MemoryLog(directory: Config.dir.appendingPathComponent(MemoryLog.folder))
         matters = Matters(directory: Config.dir.appendingPathComponent(Matters.folder))
         minister = Minister(matters: matters, memory: memory, store: feature.store, config: { [weak self] in self?.effectiveConfig ?? Config() })
+        minister.recall = recall
         minister.onUrgent = { [weak notifier] matter in
             notifier?.post(matter: matter.id, title: matter.jobName, body: matter.view?.text ?? "")
         }
