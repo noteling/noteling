@@ -161,7 +161,7 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    field before a grey button is never skipped. When a way starts from chat, the pad folds to its note
    (`Assistant.showMe`'s `onStart` sets `shell.expanded = false`), and when the way is done the folded note hops once
    (`Assistant.onTourDone`, from `ShowMeConversation.onEnd`).
-9. **Explain, Teach me, Do it for me** (`Features/Chat/Intent.swift`): every message is one of three intents, named by
+9. **Explain, Teach me, Do it for me** (`Ask/Chat/Intent.swift`): every message is one of three intents, named by
    what the person would be unhappy without (understanding, the ability, the result). The intent is never matched on
    words: the person taps a verb tab under an answer (the model ends a how-to's Suggestions line with the two verbs,
    and `Assistant.askSuggestion` turns a tab whose text is a verb into a pinned intent), pins a verb on the line over
@@ -171,7 +171,7 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    fixes the tools: Explain has neither control nor the teach tool, Teach has only the teach tool, Do has control (or
    `Prompt.noControl` when control is off). The words come from `Config.intentWords` (`IntentWords`): English by
    default, the team's from `noteling.json` `verbs`, with its own examples for the prompt.
-   **Teach me** (`Features/ShowMe`): the chat's `teach_the_way` tool lights up a kept path, or one or two controls on the
+   **Teach me** (`Act/ShowMe`): the chat's `teach_the_way` tool lights up a kept path, or one or two controls on the
    screen now, on the person's own screen, and they do the clicks. "Ways you can teach" lists the active packs' paths in
    the prompt. The tool starts from the furthest step already on the page and returns at once; `ShowTour` then looks for
    each step (`ShowFinder`: the page's id, then role and name, then the name without its numbers, then part of it; a
@@ -245,7 +245,7 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    Calendar collection does not create or move meetings. Reads are started explicitly; scheduled collection, preference
    history and relationship-based recommendations are not connected yet. Apart from script jobs, sources are read from the screen.
 
-   **Jobs** (`MorningNavigation.Route.jobs`, `Features/Jobs/`) is one page for both kinds, opened from the Jobs box on
+   **Jobs** (`MorningNavigation.Route.jobs`, `Attend/Jobs/`) is one page for both kinds, opened from the Jobs box on
    the panel's home ("5 jobs · 2 need attention · last run 6:31 PM"), the panel's **⋯** menu, the menu bar's **Jobs…**,
    and the chat's **Open Jobs** tab. Storage and runners stay each kind's own: `CalendarStore` and
    `CalendarCollectionRunner` for reading jobs, `FolderJobStore` and `FolderJobRunner` for jobs kept as folders.
@@ -429,7 +429,7 @@ The docs were generated from the app's repo and use its real button labels.
 Someone who supports a group can keep its tool packs in one GitHub repository (github.com or GitHub Enterprise), shaped
 like the tools folder: each top-level folder is a pack (`<pack>/SKILL.md`, `docs/**`, `scripts/*.py`). Each person links
 it once in **Settings → Team tools from GitHub** with the repository's address and a token, and Noteling keeps a copy
-current by itself, without git (`Sources/Familiar/ToolPacks/LinkedTools.swift`).
+current by itself, without git (`Sources/Familiar/Shared/Harness/LinkedTools.swift`).
 - **Settings.** The address goes to `toolsRepo` in config.json, as the plain web address: an SSH address
   (`git@github.example.com:acme/tools.git`), `.git`, a browser address such as `/tree/main`, and any name and password
   in it are reduced to `https://github.example.com/acme/tools`. `toolsRepoBranch` (default `main`) is set in config.json
@@ -467,7 +467,7 @@ current by itself, without git (`Sources/Familiar/ToolPacks/LinkedTools.swift`).
 ### Setup files (`.notelingsetup`)
 Whoever supports a group can hand out one file instead of explaining Settings: double-clicking it (or **Settings → Team
 tools from GitHub → Import setup file…**) links the team's tools and saves the secrets they need
-(`Sources/Familiar/Configuration/NotelingSetup.swift`).
+(`Sources/Familiar/Shared/Configuration/NotelingSetup.swift`).
 ```json
 {"noteling_setup": 1, "name": "Holiday pilot",
  "tools_repo": {"url": "https://github.example.com/team/tools", "token": "github_pat_…", "branch": "main"},
@@ -489,7 +489,7 @@ tools from GitHub → Import setup file…**) links the team's tools and saves t
 ### Team settings (`noteling.json`)
 A team that reaches Claude through its own gateway can set the connection for everyone who links its tools, so nobody
 hands config files around. `noteling.json` at the root of the linked repository (a reserved name there; it is not a
-pack) is read at launch and after each new copy (`Sources/Familiar/Configuration/TeamSettings.swift`):
+pack) is read at launch and after each new copy (`Sources/Familiar/Shared/Configuration/TeamSettings.swift`):
 ```json
 {"claude": {"baseURL": "https://llm-gateway.example.com",
             "headers": {"X-Consumer-Id": "abc", "X-Api-Key": "$GATEWAY_KEY"},
@@ -514,7 +514,7 @@ pack) is read at launch and after each new copy (`Sources/Familiar/Configuration
   under Tool packs ("used by your team's Claude settings"). While one is missing there is no connection, and chat says
   which. The same works in your own `apiHeaders`. Log lines name headers, never their values.
 - **Scripted secrets.** `claude.secretScripts` (or your own `apiSecretScripts`) maps a secret to `pack/script`, for a
-  gateway token a sign-in tool renews every few hours (`Sources/Familiar/ToolPacks/SecretScripts.swift`). A client
+  gateway token a sign-in tool renews every few hours (`Sources/Familiar/Shared/Harness/SecretScripts.swift`). A client
   whose headers name one gets `refreshHeaders`, which `ClaudeClient` calls before every request and again, once, after
   a 401 or 403. `ScriptedSecrets` runs the script (your own pack wins, 15-second limit, the pack's `requires`), keeps
   the value in memory for its `ttl` (60 seconds by default, an hour at most), shares one run between requests that ask
@@ -658,8 +658,8 @@ os.replace(os.path.join(folder, "refunds.json.tmp"), os.path.join(folder, "refun
 Noteling deletes what they wrote (`job.json`, `problems.csv`, `all.csv` and their numbered parts, `item-….json`) from
 `watch-…` folders, so those cards resolve, leaving anything else there.
 
-The code is in `Sources/Familiar/Features/Morning/CardInbox.swift` (with `CardFiles.swift` for the files a card carries
-and `CardFilesView.swift` for its Files section) and `Features/FolderJobs/FolderJobCards.swift` for jobs' cards.
+The code is in `Sources/Familiar/Attend/Morning/CardInbox.swift` (with `CardFiles.swift` for the files a card carries
+and `CardFilesView.swift` for its Files section) and `Attend/FolderJobs/FolderJobCards.swift` for jobs' cards.
 
 ## Config (`~/.noteling/config.json`)
 | key | default | meaning |
@@ -713,18 +713,17 @@ The release script refuses an existing output directory; use a new version inste
 automatically when present; Developer ID builds keep secrets in the Keychain (`secretsStore: auto`).
 IT can push the .pkg via MDM with a PPPC profile that pre-approves Accessibility; Screen Recording cannot be
 pre-approved, so the user clicks one prompt on first launch, once per install.
-- Source layout:
+- Source layout: three products and what they share, one folder each in `Sources/Familiar`. A product owns its data and
+  its UI; the others reach it only through a door: a type in `Shared`, or one of the few named in
+  `ProductBoundariesTests`, which fails when a file under one folder names a type declared under another (a crossing
+  that exists today is on its debt list, which only shrinks). `App` is the composition root and may name anything.
   - `Sources/FamiliarContracts`: shared conversation/tool interfaces and results.
   - `Sources/FamiliarRuntime`: API/CLI providers, conversation history, execution lifecycle, tool routing, and process helpers; no app/native imports.
-  - `Sources/Familiar/App`: composition, desktop activity ownership, shell state, app entry point, and headless/render commands.
-  - `Sources/Familiar/Features`: Chat, WatchLearn, ContextNotes, Companion, and Settings. Each workflow keeps its own state; chat presents Watch events without owning recordings.
-    - `Features/Calendar`: sources and jobs (calendar, mail and web profiles in `CalendarStore`), screen reads (`SourceCollectionTask`) and script reads (`ScriptReading`, `ScriptReadWindow`), the run archive (`SourceRunStore`), chat's job tools (`SourceConversation`), the Latest run and Run history screens, the editors, and the older Manage sources screen. `App/CalendarCollectionRunner` runs the reads.
-    - `Features/Jobs`: the jobs as one list: their words, statuses and order and the cards each made (`Jobs`), the Jobs page and the home's Jobs box (`JobsPage`, `JobsEntry`), the header and buttons every job's page shares (`JobHeader`, `JobControls`, `JobCardLink`), and a reading job's page (`SourceJobPage`). A job kept as a folder's page is `FolderJobPage`, in `Features/FolderJobs`.
-    - `Features/Morning`: cards, Who's Who and queued work in `morning.sqlite` (`MorningStore`), the card step and its judgments (`CardGenerationService`, `CardGenerationSubmission`), reconciliation with continuing cards, card discussions, and the Morning Files screens.
-    - `Features/Attention`: the one-week attention test: its append-only ledger in `attention/`, labels from thumbs, explanations and card actions, the numbers, and the thumbs, daily line, rest and week screens.
-    - `Features/BackgroundTasks`: `BackgroundTaskStore`, the task screen's state: the running task and up to 20 recent results with their last frame.
-  - `Sources/Familiar/Native`: Accessibility context/hit testing, screen capture, control mechanics, and permissions/hotkeys.
-  - `Sources/Familiar/Presentation`: shared shell surfaces and execution preview; `Configuration`, `ToolPacks`, and `Knowledge` retain current settings, pack storage, and context assembly.
+  - `Sources/Familiar/App`: `main`; `AppDelegate` (the launch sequence, the menus, the hotkey, Settings and a team's setup file) with one file per product, `AppDelegate+Ask`, `+Act` and `+Attend`, that wires it; `ExecutionTools`, the tools one request gets, from all three; and the headless/render commands.
+  - `Sources/Familiar/Ask`: the pen and the chat. `Chat` (`Assistant`, the intents, the pad, the prompt), `Companion` (the bubble and its state, the mascot, the crane, the hint when the bubble hides), `Pen` (the wand overlay, the notes it leaves and their checks, the capture flash) and `Packs` (`ToolRegistry` with the match rules and page leads, `PageBriefs`, the pack context).
+  - `Sources/Familiar/Act`: Teach me and Do it for me, in front of the person or in the background. `Control` (`ComputerController` and the background lane), `Tasks` (`TaskExecutor`, `DesktopExecutionService`, `NativeActivityGate`, the background task store and its panel), `ShowMe` (Teach me's tours) and `WatchLearn` (Watch Me's recordings, summaries and the draft window).
+  - `Sources/Familiar/Attend`: the jobs, what they find, and the stickers. `FolderJobs` (jobs kept as folders: their files, runner, store, cards, buttons and pages), `Jobs` (every job as one list, the Jobs page, a reading job's page, notifications), `Reading` (the reading jobs: calendar, mail and web profiles in `CalendarStore`, screen reads in `SourceCollectionTask`, script reads, the run archive in `SourceRunStore`, chat's job tools in `SourceConversation`, the Latest run and Run history screens; `CalendarCollectionRunner` runs the reads), `Stickers` (the stickers beside the note), and, until the minister replaces them ([the plan](../plans/attention-minister.md)), `Morning` (cards, Who's Who and queued work in `morning.sqlite`, the card step and its judgments, the cards inbox, the Morning Files screens and the render fixtures) and `Attention` (the one-week attention test).
+  - `Sources/Familiar/Shared`: what all three run on. `Configuration` (settings, paths, secrets, signing, logging, the team's settings, setup files, the model backend), `Harness` (the script runner and its network settings, the team's tools from GitHub, scripted secrets, the built-in reading tools), `Screen` (the context watcher, page reading, hit testing, screen capture), `Permissions` (permissions and the hotkey), `Settings` (the Settings window) and `Shell` (window placement, drag handles, the first-click host).
 - Cleanup goals and integration boundaries: [architecture plan](../architecture/next-phase-structure.md).
 - Python helpers in `Resources/py/`: `introspect.py` (ast-only schema extraction), `run_tool.py` (executes `run(**args)`), `claude_mcp.py` (private CLI tool bridge).
 

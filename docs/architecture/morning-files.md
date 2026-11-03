@@ -25,19 +25,19 @@ are fictional, labeled, and loaded only on request. They use preparation-only ac
 
 ## Boundaries in code
 
-- `Features/Morning/MorningModels.swift`: folders, people, source evidence, cards,
+- `Attend/Morning/MorningModels.swift`: folders, people, source evidence, cards,
   chosen actions, and durable work items. These are distinct from screen-anchored
   `StickyNote` annotations and chat messages.
-- `Features/Morning/MorningStore.swift`: local transactions and validation. Card
+- `Attend/Morning/MorningStore.swift`: local transactions and validation. Card
   decisions and accepted work are committed together.
-- `Features/Morning/MorningSamples.swift`: optional illustrative content using the
+- `Attend/Morning/MorningSamples.swift`: optional illustrative content using the
   same product models and storage as manually authored files.
-- `Presentation/Morning/` and the morning views/editors: native folder launcher,
+- `Attend/Morning/` (its panel controller and the morning views/editors): native folder launcher,
   reading and editing, and the temporary handoff animation.
-- `App/MorningTaskRunner.swift`: serial dispatch of accepted work through
+- `Attend/Morning/MorningTaskRunner.swift`: serial dispatch of accepted work through
   `TaskRequest`, `TaskPlan`, and the shared `TaskExecutor`. The runner retains work
   validation, queue ordering, and durable outcomes.
-- `App/TaskExecutor.swift`: execution handles shared with source ingestion and
+- `Act/Tasks/TaskExecutor.swift`: execution handles shared with source ingestion and
   chat, wrapping the existing conversation coordinator and desktop execution
   service. See [task execution](task-execution.md).
 - `BackgroundTaskStore` and `BackgroundTaskPanel`: compact queue admission,

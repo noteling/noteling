@@ -18,9 +18,11 @@ The tooling is not the bottleneck. Big tasks, hot files that every feature touch
 
 ## To do
 
-1. **Split `AppDelegate` (837 lines) by feature.** Every feature wires itself in here, so every change reads it and
-   risks a merge conflict. Move each feature's setup into its own extension file: `AppDelegate+FolderJobs.swift`,
-   `+LinkedTools`, `+TeamSettings`, `+PageBriefs`, `+CardInbox`, `+Wand`.
+1. **Done (2026-11-02): `AppDelegate` is split, and the sources are one folder per product.** `Ask` (the pen and the
+   chat), `Act` (Teach me and Do it for me) and `Attend` (jobs, findings, stickers), with `Shared` for what they run
+   on. `AppDelegate` keeps the launch sequence, the menus, the hotkey and Settings; `AppDelegate+Ask`, `+Act` and
+   `+Attend` wire each product. `ProductBoundariesTests` fails when one product names another's types outside the
+   doors; its debt list is the coupling still to undo.
 2. **Split `Assistant` (1,002 lines).** Keep the chat core; move the pen (`wandPick`), notes and
    saved jobs into their own files.
 3. **Split `docs/development/guide.md` (770 lines).** One file per feature (tool packs, linked tools and team settings,

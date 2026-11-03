@@ -1,7 +1,7 @@
 # Noteling: code structure for the next phase
 
 > **Note, October 1, 2026:** this page is a historical record. The cleanup it describes was merged into main on September 27, 2026 (pull request #2).
-> The planned `FamiliarDay` and `FamiliarPaperUI` modules were never created. Morning cards live in `Sources/Familiar/Features/Morning`, beside `Features/Calendar` (sources, jobs and runs) and `Features/Attention`.
+> The planned `FamiliarDay` and `FamiliarPaperUI` modules were never created. Morning cards lived in `Sources/Familiar/Features/Morning`, beside `Features/Calendar` (sources, jobs and runs) and `Features/Attention`. Since November 2, 2026 the sources are in one folder per product, `Ask`, `Act` and `Attend`, plus `Shared`, as the [developer guide](../development/guide.md) describes, so the paths below are historical too.
 > The rest of the page is unchanged.
 
 **Status:** Current-workflow ownership and source organization implemented on `codex/modular-cleanup`. Automated and packaging checks are recorded below; live native interaction verification remains a pre-merge review item. Future daily/integration designs remain deferred.
