@@ -15,16 +15,6 @@ struct FindingRef: Hashable, Codable {
     }
 
     init(job: FolderJob, id: String) { self.init(job: MemoryLog.name(of: job), id: id) }
-
-    /// A key back into a reference: the id is what follows the job's path, which has no `/` in a job's id… except that
-    /// an id may. The job's name is `team/…` or `own/…` with the path; the id is matched against the jobs that exist.
-    static func parse(_ key: String, jobs: [String]) -> FindingRef? {
-        for job in jobs.sorted(by: { $0.count > $1.count }) where key.hasPrefix(job + "/") {
-            let id = String(key.dropFirst(job.count + 1))
-            if !id.isEmpty { return FindingRef(job: job, id: id) }
-        }
-        return nil
-    }
 }
 
 /// A sticker as the app renders it: the minister's words, one button at most, the page it lives on, and its tone.
@@ -67,7 +57,10 @@ struct Matter: Codable, Equatable, Identifiable {
     var jobName: String
     var byline: String?
     var createdAt: Date
+    /// When anything about it last changed; the sticker's own time is `writtenAt`.
     var updatedAt: Date
+    /// When its sticker was last written.
+    var writtenAt: Date?
     var putAwayAt: Date?
     var closedAt: Date?
     /// An urgent sticker told the person once.
@@ -77,10 +70,17 @@ struct Matter: Codable, Equatable, Identifiable {
     /// What pressing its buttons came to, the last five.
     var presses: [FindingPress] = []
 
-    var isShown: Bool { state == .open && view != nil }
+    /// On a sticker at `now`: open, written, and not past its `until`.
+    func isShown(at now: Date) -> Bool {
+        guard state == .open, let view else { return false }
+        return view.until.map { $0 > now } ?? true
+    }
     var isUrgent: Bool { view?.tone == .urgent }
+    /// The sticker's time: when it was written, or when the matter was made.
+    var shownAt: Date { writtenAt ?? createdAt }
 
     static let putAway = "You put it away."
+    static let timePassed = "Its time passed."
 
     /// A new id: short, so the minister can name it back.
     static func newID() -> String { "m-" + String(UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "").prefix(8)) }
@@ -106,8 +106,9 @@ struct Sticker: Identifiable, Equatable {
 final class Matters: ObservableObject {
     @Published private(set) var all: [Matter] = []
     let directory: URL?
-    /// The person's own words about a matter's findings are the only thing that removes anything; the minister folds.
     var clock: () -> Date = Date.init
+    /// Where what the person does with a matter is written down.
+    var memory: MemoryLog?
 
     static let folder = "matters"
     static let shownLimit = 3
@@ -130,15 +131,23 @@ final class Matters: ObservableObject {
     /// Open or quiet: what the minister is told about.
     var current: [Matter] { all.filter { $0.state != .closed } }
 
-    /// The stickers as they should be now: urgent first, then newest.
+    /// The stickers as they should be now: urgent first, then the most recently written.
     var stickers: [Sticker] {
-        all.filter(\.isShown).sorted { a, b in
+        let now = clock()
+        return all.filter { $0.isShown(at: now) }.sorted { a, b in
             if a.isUrgent != b.isUrgent { return a.isUrgent }
-            return a.updatedAt > b.updatedAt
+            return a.shownAt > b.shownAt
         }.map { matter in
-            Sticker(id: matter.id, title: matter.jobName, text: matter.view?.text ?? "", byline: matter.byline, at: matter.updatedAt,
+            Sticker(id: matter.id, title: matter.jobName, text: matter.view?.text ?? "", byline: matter.byline, at: matter.shownAt,
                     urgent: matter.isUrgent)
         }
+    }
+
+    /// An id no matter has.
+    func freshID() -> String {
+        var id = Matter.newID()
+        while all.contains(where: { $0.id == id }) { id = Matter.newID() }
+        return id
     }
     var shown: [Sticker] { Array(stickers.prefix(Self.shownLimit)) }
     var more: Int { max(0, stickers.count - Self.shownLimit) }
@@ -176,13 +185,26 @@ final class Matters: ObservableObject {
         matter.state = .quiet
         matter.why = Matter.putAway
         matter.putAwayAt = clock()
+        matter.recompose = false   // nothing to write for a sticker that is down
         save(matter)
+        memory?.append(["matter": id, "put_away": true])
     }
 
-    /// A finding is gone: it leaves its matter. A matter left with nothing closes; one with findings left needs its
-    /// sticker written again. The matter as it stands, or nil when no matter had the finding.
+    /// A sticker's time passed: the matter is quiet, in memory, until a finding changes and the minister says otherwise.
+    func timePassed(_ id: String) {
+        guard var matter = matter(id: id), matter.state == .open else { return }
+        matter.state = .quiet
+        matter.why = Matter.timePassed
+        matter.recompose = false
+        save(matter)
+        memory?.append(["matter": id, "quiet": Matter.timePassed])
+    }
+
+    /// A finding is gone (or its job is off, ended or gone): it leaves its matter. A matter left with nothing closes;
+    /// one with findings left needs its sticker written again. The matter as it stands, or nil when no matter had the
+    /// finding.
     @discardableResult
-    func remove(_ ref: FindingRef) -> Matter? {
+    func remove(_ ref: FindingRef, why: String = "its findings are gone") -> Matter? {
         guard var matter = matter(containing: ref) else { return nil }
         matter.findings.removeAll { $0 == ref }
         if matter.findings.isEmpty {
@@ -190,8 +212,10 @@ final class Matters: ObservableObject {
             matter.closedAt = clock()
             matter.view = nil
             matter.recompose = false
+            memory?.append(["matter": matter.id, "closed": why])
         } else {
             matter.recompose = true
+            memory?.append(["matter": matter.id, "left": ref.key, "why": why])
         }
         save(matter)
         return matter
@@ -212,7 +236,10 @@ final class Matters: ObservableObject {
         decoder.dateDecodingStrategy = .iso8601
         return folders.compactMap { folder -> Matter? in
             guard let data = try? Data(contentsOf: directory.appendingPathComponent(folder).appendingPathComponent("matter.json")) else { return nil }
-            return try? decoder.decode(Matter.self, from: data)
+            do { return try decoder.decode(Matter.self, from: data) } catch {
+                Log.info("matters: \(folder)/matter.json can't be read, so it is left alone: \(error.localizedDescription)")
+                return nil
+            }
         }.sorted { $0.updatedAt > $1.updatedAt }
     }
 }

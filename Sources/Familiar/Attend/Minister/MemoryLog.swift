@@ -117,6 +117,9 @@ final class MemoryLog {
 
     static let hidden = "(hidden)"
 
+    /// A piece of text with a key, a token or a card number hidden.
+    static func redacted(_ text: String) -> String { PageWalk.looksLikeSecretValue(text) ? hidden : text }
+
     private static func redact(value: Any) -> Any {
         switch value {
         case let text as String: return PageWalk.looksLikeSecretValue(text) ? hidden : text

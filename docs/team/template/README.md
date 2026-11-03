@@ -14,7 +14,8 @@ themselves. You never need a server.
 3. **Link it in Noteling.** Open Noteling's **Settings → Team tools from GitHub**. Paste the repository's address and the
    token, then choose **Save**. A line under the token says which version Noteling has.
 4. **Turn on the job.** In Noteling's menu bar icon choose **Jobs…**. Under "From your team's tools", turn on **Pages
-   up**. It runs at once.
+   up**. It runs at once. The stickers are written by a model, so Noteling needs the connection its chat uses: an API
+   key in **Settings**, or Claude Code on this Mac.
 5. **See the sticker.** Within a minute or two, a sticky note appears beside Noteling's note on your screen, about the
    third page in `jobs/examples/pages-up/input/pages.csv`, which is wrong on purpose: it expects text that page doesn't
    have. The job's page in Jobs shows all three pages checked, and the one that needs a look as a row.

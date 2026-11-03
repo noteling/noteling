@@ -5,8 +5,8 @@ import FamiliarContracts
 /// The attention minister: the model, in two turns, deciding what deserves the person's attention. Code tells it what
 /// changed (the jobs' findings, new, changed and gone), it sorts the findings into matters and says show or quiet, and
 /// why (triage); then it writes each open matter's sticker and notes (compose). Code keeps every state, checks every
-/// answer, closes a matter whose findings are gone, keeps a put-away matter quiet until a finding changes, and never
-/// runs anything. Changes are batched for about a minute, so one run of several jobs is one turn.
+/// answer, closes a matter whose findings are gone or whose job is off, keeps a put-away matter quiet until a finding
+/// changes, and never runs anything. Changes are batched for about a minute, so one run of several jobs is one turn.
 @MainActor
 final class Minister: ObservableObject {
     @Published private(set) var status = ""
@@ -26,7 +26,7 @@ final class Minister: ObservableObject {
     private var pending: [String: MinisterPrompt.Shown] = [:]
     private var timer: Task<Void, Never>?
     private var worker: Task<Void, Never>?
-    /// A turn that failed is tried once more with the next batch; after that its findings are logged as unjudged.
+    /// A triage that failed is tried once more with the next batch; after that its findings are logged as unjudged.
     private var retried = false
 
     init(matters: Matters, memory: MemoryLog, store: FolderJobStore, config: @escaping () -> Config,
@@ -36,6 +36,7 @@ final class Minister: ObservableObject {
         self.store = store
         self.config = config
         self.makeClient = makeClient
+        matters.memory = memory   // what the person does with a matter goes in the same log
     }
 
     // MARK: what the jobs report
@@ -46,10 +47,7 @@ final class Minister: ObservableObject {
         for id in change.gone {
             let ref = FindingRef(job: name, id: id)
             pending[ref.key] = nil
-            if let matter = matters.remove(ref) {
-                if matter.state == .closed { memory.append(["matter": matter.id, "closed": "its findings are gone"]) }
-                else { memory.append(["matter": matter.id, "left": ref.key]) }
-            }
+            matters.remove(ref)
         }
         for row in change.new {
             let ref = FindingRef(job: name, id: row.id)
@@ -60,8 +58,31 @@ final class Minister: ObservableObject {
             pending[ref.key] = MinisterPrompt.Shown(ref: ref, job: job, row: changed.row, changed: changed.columns,
                                                     putAwayAt: matters.matter(containing: ref)?.putAwayAt)
         }
-        if !pending.isEmpty || matters.open.contains(where: \.recompose) { schedule() }
+        if hasWork { schedule() }
     }
+
+    /// At each tick: a matter loses the findings of a job that is off, before its start, past its end, or gone, and
+    /// closes with none left; a sticker past its `until` goes quiet; a finding waiting for a turn whose job stopped
+    /// running is forgotten.
+    func reconcile() {
+        let now = clock()
+        func running(_ ref: FindingRef) -> (job: FolderJob?, why: String?) {
+            guard let job = store.jobs.first(where: { MemoryLog.name(of: $0) == ref.job }) else { return (nil, "its job is gone") }
+            if job.running(at: now) { return (job, nil) }
+            let why = !job.on ? "its job is off" : job.ended(at: now) ? "its job ended" : "its job hasn't started"
+            return (job, why)
+        }
+        for matter in matters.current {
+            for ref in matter.findings {
+                if let why = running(ref).why { matters.remove(ref, why: why) }
+            }
+            if let until = matter.view?.until, until <= now, matters.matter(id: matter.id)?.state == .open { matters.timePassed(matter.id) }
+        }
+        pending = pending.filter { running($0.value.ref).why == nil }
+        if hasWork { schedule() }
+    }
+
+    private var hasWork: Bool { !pending.isEmpty || matters.open.contains(where: \.recompose) }
 
     private func schedule() {
         guard let seconds = batchSeconds else { return }
@@ -73,19 +94,20 @@ final class Minister: ObservableObject {
         }
     }
 
-    /// A turn now, with whatever has gathered; waits for one under way first. Tests and the batch timer call it.
+    /// A turn now, with whatever has gathered; waits for one under way first, and never runs two at once. Tests and
+    /// the batch timer call it.
     func flush() async {
-        if let worker { await worker.value }
-        guard !pending.isEmpty || matters.open.contains(where: \.recompose) else { return }
+        while let running = worker { await running.value }
+        guard hasWork else { return }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             isRunning = true
             await turn()
             isRunning = false
+            worker = nil
         }
         worker = task
         await task.value
-        worker = nil
     }
 
     func stop() {
@@ -96,38 +118,49 @@ final class Minister: ObservableObject {
     // MARK: a turn
 
     private func turn() async {
-        let batch = pending
-        pending = [:]
         let settings = config()
         guard let client = makeClient(settings) else {
-            status = ConversationBackend.setupMessage(config: settings)
-            pending.merge(batch) { _, kept in kept }   // for a wake after Settings
+            status = ConversationBackend.setupMessage(config: settings)   // the findings wait for a wake after Settings
             return
         }
-        do {
-            if !batch.isEmpty { try await triage(Array(batch.values), client: client) }
-            // Oldest matter first, so a sticker that has waited longest is written first.
-            let waiting = matters.open.filter(\.recompose).sorted {
-                $0.createdAt == $1.createdAt ? ($0.findings.first?.key ?? "") < ($1.findings.first?.key ?? "") : $0.createdAt < $1.createdAt
-            }
-            for matter in waiting { try await compose(matter, client: client) }
-            retried = false
-            status = ""
-        } catch {
-            let message = error.localizedDescription
-            Log.info("minister: \(message)")
-            status = message
-            if !retried, !batch.isEmpty {
-                retried = true
-                pending.merge(batch) { _, kept in kept }
-                schedule()
-            } else {
-                for shown in batch.values {
-                    memory.append(["finding": shown.ref.key, "verdict": "unjudged", "why": "The minister couldn't judge it: \(message)"])
-                }
+        let batch = pending
+        pending = [:]
+        if !batch.isEmpty {
+            do {
+                try await triage(Array(batch.values), client: client)
                 retried = false
+            } catch {
+                let message = error.localizedDescription
+                Log.info("minister: triage: \(message)")
+                status = message
+                if !retried {
+                    retried = true
+                    pending.merge(batch) { current, _ in current }   // a newer row that came meanwhile wins
+                    schedule()
+                } else {
+                    retried = false
+                    for shown in batch.values where pending[shown.ref.key] == nil {
+                        memory.append(["finding": shown.ref.key, "verdict": "unjudged", "why": "The minister couldn't judge it: \(message)"])
+                    }
+                }
+                return
             }
         }
+        // Oldest matter first, so a sticker that has waited longest is written first. The verdicts stand whatever
+        // happens here; a sticker that couldn't be written is written at the next turn.
+        let waiting = matters.open.filter(\.recompose).sorted {
+            $0.createdAt == $1.createdAt ? ($0.findings.first?.key ?? "") < ($1.findings.first?.key ?? "") : $0.createdAt < $1.createdAt
+        }
+        for matter in waiting {
+            do { try await compose(matter, client: client) } catch {
+                let message = error.localizedDescription
+                Log.info("minister: compose \(matter.id): \(message)")
+                status = message
+                schedule()
+                return
+            }
+        }
+        status = ""
     }
 
     /// The first turn: every finding in the batch gets a matter and a verdict.
@@ -145,44 +178,72 @@ final class Minister: ObservableObject {
         apply(result.verdicts, recompose: result.recompose, findings: shown)
     }
 
-    /// Verdicts become matters: a new label makes one matter for every finding that shares it, an id adds to that
-    /// matter. A matter shows if any of its findings should; otherwise it is quiet, with the first reason given.
+    /// Verdicts become matters, worked out whole before anything is saved: a new label makes one matter for every
+    /// finding that shares it, an id adds to that matter, and a finding joining a matter leaves the one it was in. A
+    /// matter shows if any of its findings should; otherwise it is quiet, with the first reason given.
     private func apply(_ verdicts: [MinisterPrompt.Verdict], recompose: Set<String>, findings: [MinisterPrompt.Shown]) {
-        var newIDs: [String: String] = [:]   // label → matter id
-        var touched: [String: (matter: Matter, show: Bool, why: String?, joined: Bool)] = [:]
+        var work: [String: Matter] = [:]          // the matters as they will be saved, by id
+        var labels: [String: String] = [:]        // new:<label> → the id made for it
+        var shows: [String: Bool] = [:], whys: [String: String] = [:], joined: Set<String> = []
         for verdict in verdicts {
-            var matter: Matter
+            let id: String
             if verdict.isNew {
-                if let id = newIDs[verdict.matter], let made = touched[id]?.matter {
-                    matter = made
+                if let known = labels[verdict.matter] {
+                    id = known
                 } else {
                     let job = findings.first { $0.ref == verdict.finding }?.job
-                    matter = Matter(id: Matter.newID(), findings: [], state: .quiet, jobName: job?.name ?? verdict.finding.job,
-                                    byline: job.flatMap { FolderJobWords.names($0.contributors) }, createdAt: clock(), updatedAt: clock())
-                    newIDs[verdict.matter] = matter.id
+                    let made = Matter(id: matters.freshID(), findings: [], state: .quiet, jobName: job?.name ?? verdict.finding.job,
+                                      byline: job.flatMap { FolderJobWords.names($0.contributors) }, createdAt: clock(), updatedAt: clock())
+                    labels[verdict.matter] = made.id
+                    work[made.id] = made
+                    id = made.id
                 }
-            } else if let existing = touched[verdict.matter]?.matter ?? matters.matter(id: verdict.matter) {
-                matter = existing
-            } else { continue }
-            // A finding moving to another matter leaves the one it was in.
-            if let elsewhere = matters.matter(containing: verdict.finding), elsewhere.id != matter.id { _ = matters.remove(verdict.finding) }
-            var joined = touched[matter.id]?.joined ?? false
-            if !matter.findings.contains(verdict.finding) { matter.findings.append(verdict.finding); joined = true }
-            let show = (touched[matter.id]?.show ?? false) || verdict.show
-            let why = touched[matter.id]?.why ?? (verdict.show ? nil : verdict.why)
-            touched[matter.id] = (matter, show, why, joined)
-            memory.append(["finding": verdict.finding.key, "matter": matter.id, "verdict": verdict.show ? "show" : "quiet", "why": verdict.why])
+            } else {
+                guard let existing = work[verdict.matter] ?? matters.matter(id: verdict.matter), existing.state != .closed else {
+                    memory.append(["finding": verdict.finding.key, "verdict": "unjudged", "why": "The matter it was put in, \(verdict.matter), closed meanwhile."])
+                    continue
+                }
+                work[verdict.matter] = existing
+                id = verdict.matter
+            }
+            if let before = matters.matter(containing: verdict.finding), before.id != id {
+                var old = work[before.id] ?? before
+                old.findings.removeAll { $0 == verdict.finding }
+                old.recompose = true
+                work[before.id] = old
+                memory.append(["matter": before.id, "left": verdict.finding.key, "why": "it belongs with \(id)"])
+            }
+            guard var target = work[id] else { continue }
+            if !target.findings.contains(verdict.finding) {
+                target.findings.append(verdict.finding)
+                joined.insert(id)
+            }
+            work[id] = target
+            shows[id] = (shows[id] ?? false) || verdict.show
+            if !verdict.show, whys[id] == nil { whys[id] = verdict.why }
+            memory.append(["finding": verdict.finding.key, "matter": id, "verdict": verdict.show ? "show" : "quiet", "why": verdict.why])
         }
-        for (id, entry) in touched {
-            var matter = entry.matter
-            let wasOpen = matter.state == .open
-            matter.state = entry.show ? .open : .quiet
-            matter.why = entry.show ? nil : (entry.why ?? matter.why)
-            if entry.show { matter.putAwayAt = nil }
-            if matter.state == .open, entry.joined || !wasOpen || recompose.contains(id) || matter.view == nil { matter.recompose = true }
+        for id in work.keys.sorted() {
+            guard var matter = work[id] else { continue }
+            if matter.findings.isEmpty {
+                matter.state = .closed
+                matter.closedAt = clock()
+                matter.view = nil
+                matter.recompose = false
+                matters.save(matter)
+                memory.append(["matter": id, "closed": "its findings belong elsewhere now"])
+                continue
+            }
+            if let show = shows[id] {
+                let wasOpen = matter.state == .open
+                matter.state = show ? .open : .quiet
+                matter.why = show ? nil : (whys[id] ?? matter.why)
+                if show { matter.putAwayAt = nil }
+                if matter.state == .open, joined.contains(id) || !wasOpen || recompose.contains(id) || matter.view == nil { matter.recompose = true }
+            }
             matters.save(matter)
         }
-        for id in recompose where touched[id] == nil {
+        for id in recompose where work[id] == nil {
             guard var matter = matters.matter(id: id), matter.state == .open else { continue }
             matter.recompose = true
             matters.save(matter)
@@ -208,10 +269,23 @@ final class Minister: ObservableObject {
             result = try MinisterPrompt.parseCompose(input, findings: findings)
         }
         guard let result else { throw MinisterError("The minister wrote no sticker for \(matter.id).") }
-        var written = matter
+        // The matter as it stands now: while the model wrote, a finding may have gone, or the person put it away.
+        guard var written = matters.matter(id: matter.id), written.state == .open else {
+            memory.append(["matter": matter.id, "overtaken": "put away or closed while its sticker was written"])
+            return
+        }
+        guard Set(written.findings) == Set(matter.findings) else {
+            written.recompose = true   // written again, for what it is made of now
+            matters.save(written)
+            return
+        }
         written.view = result.view
+        written.writtenAt = clock()
         written.recompose = false
-        if let lead = findings.first { written.jobName = lead.job.name; written.byline = FolderJobWords.names(lead.job.contributors) }
+        if let lead = findings.first {
+            written.jobName = lead.job.name
+            written.byline = FolderJobWords.names(lead.job.contributors)
+        }
         let tellsNow = result.view.tone == .urgent && !written.notified
         if tellsNow { written.notified = true }
         matters.save(written, notes: result.notes ?? matters.notes(for: matter.id))
@@ -235,11 +309,15 @@ final class Minister: ObservableObject {
 
     // MARK: what a matter is made of
 
-    /// Each finding of a matter as its job last reported it, from the snapshot; one whose job or row is gone is left out.
+    /// Each finding of a matter as its job last reported it, from the snapshot, read once per job; one whose job or row
+    /// is gone is left out.
     private func rows(of matter: Matter) -> [MinisterPrompt.Shown] {
-        matter.findings.compactMap { ref in
-            guard let job = store.jobs.first(where: { MemoryLog.name(of: $0) == ref.job }),
-                  let kept = FindingsSnapshot.read(store.findingsFile(for: job)).rows[ref.id] else { return nil }
+        var snapshots: [UUID: FindingsSnapshot] = [:]
+        return matter.findings.compactMap { ref in
+            guard let job = store.jobs.first(where: { MemoryLog.name(of: $0) == ref.job }) else { return nil }
+            let snapshot = snapshots[job.id] ?? FindingsSnapshot.read(store.findingsFile(for: job))
+            snapshots[job.id] = snapshot
+            guard let kept = snapshot.rows[ref.id] else { return nil }
             return MinisterPrompt.Shown(ref: ref, job: job, row: kept.row, changed: nil, putAwayAt: matter.putAwayAt)
         }
     }

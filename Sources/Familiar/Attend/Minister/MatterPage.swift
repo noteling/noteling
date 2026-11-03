@@ -10,8 +10,6 @@ struct MatterPage: View {
     var buttons: FolderJobButtons?
     let id: String
     var now: () -> Date = Date.init
-    @State private var confirming: String?
-    @State private var problem: String?
 
     var body: some View {
         if let matter = matters.matter(id: id) {
@@ -33,14 +31,15 @@ struct MatterPage: View {
                 }
                 Text(Self.byline(matter, now: now())).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
                 if let line = Self.stateLine(matter) {
-                    Label(line, systemImage: matter.state == .closed ? "checkmark.circle" : "moon.zzz").font(.system(size: 12))
-                        .foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
+                    Label(line, systemImage: matter.state == .closed ? "checkmark.circle" : matter.state == .quiet ? "moon.zzz" : "exclamationmark.circle")
+                        .font(.system(size: 12)).foregroundStyle(matter.isUrgent && matter.state == .open ? Pad.redInk : Pad.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                if let problem { Text(problem).font(.system(size: 12)).foregroundStyle(Pad.redInk).textSelection(.enabled) }
                 if matter.state == .open {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 9) { controls(matter, findings: findings) }
-                        VStack(alignment: .leading, spacing: 8) { controls(matter, findings: findings) }
+                    if let buttons {
+                        MatterControls(matters: matters, buttons: buttons, matter: matter, findings: findings, now: now)
+                    } else {
+                        MatterControls.plain(matters: matters, matter: matter, findings: findings)
                     }
                 }
                 if let press = matter.presses.last {
@@ -65,57 +64,14 @@ struct MatterPage: View {
         }
     }
 
-    /// The matter's buttons: each finding's job's actions, the page it lives on, and Put away.
-    @ViewBuilder private func controls(_ matter: Matter, findings: [(job: FolderJob, row: FindingRow)]) -> some View {
-        ForEach(Array(findings.enumerated()), id: \.offset) { _, finding in
-            ForEach(finding.job.actions) { action in
-                actionButton(matter, job: finding.job, row: finding.row, action: action, primary: matter.view?.action?.run == action.run && matter.view?.action?.finding.id == finding.row.id)
-            }
-        }
-        if let page = Self.page(of: matter, findings: findings), let url = URL(string: page) {
-            Button("Open page") { NSWorkspace.shared.open(url) }.buttonStyle(MorningActionButton()).help(page)
-        }
-        Button("Put away") { matters.putAway(matter.id) }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
-            .help("Takes the sticker down. It comes back only if something about this changes and the minister thinks you should see it.")
-    }
-
-    @ViewBuilder private func actionButton(_ matter: Matter, job: FolderJob, row: FindingRow, action: FolderJobAction, primary: Bool) -> some View {
-        let key = FolderJobButtons.key(job, row) + "|" + action.id
-        let running = buttons?.pressing[FolderJobButtons.key(job, row)] == action.id
-        let why = buttons?.unavailable(job) ?? "Its job can't run this now."
-        if confirming == key {
-            VStack(alignment: .leading, spacing: 8) {
-                Label("\(action.label)? \(job.name) runs this as you.", systemImage: "exclamationmark.circle").font(.system(size: 12))
-                HStack(spacing: 12) {
-                    Button(action.label) { confirming = nil; press(job, row, action) }.buttonStyle(MorningActionButton(primary: true))
-                    Button("Cancel") { confirming = nil }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
-                }
-            }.padding(12).background(Pad.paperTop.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
-        } else {
-            Button {
-                if action.confirm { confirming = key } else { press(job, row, action) }
-            } label: {
-                if running { HStack(spacing: 6) { ProgressView().controlSize(.small); Text(action.label) } } else { Text(action.label) }
-            }
-            .buttonStyle(MorningActionButton(primary: primary))
-            .disabled(buttons == nil || running || buttons?.unavailable(job) != nil)
-            .help(buttons?.unavailable(job) == nil ? "Runs \(action.run)() in \(job.name)'s job.py, as you" : why)
-        }
-    }
-
-    private func press(_ job: FolderJob, _ row: FindingRow, _ action: FolderJobAction) {
-        guard let buttons else { return }
-        Task { await buttons.press(job, action, for: row) }
-    }
-
     // MARK: words
 
     /// "Stuck orders · shared by Lena Park · 9:02 AM".
     static func byline(_ matter: Matter, now: Date) -> String {
-        [matter.jobName, matter.byline.map { "shared by " + $0 }, JobWords.time(matter.updatedAt, now: now)].compactMap { $0 }.joined(separator: " · ")
+        [matter.jobName, matter.byline.map { "shared by " + $0 }, JobWords.time(matter.shownAt, now: now)].compactMap { $0 }.joined(separator: " · ")
     }
 
-    /// Why it isn't on a sticker, or that it is over; nil while it shows.
+    /// Why it isn't on a sticker, or that it is over; "Urgent" while it is and urgent; nil otherwise.
     static func stateLine(_ matter: Matter) -> String? {
         switch matter.state {
         case .open: return matter.isUrgent ? "Urgent" : nil
@@ -131,7 +87,7 @@ struct MatterPage: View {
 
     // MARK: the findings
 
-    /// Each finding of the matter as its job last reported it; one whose job or row is gone is left out.
+    /// Each finding of the matter as its job last reported it, read once per job; one whose job or row is gone is left out.
     static func findings(of matter: Matter, store: FolderJobStore) -> [(job: FolderJob, row: FindingRow)] {
         var snapshots: [UUID: FindingsSnapshot] = [:]
         return matter.findings.compactMap { ref in
@@ -176,8 +132,83 @@ struct MatterPage: View {
         }.font(.system(size: 13)).textSelection(.enabled)
     }
 
-    private static func inline(_ line: String) -> Text {
+    static func inline(_ line: String) -> Text {
         if let attributed = try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) { return Text(attributed) }
         return Text(line)
+    }
+}
+
+/// A matter's buttons: each finding's job's actions (asking first when the action says so, showing while one runs),
+/// the page it lives on, and Put away. Watches the buttons, so a press shows as it runs.
+struct MatterControls: View {
+    @ObservedObject var matters: Matters
+    @ObservedObject var buttons: FolderJobButtons
+    let matter: Matter
+    let findings: [(job: FolderJob, row: FindingRow)]
+    var now: () -> Date = Date.init
+    @State private var confirming: String?
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 9) { controls }
+            VStack(alignment: .leading, spacing: 8) { controls }
+        }
+    }
+
+    @ViewBuilder private var controls: some View {
+        ForEach(Array(findings.enumerated()), id: \.offset) { _, finding in
+            ForEach(finding.job.actions) { action in
+                actionButton(job: finding.job, row: finding.row, action: action,
+                             primary: matter.view?.action?.run == action.run && matter.view?.action?.finding.id == finding.row.id)
+            }
+        }
+        Self.common(matters: matters, matter: matter, findings: findings)
+    }
+
+    @ViewBuilder private func actionButton(job: FolderJob, row: FindingRow, action: FolderJobAction, primary: Bool) -> some View {
+        let key = FolderJobButtons.key(job, row) + "|" + action.id
+        let running = buttons.pressing[FolderJobButtons.key(job, row)] == action.id
+        let why = buttons.unavailable(job)
+        if confirming == key {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("\(action.label)? \(job.name) runs this as you.", systemImage: "exclamationmark.circle").font(.system(size: 12))
+                HStack(spacing: 12) {
+                    Button(action.label) { confirming = nil; press(job, row, action) }.buttonStyle(MorningActionButton(primary: true))
+                    Button("Cancel") { confirming = nil }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
+                }
+            }.padding(12).background(Pad.paperTop.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
+        } else {
+            Button {
+                if action.confirm { confirming = key } else { press(job, row, action) }
+            } label: {
+                if running { HStack(spacing: 6) { ProgressView().controlSize(.small); Text(action.label) } } else { Text(action.label) }
+            }
+            .buttonStyle(MorningActionButton(primary: primary))
+            .disabled(running || why != nil)
+            .help(why ?? "Runs \(action.run)() in \(job.name)'s job.py, as you")
+        }
+    }
+
+    private func press(_ job: FolderJob, _ row: FindingRow, _ action: FolderJobAction) {
+        Task { await buttons.press(job, action, for: row) }
+    }
+
+    /// The buttons every matter has, with or without a way to press its job's: Open page and Put away.
+    @ViewBuilder static func common(matters: Matters, matter: Matter, findings: [(job: FolderJob, row: FindingRow)]) -> some View {
+        if let page = MatterPage.page(of: matter, findings: findings), let url = URL(string: page) {
+            Button("Open page") { NSWorkspace.shared.open(url) }.buttonStyle(MorningActionButton()).help(page)
+        }
+        Button("Put away") { matters.putAway(matter.id) }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
+            .help("Takes the sticker down. It comes back only if something about this changes and the minister thinks you should see it.")
+    }
+
+    /// Without the buttons (a render): the job's actions shown but not pressable, and the common ones.
+    @ViewBuilder static func plain(matters: Matters, matter: Matter, findings: [(job: FolderJob, row: FindingRow)]) -> some View {
+        HStack(spacing: 9) {
+            ForEach(Array(findings.enumerated()), id: \.offset) { _, finding in
+                ForEach(finding.job.actions) { action in Button(action.label) {}.buttonStyle(MorningActionButton()).disabled(true) }
+            }
+            common(matters: matters, matter: matter, findings: findings)
+        }
     }
 }
