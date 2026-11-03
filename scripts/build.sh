@@ -37,6 +37,7 @@ copy_shippable() {
 }
 copy_shippable Resources/py "$RES/py"
 copy_shippable tools "$RES/tools"
+copy_shippable jobs "$RES/jobs"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$RES/"
 
 # Licenses and notices ship inside every build.

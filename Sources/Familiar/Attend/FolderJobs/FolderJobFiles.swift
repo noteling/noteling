@@ -70,6 +70,41 @@ enum FolderJobFiles {
         return found
     }
 
+    // MARK: Noteling's own jobs
+
+    /// The record of the bundled jobs a `jobs/` folder has been offered, so one the person deleted stays deleted.
+    static let bundledRecord = ".bundled-jobs"
+
+    /// Copies the jobs Noteling ships (`bundled`, such as Mail) into the person's `jobs/`, each once: a job already
+    /// there, or offered before and removed since, is left alone. Returns the names added.
+    static func addBundledJobs(from bundled: URL, to root: URL) -> [String] {
+        let manager = FileManager.default
+        let names = ((try? manager.contentsOfDirectory(atPath: bundled.path)) ?? []).filter { name in
+            var isDirectory: ObjCBool = false
+            return !name.hasPrefix(".") && manager.fileExists(atPath: bundled.appendingPathComponent(name).path, isDirectory: &isDirectory) && isDirectory.boolValue
+        }.sorted()
+        guard !names.isEmpty else { return [] }
+        let record = root.appendingPathComponent(bundledRecord)
+        var offered: Set<String>
+        if let text = try? String(contentsOf: record, encoding: .utf8) {
+            offered = Set(text.split(whereSeparator: \.isNewline).map(String.init))
+        } else {
+            offered = Set((try? manager.contentsOfDirectory(atPath: root.path)) ?? [])   // the person's own stay theirs
+        }
+        var added: [String] = []
+        try? manager.createDirectory(at: root, withIntermediateDirectories: true)
+        for name in names where !offered.contains(name) {
+            let target = root.appendingPathComponent(name)
+            if !manager.fileExists(atPath: target.path) {
+                guard (try? manager.copyItem(at: bundled.appendingPathComponent(name), to: target)) != nil else { continue }
+                added.append(name)
+            }
+            offered.insert(name)
+        }
+        try? (offered.sorted().joined(separator: "\n") + "\n").write(to: record, atomically: true, encoding: .utf8)
+        return added
+    }
+
     // MARK: job.json
 
     /// Reads job.json as someone may have left it, saying what is wrong in plain words. Every key is optional: the

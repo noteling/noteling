@@ -141,6 +141,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let bundled = Bundle.main.resourceURL?.appendingPathComponent("tools"), fm.fileExists(atPath: bundled.path) {
             for name in ToolRegistry.addMissingPacks(from: bundled, to: dir) { Log.info("added tool pack \(name) to \(dir.path)") }
         }
+        // Noteling's own jobs (Mail) reach every install once, as the person's own; one they deleted stays deleted.
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("jobs"), fm.fileExists(atPath: bundled.path) {
+            for name in FolderJobFiles.addBundledJobs(from: bundled, to: Config.dir.appendingPathComponent("jobs")) { Log.info("added the \(name) job to jobs/") }
+        }
         // A pack with no rules used to apply everywhere; once, the person's own such packs say so (`match: anywhere`).
         for name in ToolRegistry.markOwnPacksAnywhereOnce(in: dir) { Log.info("tool pack \(name) now says match: anywhere") }
         let legacy = Config.dir.appendingPathComponent("knowledge")
