@@ -70,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var watcherMenuItem: NSMenuItem!
     var hideMenuItem: NSMenuItem!
     var morningFolderMenuItem: NSMenuItem!
+    var stickersMenuItem: NSMenuItem!
     var screenPermItem: NSMenuItem!
     var axPermItem: NSMenuItem!
     var toolsMenuItem: NSMenuItem!
@@ -241,6 +242,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(morningFolderMenuItem)
         menu.addItem(NSMenuItem(title: "Who’s Who…", action: #selector(menuShowPeople), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: Self.jobsMenuTitle, action: #selector(menuShowJobs), keyEquivalent: ""))
+        stickersMenuItem = NSMenuItem(title: "Hide Stickers", action: #selector(toggleStickers), keyEquivalent: "")
+        menu.addItem(stickersMenuItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Point the Pen   ⌃⌥Space", action: #selector(menuWand), keyEquivalent: ""))
         watchMenuItem = NSMenuItem(title: "Watch Me", action: #selector(menuWatch), keyEquivalent: "")
@@ -285,6 +288,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         tasksMenuItem.isEnabled = desktop.tasks.hasTasks
         hideMenuItem.isEnabled = panel.isVisible || origami.isFlying
         morningFolderMenuItem.title = morningPanel.launcherShown ? "Hide Morning Folder" : "Show Morning Folder"
+        stickersMenuItem.title = Self.stickersMenuTitle(hidden: stickersPanel?.hidden == true, count: matters?.stickers.count ?? 0)
+        stickersMenuItem.isEnabled = stickersPanel?.hidden == true || (matters?.stickers.count ?? 0) > 0
         origamiMenuItem.title = origami.isFlying ? "Land Noteling   Esc" : "Fold into a Crane"
         origamiMenuItem.isEnabled = origami.isFlying || canTakeOrigamiFlight
         let scripts = registry.packs.reduce(0) { $0 + $1.scripts.count }
@@ -294,6 +299,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             : "Tools: \(missing.map { "\($0.pack.name) needs \($0.keys.joined(separator: ", "))" }.joined(separator: "; ")) — open Settings"
         screenPermItem.title = "Screen Recording: " + (Permissions.screenRecordingGranted ? "granted ✓" : "not granted — click to fix")
         axPermItem.title = "Accessibility: " + (Permissions.accessibilityGranted ? "granted ✓" : "not granted — click to fix")
+    }
+
+    /// "Hide Stickers" while they're on the screen; "Show Stickers (2)" while hidden, with how many wait.
+    nonisolated static func stickersMenuTitle(hidden: Bool, count: Int) -> String {
+        guard hidden else { return "Hide Stickers" }
+        return count > 0 ? "Show Stickers (\(count))" : "Show Stickers"
     }
 
     /// Screen rect of the menu bar icon, if it is on screen.

@@ -43,6 +43,7 @@ extension AppDelegate {
             self.bubbleWasVisibleBeforeControl = self.panel.isVisible
             self.shell.expanded = false
             self.panel.orderOut(nil)          // keep our own windows out of the way of clicks
+            self.stickersPanel?.hiddenForControl = true
             self.placeRunStickers()
         }
         control.onEnd = { [weak self] in
@@ -54,6 +55,7 @@ extension AppDelegate {
             }
             if self.bubbleWasVisibleBeforeControl { self.panel.orderFrontRegardless() }
             self.shell.expanded = true
+            self.stickersPanel?.hiddenForControl = false
             self.placeRunStickers()
         }
         control.onGrant = { [weak self] entering in
@@ -66,6 +68,7 @@ extension AppDelegate {
             } else {
                 if self.bubbleWasVisibleBeforeControl { self.panel.orderFrontRegardless() }
             }
+            self.stickersPanel?.hiddenForControl = entering
             self.placeRunStickers()
         }
         taskPanel = BackgroundTaskPanelController(

@@ -547,13 +547,15 @@ in [Keeping a team's tools](../team/README.md); here is how the app keeps it.
   `job-results/<own|team>/<path>/output/` in one step; one that fails keeps the last output and says why on the row.
 - **Showing them** (`FolderJobPages`): a job's page and its card show the output's `preview/` files as they are
   (csv/tsv as a table, txt as text, capped) and every output file with Open, Save as… and Show in Finder (`FileRow`).
-- **Stickers** (`RunStickers`, `RunStickersPanel`): while the latest output has a preview, the job's finding is a sticky
-  note beside the bubble, from whoever shared the job: its name, what `run()` said and when it was first found. Up to
-  three sit there, newest finding nearest the orb (a job that keeps finding the same thing keeps its date); "and N more"
-  opens Jobs; a click opens the job's page; the × puts one away until the preview's digest changes.
-  `job-results/stickers.json` keeps the put-aways and each job's current finding with its first-seen date. The app delegate places the panel beside the orb and hides it while the
-  pad is open, the bubble is away or a foreground task runs. The Morning folder icon is off the screen unless
-  `morningFolderOnScreen` is on.
+- **Stickers** (`StickersView`, `StickersPanel`, fed from `Matters`): the open matters with a sticker the minister wrote,
+  urgent ones first, three at most, "and N more" opening Jobs; a click opens the matter's page; the × puts one away
+  (`Matters.putAway`). The app delegate decides when the panel is on the screen (`StickersPanel.shows`) and places it
+  beside the orb, hidden while the pad is open, the bubble is away or a foreground task runs; dragging a sticker detaches
+  the stack to a spot of its own (`home`, kept in the config as `stickersX`/`stickersY`), where the bubble's state no
+  longer matters, until Put back beside Noteling. The right-click menu is an AppKit menu popped up by `FirstClickHost`,
+  since the panel never becomes key: Open, Put away, Bigger/Smaller (`StickersLook.steps`, kept as `stickerScale`), Put
+  back beside Noteling, Hide stickers (for this run; the menu bar's Show Stickers brings them back). The Morning folder
+  icon is off the screen unless `morningFolderOnScreen` is on.
 - **Cards and notifications** (`FolderJobCards`, `JobNotifier`): while the latest output has a preview, the job has one
   card, `cards/inbox/job-<own|team>-<path>/job.json`, whose one part is the preview's digest; a change of digest
   reopens a card the person resolved and posts one notification. Cards the job's script writes go to

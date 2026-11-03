@@ -40,6 +40,9 @@ struct Config: Codable {
     var bubbleY: Double? = nil
     var cardWidth: Double? = nil              // remembered chat card size
     var cardHeight: Double? = nil
+    var stickersX: Double? = nil              // where the person put the stickers (bottom-left, screen points); nil = beside the bubble
+    var stickersY: Double? = nil
+    var stickerScale: Double = 1              // how big the stickers are drawn, 1 = as designed (`StickersLook.steps`)
     var pokeHintsShown: Int = 0               // the "double-click to chat" callout shows on the first few pokes
     var secretsStore: String = "auto"         // "auto": Keychain for Developer ID builds, file for dev builds; or "file" / "keychain"
     var watchMaxImages: Int = 60              // Watch me: most images sent to Claude when writing a recording up
@@ -153,6 +156,9 @@ struct Config: Codable {
         bubbleY = try c.decodeIfPresent(Double.self, forKey: .bubbleY)
         cardWidth = try c.decodeIfPresent(Double.self, forKey: .cardWidth)
         cardHeight = try c.decodeIfPresent(Double.self, forKey: .cardHeight)
+        stickersX = try c.decodeIfPresent(Double.self, forKey: .stickersX)
+        stickersY = try c.decodeIfPresent(Double.self, forKey: .stickersY)
+        stickerScale = try c.decodeIfPresent(Double.self, forKey: .stickerScale) ?? d.stickerScale
         pokeHintsShown = try c.decodeIfPresent(Int.self, forKey: .pokeHintsShown) ?? 0
         secretsStore = try c.decodeIfPresent(String.self, forKey: .secretsStore) ?? d.secretsStore
         watchMaxImages = try c.decodeIfPresent(Int.self, forKey: .watchMaxImages) ?? d.watchMaxImages
