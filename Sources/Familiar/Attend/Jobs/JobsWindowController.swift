@@ -2,9 +2,9 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// The Jobs window: every job in one list, a job's page, a matter's page from its sticker, and Who's Who. One floating
-/// panel, where the person last left it, that takes the focus only when they click into it and gives it back to the app
-/// they were in when it closes.
+/// The Jobs window: every job in one list, a job's page, and a matter's page from its sticker. One floating panel,
+/// where the person last left it, that takes the focus only when they click into it and gives it back to the app they
+/// were in when it closes.
 @MainActor final class JobsWindowController: NSObject, NSWindowDelegate, WindowDragHandling {
     let navigation = JobsNavigation()
     private let panel: JobsPanel
@@ -20,11 +20,11 @@ import SwiftUI
     var onOpen: (() -> Void)?
 
     /// Nothing opens at launch; opening is always an explicit action.
-    init(folderJobs: FolderJobsPanel, people: PeopleStore, setup: JobsSetup = JobsSetup(), hideFromScreenShare: Bool) {
+    init(folderJobs: FolderJobsPanel, setup: JobsSetup = JobsSetup(), hideFromScreenShare: Bool) {
         panel = JobsPanel(hideFromScreenShare: hideFromScreenShare)
         super.init()
         panel.delegate = self
-        panel.contentView = NSHostingView(rootView: JobsWindowView(navigation: navigation, folderJobs: folderJobs, people: people, setup: setup,
+        panel.contentView = NSHostingView(rootView: JobsWindowView(navigation: navigation, folderJobs: folderJobs, setup: setup,
                                                                   close: { [weak self] in self?.hide() }))
         routeObservation = navigation.$route.receive(on: RunLoop.main).sink { [weak self] _ in self?.position() }
         position()
@@ -48,11 +48,6 @@ import SwiftUI
     /// A matter's page, from its sticker or its notification; Back goes to Jobs.
     func showMatter(id: String) {
         navigation.open(.matter(id), returningTo: .jobs)
-        open()
-    }
-
-    func showPeople() {
-        navigation.route = .people
         open()
     }
 
@@ -142,11 +137,10 @@ import SwiftUI
     /// job's page: its name and size, and Open, Save as… and Show in Finder.
     static let width: CGFloat = 650
 
-    /// A row per job, or a job's or a matter's page with its findings; Who's Who is shorter.
+    /// A row per job, or a job's or a matter's page with its findings: one height for every screen.
     static func preferredHeight(for route: JobsNavigation.Route) -> CGFloat {
         switch route {
-        case .people, .person: return 560
-        case .jobs, .folderJob, .matter, .editPerson: return 680
+        case .jobs, .folderJob, .matter: return 680
         }
     }
 }

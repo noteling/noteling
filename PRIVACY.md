@@ -17,15 +17,14 @@ The app stores its data in `~/.noteling`, or in `$NOTELING_HOME` if you set it. 
 | What jobs kept as folders left: the latest output of each job that ran (yours and the team's you turned on), with the findings it reported as a table (`findings.csv`) and the last run's rows (`findings.json`, so the next run can tell new, changed and gone apart), how its last run went, and which of the team's jobs you turned on | `job-results/` |
 | The memory log, one file a day: each job's runs (what it checked, how many it read and how many it found) and each finding that is new, changed or gone, as the row the job reported it, with anything that looks like a secret hidden; the minister's verdict on each finding and why; each sticker it wrote; what you put away or pressed | `memory/` |
 | The minister's matters, one folder each: which findings it is made of, its state (on a sticker, quiet, or over), the sticker's words, and the minister's notes on why | `matters/` |
-| Who's Who: the people you keep, their roles, what they are to you, the context you wrote and the names they go by | `people.json` |
-| The Morning folder earlier versions kept, with the notes you wrote there; this version neither reads nor writes it, and leaves it until you delete it (see Left from earlier versions below) | `morning/` |
+| The Morning folder earlier versions kept, with the notes and the Who's Who you kept there; this version neither reads nor writes it, and leaves it until you delete it (see Left from earlier versions below) | `morning/` |
 | Watch Me recordings, only while a draft is being written | `recordings/` |
 | The certificates this Mac trusts for everyone, copied from the system keychains so tool-pack scripts can use them behind a company proxy | `run/certificates.pem` |
 | Activity log | `noteling.log` |
 | Freeze diagnostics: the steps chat goes through, and a record of each time the app stopped responding | `diagnostics/main-thread/` |
 | How you use notes: arriving where there are notes, showing them, pointing at things with the pen, checks run and what they found, notes kept or removed. Counts, kinds and note ids only, never a note's words, a page's address or anything on screen | `usage/` |
 
-Watch Me recordings, developer-build secrets, the memory log, Who's Who and the activity log can be read only by your macOS user account, and so can the freeze diagnostics.
+Watch Me recordings, developer-build secrets, the memory log and the activity log can be read only by your macOS user account, and so can the freeze diagnostics.
 
 
 
@@ -93,7 +92,7 @@ This is off until you link a repository in **Settings → Team tools from GitHub
 
 ## Left from earlier versions
 
-**The Morning folder, its cards, the card step, the attention test and the reading jobs** are gone since 0.8.1. At its first launch, this version deletes what they kept that nothing reads any more: the cards inbox and the files cards carried (`cards/`), the attention test (`attention/`), the reading jobs (`calendar/`) and their run archive, everything their scripts read (`runs/`). It leaves the Morning folder's own database (`morning/`), with the notes you wrote there, and brings its Who's Who over into `people.json` once. Delete `morning/` yourself when you no longer want it.
+**The Morning folder, its cards, the card step, the attention test and the reading jobs** are gone since 0.8.1. At its first launch, this version deletes what they kept that nothing reads any more: the cards inbox and the files cards carried (`cards/`), the attention test (`attention/`), the reading jobs (`calendar/`) and their run archive, everything their scripts read (`runs/`). It leaves the Morning folder's own database (`morning/`), with the notes and the Who's Who you kept there. Delete `morning/` yourself when you no longer want it.
 
 ## How long it is kept
 

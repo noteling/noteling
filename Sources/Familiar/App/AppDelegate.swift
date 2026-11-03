@@ -52,8 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let watchDraftWindow = WatchDraftWindowController()
     var bubbleWasVisibleBeforeControl = false
 
-    // Attend: the jobs, what they find, Who's Who, the Jobs window and the stickers.
-    var people: PeopleStore!
+    // Attend: the jobs, what they find, the Jobs window and the stickers.
     var jobsWindow: JobsWindowController!
     var folderJobs: FolderJobsFeature?
     var matters: Matters!
@@ -191,9 +190,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let openJobs = NSMenuItem(title: Self.jobsMenuTitle, action: #selector(menuShowJobs), keyEquivalent: "")
         openJobs.target = self
         appItem.submenu?.addItem(openJobs)
-        let openPeople = NSMenuItem(title: "Who’s Who…", action: #selector(menuShowPeople), keyEquivalent: "")
-        openPeople.target = self
-        appItem.submenu?.addItem(openPeople)
         let openTasks = NSMenuItem(title: "Background Tasks…", action: #selector(menuShowTasks), keyEquivalent: "")
         openTasks.target = self
         appItem.submenu?.addItem(openTasks)
@@ -229,7 +225,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         menu.autoenablesItems = false
         menu.addItem(NSMenuItem(title: Self.jobsMenuTitle, action: #selector(menuShowJobs), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Who’s Who…", action: #selector(menuShowPeople), keyEquivalent: ""))
         stickersMenuItem = NSMenuItem(title: "Hide Stickers", action: #selector(toggleStickers), keyEquivalent: "")
         menu.addItem(stickersMenuItem)
         menu.addItem(.separator())

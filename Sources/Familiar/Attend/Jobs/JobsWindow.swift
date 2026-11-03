@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Where the Jobs window is: the jobs, a job's page, a matter's page (from its sticker), Who's Who, a person, the editor.
+/// Where the Jobs window is: the jobs, a job's page, or a matter's page (from its sticker).
 @MainActor final class JobsNavigation: ObservableObject {
     enum Route: Equatable {
         /// Every job in one list (`JobsPage`).
@@ -9,8 +9,6 @@ import SwiftUI
         case folderJob(UUID)
         /// A matter's page, from its sticker or its notification.
         case matter(String)
-        /// Who's Who, one person, and the editor (nil: someone new).
-        case people, person(UUID), editPerson(UUID?)
     }
     /// Where Back goes from a screen opened from somewhere other than its usual place.
     struct Return: Equatable {
@@ -29,17 +27,14 @@ import SwiftUI
         self.route = route
     }
 
-    /// Back: where the screen was opened from, when that was somewhere else than its usual place; otherwise one level
-    /// up. A job's page and a matter's page are in Jobs; a person and the editor are in Who's Who, which is beside Jobs.
+    /// Back: where the screen was opened from, when that was somewhere else than its usual place; otherwise Jobs,
+    /// which every page is one step from.
     func back() {
         if let returning, returning.from == route {
             route = returning.to
             return
         }
-        switch route {
-        case .person, .editPerson: route = .people
-        case .jobs, .folderJob, .matter, .people: route = .jobs
-        }
+        route = .jobs
     }
 
     /// Each screen's heading.
@@ -48,18 +43,15 @@ import SwiftUI
         case .jobs: return "Jobs"
         case .folderJob(let id): return jobName(id) ?? "Job"
         case .matter: return "On your note"
-        case .people, .person: return "Who’s Who"
-        case .editPerson(let id): return id == nil ? "Someone you work with" : "Edit person"
         }
     }
 }
 
-/// The Jobs window's one view: a header with Back, the screen's heading, Who's Who and ×, then the screen: every job in
-/// one list, a job's page, a matter's page, Who's Who, a person or the editor.
+/// The Jobs window's one view: a header with Back, the screen's heading and ×, then the screen: every job in one list,
+/// a job's page, or a matter's page.
 struct JobsWindowView: View {
     @ObservedObject var navigation: JobsNavigation
     let folderJobs: FolderJobsPanel
-    @ObservedObject var people: PeopleStore
     var setup = JobsSetup()
     /// What a job's page does with a file its run left.
     var files = JobFileActions()
@@ -98,21 +90,16 @@ struct JobsWindowView: View {
                     }.allowsHitTesting(false)
                 }
                 .frame(height: 24)
-            if navigation.route == .jobs {
-                Button("Who’s Who") { navigation.route = .people }.buttonStyle(.plain).font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Pad.penInk).help("The people behind your work")
-            }
             Button(action: close) { Image(systemName: "xmark").font(.system(size: 12)) }.buttonStyle(.plain).accessibilityLabel("Close Jobs")
         }.padding(.horizontal, 18).padding(.vertical, 15)
     }
 
-    /// The symbol beside the heading: a checklist for the jobs, a folder for a job, a note for a matter, people for Who's Who.
+    /// The symbol beside the heading: a checklist for the jobs, a folder for a job, a note for a matter.
     static func symbol(_ route: JobsNavigation.Route) -> String {
         switch route {
         case .jobs: return "checklist"
         case .folderJob: return "folder"
         case .matter: return "note.text"
-        case .people, .person, .editPerson: return "person.2"
         }
     }
 
@@ -125,21 +112,7 @@ struct JobsWindowView: View {
         case .matter(let id):
             if let matters = folderJobs.matters {
                 MatterPage(matters: matters, store: folderJobs.store, buttons: folderJobs.buttons, id: id).id(id)
-            } else { empty("Stickers are unavailable.") }
-        case .people:
-            PeopleView(store: people, open: { navigation.route = .person($0) }, edit: { navigation.route = .editPerson($0) })
-        case .person(let id):
-            if let person = people.person(id: id) { PersonView(person: person, edit: { navigation.route = .editPerson(id) }) }
-            else { empty("This person is no longer here.") }
-        case .editPerson(let id):
-            PersonEditor(person: id.flatMap { people.person(id: $0) }, save: { person in
-                try people.save(person); navigation.route = .person(person.id)
-            }, remove: {
-                if let id { try people.remove(id: id) }
-                navigation.route = .people
-            }, cancel: { navigation.route = id.map { .person($0) } ?? .people }).id(id)
+            } else { Text("Stickers are unavailable.").font(.system(size: 14)).foregroundStyle(Pad.inkSoft).padding(24) }
         }
     }
-
-    private func empty(_ title: String) -> some View { Text(title).font(.system(size: 14)).foregroundStyle(Pad.inkSoft).padding(24) }
 }

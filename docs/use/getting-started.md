@@ -60,7 +60,7 @@ something new. You can change this later in **System Settings → Notifications 
 
 - **Chat:** double-click the note, or click Noteling in the Dock.
 - **Jobs:** **Jobs…** in the menu bar's pencil icon, or under chat's reply as **Open Jobs** when it turns on or runs a
-  job. A sticker opens its own page there. **Who's Who** is in the Jobs window's header, and under the pencil icon.
+  job. A sticker opens its own page there.
 - **Stickers:** beside the note; drag one to move them, right-click one for more.
 - **Quit:** **Quit Noteling** in the menu bar's menu, or **⌘Q** while Noteling is in front.
 

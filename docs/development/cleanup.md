@@ -33,8 +33,8 @@ The tooling is not the bottleneck. Big tasks, hot files that every feature touch
    `BubbleLayoutRegressionTests` (11 s): a quick run should skip them; the final run before a merge includes them.
 6. **Done: the watch list is gone.** Watches were retired for jobs kept as folders; nothing of `WatchList*` is left.
 7. **Done: two names untangled, then one of them gone.** With watches gone, "Watch" means only Watch Me. The Morning
-   folder, its cards, the card step, the attention test and the reading jobs were removed in 0.8.1; the Jobs window and
-   Who's Who took their place.
+   folder, its cards, the card step, the attention test and the reading jobs were removed in 0.8.1; the Jobs window
+   took their place, and Who's Who went with the folder until the minister needs it.
 8. **Break up the slow type-checking sites.**
    - `Notes.summary` (325 ms) and `Mascot.body` (250–300 ms); the Morning and attention sites went with them in 0.8.1
 9. **Make `scripts/release.sh` say what really went wrong.** It reports any failure of

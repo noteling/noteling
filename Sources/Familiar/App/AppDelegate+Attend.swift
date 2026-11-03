@@ -2,19 +2,18 @@ import AppKit
 import Combine
 
 /// Attend: the jobs, what they find, and the stickers beside the note. The jobs kept as folders, yours and your team's;
-/// the minister, which turns what they report into matters and stickers; Who's Who; the Jobs window, where every job,
-/// a job's page, a matter's page and Who's Who are; and the stickers themselves.
+/// the minister, which turns what they report into matters and stickers; the Jobs window, where every job, a job's
+/// page and a matter's page are; and the stickers themselves.
 extension AppDelegate {
     /// The menu bar's way into Jobs.
     static let jobsMenuTitle = "Jobs…"
 
-    /// Who's Who, the folder jobs and the minister, and the Jobs window that shows them.
+    /// The folder jobs and the minister, and the Jobs window that shows them.
     func setupAttend() {
-        people = PeopleStore(directory: Config.dir, morning: Config.dir.appendingPathComponent("morning"))
         setupFolderJobs()   // before the window, which shows them
         guard var panel = folderJobs?.panel else { return }
         panel.matters = matters
-        jobsWindow = JobsWindowController(folderJobs: panel, people: people, setup: jobsSetup, hideFromScreenShare: config.hideFromScreenShare)
+        jobsWindow = JobsWindowController(folderJobs: panel, setup: jobsSetup, hideFromScreenShare: config.hideFromScreenShare)
         jobsWindow.onOpen = { [weak self] in self?.linkedTools.checkSoon() }   // a job pushed a moment ago shows without a restart
         assistant.onOpenJobs = { [weak self] in self?.jobsWindow.showJobs() }
     }
@@ -30,8 +29,6 @@ extension AppDelegate {
         RetiredMorning.cleanUp(home: Config.dir)
         folderJobs?.runner.onTick = { [weak self] in self?.minister?.reconcile() }
     }
-
-    @objc func menuShowPeople() { jobsWindow.showPeople() }
 
     /// The menu bar's Jobs…: every job in one list.
     @objc func menuShowJobs() { jobsWindow.showJobs() }

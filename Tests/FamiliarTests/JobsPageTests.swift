@@ -157,56 +157,44 @@ struct JobsPageTests {
 
     // MARK: the window
 
-    @Test func theWindowsScreensHaveTitlesHeightsAndBackLeadsToJobsOrWhosWho() throws {
+    @Test func theWindowsScreensHaveTitlesAndBackLeadsToJobs() throws {
         let fixture = try JobsFixture()
         defer { fixture.remove() }
         let own = try fixture.job("stuck-orders", #"{"name": "Stuck orders"}"#)
         func title(_ route: JobsNavigation.Route) -> String {
             JobsNavigation.title(for: route, jobName: { fixture.jobs.job(id: $0)?.name })
         }
-        let person = UUID()
         #expect(title(.jobs) == "Jobs" && title(.folderJob(own.id)) == "Stuck orders" && title(.folderJob(UUID())) == "Job")
-        #expect(title(.matter("m-1")) == "On your note" && title(.people) == "Who’s Who" && title(.person(person)) == "Who’s Who")
-        #expect(title(.editPerson(nil)) == "Someone you work with" && title(.editPerson(person)) == "Edit person")
+        #expect(title(.matter("m-1")) == "On your note")
         #expect(JobsWindowController.width == 650)
-        for route: JobsNavigation.Route in [.jobs, .folderJob(own.id), .matter("m-1"), .editPerson(nil)] {
+        for route: JobsNavigation.Route in [.jobs, .folderJob(own.id), .matter("m-1")] {
             #expect(JobsWindowController.preferredHeight(for: route) == 680)
         }
-        #expect(JobsWindowController.preferredHeight(for: .people) == 560 && JobsWindowController.preferredHeight(for: .person(person)) == 560)
         #expect(JobsWindowView.symbol(.jobs) == "checklist" && JobsWindowView.symbol(.folderJob(own.id)) == "folder"
-                && JobsWindowView.symbol(.matter("m")) == "note.text" && JobsWindowView.symbol(.people) == "person.2")
+                && JobsWindowView.symbol(.matter("m")) == "note.text")
 
         // Each screen shows its view.
         fixture.navigation.route = .folderJob(own.id)
         #expect(find(FolderJobPage.self, in: fixture.window().body)?.id == own.id)
         fixture.navigation.route = .matter("m-1")
         #expect(find(MatterPage.self, in: fixture.window().body)?.id == "m-1")
-        fixture.navigation.route = .people
-        #expect(find(PeopleView.self, in: fixture.window().body) != nil)
         fixture.navigation.route = .jobs
         #expect(find(JobsPage.self, in: fixture.window().body) != nil)
 
-        // Back: a job's page, a matter's page and Who's Who go to Jobs; a person and the editor to Who's Who.
-        for route: JobsNavigation.Route in [.folderJob(own.id), .matter("m-1"), .people] {
+        // Back: a job's page and a matter's page go to Jobs, and Jobs stays.
+        for route: JobsNavigation.Route in [.folderJob(own.id), .matter("m-1"), .jobs] {
             fixture.navigation.route = route
             fixture.navigation.back()
             #expect(fixture.navigation.route == .jobs, "Back from \(route)")
         }
-        for route: JobsNavigation.Route in [.person(person), .editPerson(person), .editPerson(nil)] {
-            fixture.navigation.route = route
-            fixture.navigation.back()
-            #expect(fixture.navigation.route == .people, "Back from \(route)")
-        }
-        fixture.navigation.back()
-        #expect(fixture.navigation.route == .jobs)
 
         // A screen opened from somewhere else comes back there; any other way off the screen forgets that.
         fixture.navigation.open(.matter("m-1"), returningTo: .jobs)
         #expect(fixture.navigation.returning == JobsNavigation.Return(from: .matter("m-1"), to: .jobs))
         fixture.navigation.back()
         #expect(fixture.navigation.route == .jobs && fixture.navigation.returning == nil)
-        fixture.navigation.open(.person(person), returningTo: .folderJob(own.id))
-        fixture.navigation.route = .people
+        fixture.navigation.open(.matter("m-2"), returningTo: .folderJob(own.id))
+        fixture.navigation.route = .jobs
         #expect(fixture.navigation.returning == nil)
     }
 
@@ -218,7 +206,7 @@ struct JobsPageTests {
         let own = try fixture.job("stuck-orders", #"{"name": "Stuck orders"}"#)
         #expect(AppDelegate.jobsMenuTitle == "Jobs…")
         var opens = 0
-        let window = JobsWindowController(folderJobs: fixture.panel, people: fixture.people, hideFromScreenShare: true)
+        let window = JobsWindowController(folderJobs: fixture.panel, hideFromScreenShare: true)
         defer { window.close() }
         window.onOpen = { opens += 1 }
         window.setHiddenForForegroundGrant(true)   // nothing comes on screen in a test
@@ -230,8 +218,6 @@ struct JobsPageTests {
         #expect(window.route == .matter("m-1"))
         window.navigation.back()
         #expect(window.route == .jobs)
-        window.showPeople()
-        #expect(window.route == .people)
 
         let chat = ChatFixture()
         defer { chat.remove() }
@@ -243,14 +229,13 @@ struct JobsPageTests {
     }
 }
 
-/// Jobs kept as folders and Who's Who in a temp folder, with the Jobs window's view over them. A job's run only says
-/// it ran; no model is reached.
+/// Jobs kept as folders in a temp folder, with the Jobs window's view over them. A job's run only says it ran; no
+/// model is reached.
 @MainActor
 private final class JobsFixture {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("jobs-page-\(UUID())")
     let jobs: FolderJobStore
     let jobRunner: FolderJobRunner
-    let people: PeopleStore
     let matters = Matters(directory: nil)
     let navigation = JobsNavigation()
     var own: URL { root.appendingPathComponent("jobs") }
@@ -261,7 +246,6 @@ private final class JobsFixture {
         jobs = FolderJobStore(directory: root.appendingPathComponent("jobs"), results: root.appendingPathComponent("job-results"),
                               teamDirectory: { team })
         jobRunner = FolderJobRunner(store: jobs, execute: { _ in "Ran in the test." })
-        people = PeopleStore(directory: root.appendingPathComponent("home"))
     }
 
     var panel: FolderJobsPanel {
@@ -274,7 +258,7 @@ private final class JobsFixture {
     func input(now: Date = Date()) -> Jobs.Input { Jobs.Input(now: now, folderJobs: panel) }
 
     func window() -> JobsWindowView {
-        JobsWindowView(navigation: navigation, folderJobs: panel, people: people, close: {})
+        JobsWindowView(navigation: navigation, folderJobs: panel, close: {})
     }
 
     /// A job's folder, yours or your team's, as found at once.

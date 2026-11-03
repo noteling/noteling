@@ -4,8 +4,8 @@ import SwiftUI
 /// `Noteling --render-jobs <dir>`: the Jobs window from fictional files, as PNGs for eyeballing. The list, with a job
 /// of yours whose last run failed and your team's: one on that found something, one off, one ended and one upcoming;
 /// the upcoming and ended jobs shown; a team job's page, the failed job's, an ended and an upcoming one's; the search
-/// over many team jobs; two folders that can't be jobs; a matter's page, as its sticker opens it; and Who's Who, a
-/// person and the editor. Nothing runs a script or reaches a provider.
+/// over many team jobs; two folders that can't be jobs; and a matter's page, as its sticker opens it. Nothing runs a
+/// script or reaches a provider.
 @MainActor
 enum JobsRender {
     static func render(to directory: URL) throws {
@@ -76,17 +76,11 @@ enum JobsRender {
         var panel = FolderJobsPanel(store: store, runner: runner, notifier: JobNotifier(), buttons: buttons)
         panel.matters = matters
 
-        // Who's Who.
-        let people = PeopleStore(directory: root.appendingPathComponent("home"))
-        try people.save(Person(name: "Alex Morgan", role: "Marketplace manager · events", relationship: "Me", context: "Runs the holiday events for GM and kitchen.", identities: ["alex@example.com"], isMe: true))
-        try people.save(Person(name: "Maya Chen", role: "Product lead · platform team", relationship: "My project partner",
-                               context: "Owns the item pages. Ask her before changing an event price.", identities: ["maya@example.com", "mchen on Jira"]))
-
         let navigation = JobsNavigation()
         let setup = JobsSetup(openSettings: {})
         func save(_ name: String, _ route: JobsNavigation.Route, height: CGFloat? = nil) throws {
             navigation.route = route
-            try image(JobsWindowView(navigation: navigation, folderJobs: panel, people: people, setup: setup, close: {}),
+            try image(JobsWindowView(navigation: navigation, folderJobs: panel, setup: setup, close: {}),
                       size: NSSize(width: JobsWindowController.width, height: height ?? JobsWindowController.preferredHeight(for: route)),
                       to: directory.appendingPathComponent(name))
         }
@@ -96,11 +90,6 @@ enum JobsRender {
         try save("job-ended.png", .folderJob(autumn.id))
         if let winter = store.jobs.first(where: { $0.path == "winter/launch" }) { try save("job-upcoming.png", .folderJob(winter.id)) }
         try save("matter.png", .matter(matter.id))
-        try save("people.png", .people)
-        if let maya = people.people.first(where: { !$0.isMe }) {
-            try save("person.png", .person(maya.id))
-            try save("person-editor.png", .editPerson(maya.id))
-        }
         func page(_ name: String, height: CGFloat, showingOutside: Bool = false) throws {
             try image(JobsPage(folderJobs: panel, setup: setup, navigation: navigation, showingOutside: showingOutside)
                 .foregroundStyle(Pad.ink).background(Pad.fieldPaper),

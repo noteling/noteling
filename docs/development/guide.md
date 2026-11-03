@@ -195,8 +195,7 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    from the menu bar's **Jobs…**, the chat's **Open Jobs** tab after it ran or turned on a job, a job's notification, or a
    sticker (on its matter's page). It takes the focus only when clicked into, remembers where it was dragged
    (`FloatingWindowPlacement("jobsWindow")`), and shows one screen at a time: the list (`JobsPage`), a job's page
-   (`FolderJobPage`), a matter's page (`MatterPage`; Back goes to Jobs), and **Who's Who** (`PeopleView`, `PersonView`,
-   `PersonEditor`), from the header or the menu bar's **Who's Who…**.
+   (`FolderJobPage`) and a matter's page (`MatterPage`; Back goes to Jobs).
    - The list has every job kept as a folder, the person's own and the team's. Jobs that need attention come first (one
      that needs a secret in Settings, one whose last run failed), then the person's own, then the team's, each by name. A
      row says what the job does ("Prices on the GM items · from your team's tools"), how often it runs ("Every 15
@@ -209,11 +208,9 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    - A job's page starts with the same header (`JobHeader`): its name, what it does and how often, its last run, how it
      stands and its buttons; then what it is for, what's wrong, its input files, and its latest result: the findings as a
      table and whatever else the run left, each file with Open, Save as… and Show in Finder (`JobFileActions`).
-   - **Who's Who** (`PeopleStore`, `Attend/People/`): the people behind the work, kept in `~/.noteling/people.json`,
-     readable only by this account. The first launch without that file brings over the people of the Morning folder
-     earlier versions kept (`morning/morning.sqlite`), once. The minister doesn't read them yet.
    - What earlier versions kept for the Morning folder, the cards inbox, the attention test and the reading jobs is
-     deleted at launch (`RetiredMorning`: `cards/`, `attention/`, `calendar/`, `runs/`); `morning/` itself is left.
+     deleted at launch (`RetiredMorning`: `cards/`, `attention/`, `calendar/`, `runs/`); `morning/` itself is left, with
+     the Who's Who people kept there, for the phase that gives the minister the person's side.
 
 Noteling appears in the Dock with its app icon. Click it to reopen chat, use **Quit Noteling** or ⌘Q to exit,
 or use macOS **Force Quit** (⌥⌘Esc) if it becomes unresponsive. Closing a window keeps Noteling running.
@@ -232,7 +229,7 @@ Then, once:
 3. Menu bar → **Watch Me**, do a short task in the app you want it to learn, then **Stop Watching** (or ⌃⌥Space). Add a short description, then add optional context or choose **Skip context**. Review the draft and choose **Keep it**. It becomes a tool pack under `~/.noteling/tools/`.
 
 No packs are needed to start: watching creates them. Chat, recording write-ups, and delegated actions send their selected
-context to your configured Claude connection. Editing Who’s Who stays local.
+context to your configured Claude connection.
 
 ## Requirements
 - macOS 14+, Xcode Command Line Tools (Swift 5.9+). No Xcode needed.
@@ -250,7 +247,7 @@ context to your configured Claude connection. Editing Who’s Who stays local.
 .build/release/Familiar --render-card /tmp/card [--states]   # the pad with a pick, a note sticker and answers, as PNGs
 .build/release/Familiar --render-stickers /tmp/stickers       # the run stickers beside the bubble: one, three and five jobs' findings, as PNGs
 .build/release/Familiar --render-background-task /tmp/tasks # task screen states, fabricated content, no model or desktop capture
-.build/release/Familiar --render-jobs /tmp/jobs            # the Jobs window: the list, a job's page, a matter's page and Who's Who, from fictional files
+.build/release/Familiar --render-jobs /tmp/jobs            # the Jobs window: the list, a job's page and a matter's page, from fictional files
 .build/release/Familiar --render-pen /tmp/pen               # the pen overlay over a fake page: stickers and the note editor, as a PNG
 build/Noteling.app/Contents/MacOS/Noteling --ask "question" [url] [--shot] [--control] [--claude-cli]   # headless Claude call, real tool loop
 build/Noteling.app/Contents/MacOS/Noteling --background-click com.apple.calculator --label "7" [--title part] [--say word] [--trust]   # one SkyLight coordinate click in that app's window while another app stays in front; PASS/FAIL per promise; --say prints what the window then says, --trust skips the self-test
@@ -554,7 +551,7 @@ pre-approved, so the user clicks one prompt on first launch, once per install.
   - `Sources/Familiar/App`: `main`; `AppDelegate` (the launch sequence, the menus, the hotkey, Settings and a team's setup file) with one file per product, `AppDelegate+Ask`, `+Act` and `+Attend`, that wires it; `ExecutionTools`, the tools one request gets, from all three; and the headless/render commands.
   - `Sources/Familiar/Ask`: the pen and the chat. `Chat` (`Assistant`, the intents, the pad, the prompt), `Companion` (the bubble and its state, the mascot, the crane, the hint when the bubble hides), `Pen` (the wand overlay, the notes it leaves and their checks, the capture flash) and `Packs` (`ToolRegistry` with the match rules and page leads, `PageBriefs`, the pack context).
   - `Sources/Familiar/Act`: Teach me and Do it for me, in front of the person or in the background. `Control` (`ComputerController` and the background lane), `Tasks` (`TaskExecutor`, `DesktopExecutionService`, `NativeActivityGate`, the background task store and its panel), `ShowMe` (Teach me's tours) and `WatchLearn` (Watch Me's recordings, summaries and the draft window).
-  - `Sources/Familiar/Attend`: the jobs, what they find, and the stickers. `FolderJobs` (jobs kept as folders: their files, runner, store, findings, buttons and pages), `Jobs` (every job as one list, the Jobs page, the Jobs window and its screens, notifications, the render fixtures), `People` (Who's Who), `Stickers` (the stickers beside the note, fed from the matters) and `Minister` (the memory log, one file a day; the matters, one folder each with the sticker and the notes; the minister's two turns, triage and compose, and their prompts and checks; a matter's page).
+  - `Sources/Familiar/Attend`: the jobs, what they find, and the stickers. `FolderJobs` (jobs kept as folders: their files, runner, store, findings, buttons and pages), `Jobs` (every job as one list, the Jobs page, the Jobs window and its screens, notifications, the render fixtures), `Stickers` (the stickers beside the note, fed from the matters) and `Minister` (the memory log, one file a day; the matters, one folder each with the sticker and the notes; the minister's two turns, triage and compose, and their prompts and checks; a matter's page).
   - `Sources/Familiar/Shared`: what all three run on. `Configuration` (settings, paths, secrets, signing, logging, the team's settings, setup files, the model backend), `Harness` (the script runner and its network settings, the team's tools from GitHub, scripted secrets, the built-in reading tools), `Screen` (the context watcher, page reading, hit testing, screen capture), `Permissions` (permissions and the hotkey), `Settings` (the Settings window) and `Shell` (window placement, drag handles, the first-click host).
 - Cleanup goals and integration boundaries: [architecture plan](../architecture/next-phase-structure.md).
 - Python helpers in `Resources/py/`: `introspect.py` (ast-only schema extraction), `run_tool.py` (executes `run(**args)`), `claude_mcp.py` (private CLI tool bridge).
