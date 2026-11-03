@@ -216,9 +216,7 @@ final class FolderJobConversation {
         return out
     }
 
-    static func csvField(_ field: String) -> String {
-        field.contains(where: { $0 == "," || $0 == "\"" || $0.isNewline }) ? "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\"" : field
-    }
+    static func csvField(_ field: String) -> String { CSVText.field(field) }
 
     static func json(_ object: Any) -> String {
         guard JSONSerialization.isValidJSONObject(object),

@@ -40,7 +40,8 @@ Click a job to open its page:
 A job reports what it found as rows. Noteling's minister reads what changed and decides which of it deserves your
 attention now, as a sticky note beside Noteling's note on your screen: a sentence or two in plain words, the job's name,
 who shared it and when. It shows only sure things: yours, needing you, true now, and new to you. Everything else stays
-quiet in Noteling's memory, with the reason.
+quiet in Noteling's memory, with the reason, and you can ask in chat: "anything about Acme?", "why did I get that sticker?",
+"what did the orders job find yesterday?".
 
 - Up to three stickers sit there, urgent ones first, and **and 2 more** above them opens Jobs. They step aside while the
   chat is open, and come back with it.

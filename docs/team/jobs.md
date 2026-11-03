@@ -119,7 +119,8 @@ tracks no state and never says "resolved". After a run that works:
 - each run (and a run that failed, with why), and each row that is new, changed or gone, is written to the memory log,
   one file a day in Noteling's folder, with anything that looks like a secret (a column named like one, such as
   `access_token` or `card_number`, or a value that looks like a key or a card number) hidden. The chat sees the table
-  the same way; the file itself is the person's, as the job wrote it;
+  the same way; the file itself is the person's, as the job wrote it. The chat and the minister read the log, the matters
+  and a job's folder and output with four read-only tools (list, read, search, rows), and nothing else on the Mac;
 - the job's row and page say what it came to: "Checked Orders API: read 2,113, found 3 · 9:02 AM · next 10:02 AM".
 
 **What the minister does with them.** After a batch of changes (about a minute, so one run of several jobs is one

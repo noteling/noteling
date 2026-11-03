@@ -23,11 +23,16 @@ struct MinisterTests {
         var callsTool = true
         /// What happens on the Mac while the model is thinking, given the prompt it was sent.
         var onPrompt: (@MainActor (String) -> Void)?
+        /// The tools each turn was given, by name, the answering one first.
+        var toolNames: [[String]] = []
+        /// What the reading tools gave back: an answer with `_call` names one of them instead of the answering tool.
+        var lookups: [(tool: String, text: String, isError: Bool)] = []
 
         func converse(system: String, tools: [[String: Any]], messages: inout [[String: Any]], executor: @escaping ToolExecutor,
                       onStatus: @escaping (String) -> Void) async throws -> ClaudeReply {
             systems.append(system)
             efforts.append(effort)
+            toolNames.append(tools.compactMap { $0["name"] as? String })
             let prompt = ((messages.last?["content"] as? [[String: Any]])?.first?["text"] as? String) ?? ""
             prompts.append(prompt)
             await onPrompt?(prompt)
@@ -36,8 +41,13 @@ struct MinisterTests {
             }
             var calls = 0
             while !answers.isEmpty, calls < maxToolRounds {
-                let input = answers.removeFirst()
+                var input = answers.removeFirst()
                 calls += 1
+                if let other = input.removeValue(forKey: "_call") as? String {
+                    let result = await executor(other, input, nil)
+                    lookups.append((other, result.content as? String ?? "", result.isError))
+                    continue
+                }
                 if !(await executor(name, input, nil)).isError { break }
             }
             return ClaudeReply(text: "", inputTokens: 1, outputTokens: 1, cacheRead: 0, toolCalls: calls)
@@ -308,6 +318,37 @@ struct MinisterTests {
         place.minister.reconcile()
         let quiet = try #require(place.matters.matter(id: id))
         #expect(quiet.state == .quiet && quiet.why == Matter.timePassed && place.memory.lines(on: at).last?["quiet"] as? String == Matter.timePassed)
+    }
+
+    // MARK: what it reads with
+
+    @Test func theMinisterMayLookThingsUpBeforeItAnswers() async throws {
+        let place = try Place(at: at)
+        defer { place.remove() }
+        let root = place.root
+        place.minister.recall = Recall.standard(home: root, tools: root.appendingPathComponent("tools"), team: { root.appendingPathComponent("linked") })
+        // The log from an earlier day: the minister can find the finding's history before judging it.
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("memory"), withIntermediateDirectories: true)
+        try #"{"at":"2026-09-20T09:00:00-04:00","finding":"team/sales/stuck-orders/4417","matter":"m-old","verdict":"show","why":"Past the SLA."}"#
+            .write(to: root.appendingPathComponent("memory/2026-09-20.jsonl"), atomically: true, encoding: .utf8)
+        place.rows = { [self.row(4417, "Acme Ltd", 3)] }
+        place.client.answers = [
+            ["_call": "search", "pattern": "stuck-orders/4417", "path": "memory"],
+            ["_call": "read", "path": "team/jobs/sales/stuck-orders/job.md"],
+            triage([("4417", "new:acme", true, "Shown before, and still past the SLA.")]),
+            ["_call": "rows", "path": "results/team/sales/stuck-orders/output/findings.csv", "where": ["customer": "acme"]],
+            ["_call": "list", "path": "nowhere"],
+            compose("Acme's order 4417 has waited 3 days, as it did in September."),
+        ]
+        try await place.run()
+        #expect(place.client.toolNames == [["triage", "list", "read", "search", "rows"], ["compose", "list", "read", "search", "rows"]])
+        #expect(place.client.lookups.map(\.tool) == ["search", "read", "rows", "list"] && place.client.lookups.map(\.isError) == [false, false, false, true])
+        #expect(place.client.lookups[0].text.contains("memory/2026-09-20.jsonl:1: ") && place.client.lookups[0].text.contains(#""verdict":"show""#))
+        #expect(place.client.lookups[1].text.hasPrefix("Each row is a paid order the warehouse hasn't packed."))
+        #expect(place.client.lookups[2].text == "order_id,customer,paid_on,waiting_days\n4417,Acme Ltd,2026-10-30,3\n(1 of 1 matching rows; 1 in the file)")
+        #expect(place.client.lookups[3].text.hasPrefix("No root called nowhere."))
+        #expect(place.matters.stickers.map(\.text) == ["Acme's order 4417 has waited 3 days, as it did in September."] && place.client.answers.isEmpty)
+        #expect(MinisterPrompt.triageSystem.contains("look things up") && MinisterPrompt.composeSystem.contains("look things up"))
     }
 
     // MARK: what the minister and the page are shown

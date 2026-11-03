@@ -22,6 +22,12 @@ final class Minister: ObservableObject {
     var clock: () -> Date = Date.init
     /// An urgent sticker was written for the first time: the app tells the person.
     var onUrgent: ((Matter) -> Void)?
+    /// What it reads with when something is worth looking up: the memory log, the matters, the jobs and what they found.
+    var recall: Recall?
+
+    /// Tool rounds a turn may take: lookups, the answer, and one refusal.
+    static let triageRounds = 4
+    static let composeRounds = 8
 
     private var pending: [String: MinisterPrompt.Shown] = [:]
     private var timer: Task<Void, Never>?
@@ -171,7 +177,8 @@ final class Minister: ObservableObject {
         var result: (verdicts: [MinisterPrompt.Verdict], recompose: Set<String>)?
         let ids = Set(current.map(\.id))
         let refs = shown.map(\.ref)
-        try await converse(client, system: MinisterPrompt.triageSystem, prompt: prompt, tool: MinisterPrompt.triageDefinition, effort: "low") { input in
+        try await converse(client, system: MinisterPrompt.triageSystem, prompt: prompt, tool: MinisterPrompt.triageDefinition, effort: "low",
+                           rounds: Self.triageRounds) { input in
             result = try MinisterPrompt.parseTriage(input, findings: refs, matters: ids)
         }
         guard let result else { throw MinisterError("The minister gave no verdicts.") }
@@ -265,7 +272,8 @@ final class Minister: ObservableObject {
         }
         let prompt = MinisterPrompt.compose(matter, findings: findings, descriptions: descriptions(for: findings), notes: matters.notes(for: matter.id), now: clock())
         var result: (view: MatterView, notes: String?)?
-        try await converse(client, system: MinisterPrompt.composeSystem, prompt: prompt, tool: MinisterPrompt.composeDefinition, effort: config().effort) { input in
+        try await converse(client, system: MinisterPrompt.composeSystem, prompt: prompt, tool: MinisterPrompt.composeDefinition, effort: config().effort,
+                           rounds: Self.composeRounds) { input in
             result = try MinisterPrompt.parseCompose(input, findings: findings)
         }
         guard let result else { throw MinisterError("The minister wrote no sticker for \(matter.id).") }
@@ -293,15 +301,18 @@ final class Minister: ObservableObject {
         if tellsNow { onUrgent?(written) }
     }
 
-    /// One turn with one tool: the model must call it with input the check accepts; a refusal goes back to it once.
-    private func converse(_ client: any ConversationClient, system: String, prompt: String, tool: [String: Any], effort: String,
+    /// One turn with one answering tool, and the four reading tools beside it: the model must call the answer with input
+    /// the check accepts; a refusal goes back to it once.
+    private func converse(_ client: any ConversationClient, system: String, prompt: String, tool: [String: Any], effort: String, rounds: Int,
                           accept: @escaping ([String: Any]) throws -> Void) async throws {
         client.effort = effort
-        client.maxToolRounds = 2
+        client.maxToolRounds = rounds
         var messages: [[String: Any]] = [["role": "user", "content": [["type": "text", "text": prompt]]]]
         let name = tool["name"] as? String ?? ""
-        let reply = try await client.converse(system: system, tools: [tool], messages: &messages, executor: { called, input, _ in
-            guard called == name else { return .text("Only \(name) is available.", isError: true) }
+        let reading = recall
+        let reply = try await client.converse(system: system, tools: [tool] + (reading?.definitions ?? []), messages: &messages, executor: { called, input, _ in
+            if let reading, Recall.names.contains(called) { return reading.execute(called, input) }
+            guard called == name else { return .text("Only \(name)\(reading == nil ? "" : " and the reading tools") can be called.", isError: true) }
             do { try accept(input); return .text("Noted.") } catch { return .text(error.localizedDescription, isError: true) }
         }, onStatus: { _ in })
         Log.info("minister: \(name) \(reply.inputTokens) in, \(reply.outputTokens) out, \(reply.toolCalls) tool call(s)")

@@ -40,6 +40,7 @@ final class DesktopExecutionService {
                  policy: ExecutionTools.Policy = .standard,
                  facts: String? = nil,
                  additionalRoutes: [ToolRoute] = [],
+                 recall: Recall? = nil,
                  trackedItems: [TrackedSourceItem] = [],
                  onObservation: (() -> Void)? = nil, onNavigation: (() -> Void)? = nil,
                  lookAtScreen: @escaping () async -> ToolResult,
@@ -60,7 +61,7 @@ final class DesktopExecutionService {
         // Snapshot all request capabilities and guard labels before target resolution suspends.
         let router = try ExecutionTools.make(registry: registry, context: context, control: control,
                                              background: background, policy: policy, facts: facts, additionalRoutes: additionalRoutes,
-                                             trackedItems: trackedItems, onObservation: onObservation, onNavigation: onNavigation,
+                                             recall: recall, trackedItems: trackedItems, onObservation: onObservation, onNavigation: onNavigation,
                                              lookAtScreen: lookAtScreen, readScreen: readScreen)
         control.lane = background ? .background : .foreground
         control.target = target

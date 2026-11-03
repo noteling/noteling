@@ -17,6 +17,7 @@ extension AppDelegate {
         briefs = PageBriefs(registry: registry)
         assistant = Assistant(config: effectiveConfig, watcher: watcher, registry: registry, shell: shell, learning: learning, execution: execution, desktop: desktop)
         assistant.briefs = briefs
+        assistant.recall = recall
         assistant.onStartWand = { [weak self] in self?.startWand() }
         assistant.onCancelWand = { [weak self] in if self?.wand.isActive == true { self?.wand.cancel() } }
         assistant.onOpenSettings = { [weak self] in self?.openSettings() }

@@ -24,7 +24,14 @@ enum Prompt {
     its pack is for this page, used here by the page's pack, or for anywhere; a pack for other pages has no tools here. \
     Use them when they answer the question better than guessing, e.g. checking a status or looking something up. \
     Report what they return, don't invent results.
-    - read_file and grep over the tool packs' docs, for anything the stuffed docs don't cover.
+    - list, read, search and rows: four read-only tools over Noteling's own folders. Call list with no path for the roots: \
+    memory (Noteling's log, one JSON-lines file a day: each job's runs, each finding new, changed or gone, the minister's \
+    verdict on each and why, each sticker, what the person put away or pressed), matters (each sticker's matter.json and \
+    the minister's notes.md), jobs and team/jobs (the jobs' folders), results (what the jobs' runs left, such as \
+    results/team/<path>/output/findings.csv), tools and team (the tool packs' docs). When they ask what a job found, or \
+    what Noteling showed or kept quiet and why ("anything about Acme?", "why did I get that sticker?"), search memory \
+    and matters first, then read, and answer with what happened and when, as the log has it. The same four read the \
+    tool packs' docs for anything the stuffed docs don't cover.
     - read_screen, which returns the text of the window in front when they asked, via accessibility. Use it to read small text, \
     dropdown values or error messages precisely.
     - look_at_screen, which returns the screen as it was when they asked (fresh while you control the computer). Use it when the \
@@ -52,7 +59,7 @@ enum Prompt {
     - What the person showed you with Watch Me: tool packs marked "Learned by watching", whose docs/workflows hold the \
     steps they showed, in the app's own words. They are how-tos, not jobs. When they ask you to do one of those tasks, \
     follow its steps, doing them yourself when you have the computer tools. If the steps aren't in what you were given, \
-    find them with grep and read_file over the tool packs' docs.
+    find them with search and read over the tool packs' docs.
     Prefer the company's docs over general assumptions when they conflict, and say which doc you used. \
     Never invent internal procedures, URLs, contacts or policies. If you are unsure, say so plainly.
     People also stick short notes on controls with the pen ("Notes left on this control"). Each is a named \
@@ -331,7 +338,7 @@ enum Prompt {
                         budget -= d.text.count
                         s += "\n<file path=\"\(d.relPath)\">\n\(d.text)\n</file>\n"
                     } else {
-                        s += "- \(d.relPath) (\(d.text.count) chars, use read_file)\n"
+                        s += "- \(p.linked ? "team" : "tools")/\(d.relPath) (\(d.text.count) chars, use read)\n"
                     }
                 }
             }
@@ -342,7 +349,7 @@ enum Prompt {
             if !p.paths.isEmpty { s += showPaths(p) }
         }
         if !selection.others.isEmpty {
-            s += "\n## Other tool packs (not for this page; their docs are readable with read_file / grep, their scripts are not tools here)\n"
+            s += "\n## Other tool packs (not for this page; their docs are readable with read / search, their scripts are not tools here)\n"
             for p in selection.others {
                 let place = p.isLibrary ? "a library: its tools come along with a pack that uses it" : "for \(p.match.words)"
                 s += "- \(p.dirName): \(p.name)." + (p.description.isEmpty ? "" : " \(p.description)") + " (\(place))\n"

@@ -253,45 +253,7 @@ enum FolderJobPreview: Equatable {
     /// breaks and doubled quotes); the first row and up to `limit` after it, and how many rows came after the first.
     /// A text cut short (`whole` false) loses its last row, which may be cut too.
     static func table(_ text: String, separator: Character, limit: Int, whole: Bool = true) -> (rows: [[String]], total: Int) {
-        var rows: [[String]] = []
-        var count = 0
-        var row: [String] = []
-        var field = ""
-        var quoted = false, wasQuoted = false
-        var iterator = text.makeIterator()
-        var pending: Character?
-        func endRow() {
-            row.append(field)
-            field = ""
-            if !(row.count == 1 && row[0].isEmpty && !wasQuoted) {   // a blank line isn't a row
-                if rows.count <= limit { rows.append(row) }
-                count += 1
-            }
-            row = []
-            wasQuoted = false
-        }
-        while let char = pending ?? iterator.next() {
-            pending = nil
-            if quoted {
-                if char == "\"" {
-                    if let next = iterator.next() {
-                        if next == "\"" { field.append("\"") } else { quoted = false; pending = next }
-                    } else { quoted = false }
-                } else { field.append(char) }
-            } else if char == "\"" && field.isEmpty {
-                quoted = true
-                wasQuoted = true
-            } else if char == separator {
-                row.append(field)
-                field = ""
-            } else if char == "\n" || char == "\r\n" || char == "\r" {
-                endRow()
-            } else {
-                field.append(char)
-            }
-        }
-        if whole, !field.isEmpty || !row.isEmpty || wasQuoted { endRow() }
-        return (rows, max(0, count - 1))
+        CSVText.rows(text, separator: separator, limit: limit, whole: whole)
     }
 
     /// Under a preview cut short: "Open the file for all 1,240 rows.", "Open the file for all of it." when it was too
