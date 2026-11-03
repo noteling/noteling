@@ -34,14 +34,13 @@ Click a job to open its page:
 - **Input**: the files it reads, such as the list of items it checks.
 - **Latest result**: what its last run that worked left. Short tables and notes are shown right there, as they are.
   Every file has **Open**, **Save as…** and **Show in Finder**, so you can take the full results into Excel.
-- **Card**: opens the card it keeps in the Morning folder.
 
 ## Its stickers, and when it tells you
 
 A job reports what it found as rows. Noteling's minister reads what changed and decides which of it deserves your
 attention now, as a sticky note beside Noteling's note on your screen: a sentence or two in plain words, the job's name,
 who shared it and when. It shows only sure things: yours, needing you, true now, and new to you. Everything else stays
-quiet in Noteling's memory, with the reason, and you can ask about it any time.
+quiet in Noteling's memory, with the reason.
 
 - Up to three stickers sit there, urgent ones first, and **and 2 more** above them opens Jobs. They step aside while the
   chat is open, and come back with it.

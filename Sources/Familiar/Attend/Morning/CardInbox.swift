@@ -408,3 +408,19 @@ final class CardInbox {
     }
 }
 
+/// Jobs wrote cards into the inbox in earlier versions: `job-<team|own>-<path>/job.json` for the preview card, and a
+/// `jobcards-…` folder for the cards their job.py wrote. Jobs report findings now, so at launch Noteling deletes those
+/// folders, and their cards resolve as any card whose file went away does.
+enum RetiredJobCards {
+    /// Deletes the folders jobs wrote into `inbox`. Returns how many; none once they're gone.
+    @discardableResult
+    static func cleanUp(inbox: URL) -> Int {
+        let manager = FileManager.default
+        let folders = ((try? manager.contentsOfDirectory(atPath: inbox.path)) ?? []).filter { $0.hasPrefix("job-") || $0.hasPrefix("jobcards-") }
+        var deleted = 0
+        for folder in folders where (try? manager.removeItem(at: inbox.appendingPathComponent(folder))) != nil { deleted += 1 }
+        if deleted > 0 { Log.info("cards inbox: jobs report findings now, so the \(deleted) folder(s) they wrote cards into were deleted") }
+        return deleted
+    }
+}
+

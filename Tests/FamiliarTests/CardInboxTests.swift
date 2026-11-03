@@ -328,6 +328,18 @@ struct CardInboxTests {
 
     // MARK: NOTELING_CARDS_DIR
 
+    @Test func whatJobsWroteIntoTheInboxInEarlierVersionsIsDeletedAtLaunch() throws {
+        let fixture = InboxFixture()
+        defer { fixture.remove() }
+        try fixture.write("job-own-sticker-check", "card", #"{"title": "The old preview card"}"#)
+        try fixture.write("jobcards-own-sticker-check", "4417", #"{"title": "A card the old job.py wrote"}"#)
+        try fixture.write("pages-up", "third", #"{"title": "A pack's card"}"#)
+        #expect(RetiredJobCards.cleanUp(inbox: fixture.directory) == 2)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.directory.path) == ["pages-up"])
+        #expect(RetiredJobCards.cleanUp(inbox: fixture.directory) == 0)
+        #expect(RetiredJobCards.cleanUp(inbox: fixture.root.appendingPathComponent("nowhere")) == 0)
+    }
+
     @Test func eachScriptGetsAFolderOfItsOwnAndNoNameReachesAnothers() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("cards-dir-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }

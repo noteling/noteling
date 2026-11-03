@@ -21,12 +21,16 @@ struct MinisterTests {
         var systems: [String] = []
         var efforts: [String] = []
         var callsTool = true
+        /// What happens on the Mac while the model is thinking, given the prompt it was sent.
+        var onPrompt: (@MainActor (String) -> Void)?
 
         func converse(system: String, tools: [[String: Any]], messages: inout [[String: Any]], executor: @escaping ToolExecutor,
                       onStatus: @escaping (String) -> Void) async throws -> ClaudeReply {
             systems.append(system)
             efforts.append(effort)
-            prompts.append(((messages.last?["content"] as? [[String: Any]])?.first?["text"] as? String) ?? "")
+            let prompt = ((messages.last?["content"] as? [[String: Any]])?.first?["text"] as? String) ?? ""
+            prompts.append(prompt)
+            await onPrompt?(prompt)
             guard callsTool, let name = tools.first?["name"] as? String else {
                 return ClaudeReply(text: "I have nothing to say.", inputTokens: 1, outputTokens: 1, cacheRead: 0, toolCalls: 0)
             }
@@ -148,6 +152,197 @@ struct MinisterTests {
         try await place.run()
         #expect(place.minister.status.hasPrefix("Add your API key") || place.minister.status.hasPrefix("Claude Code") || !place.minister.status.isEmpty)
         #expect(place.matters.all.isEmpty && place.client.prompts.count == 2)
+    }
+
+    // MARK: what moves, and what happens meanwhile
+
+    @Test func aFindingMovingToAnotherMatterLeavesTheOneItWasInEvenWhenThatOneIsJudgedToo() async throws {
+        let place = try Place(at: at)
+        defer { place.remove() }
+        var rows = [row(4417, "Acme Ltd", 3), row(4390, "Acme Ltd", 5)]
+        place.rows = { rows }
+        // Two findings under one new label make one matter, which shows if any of them should.
+        place.client.answers = [
+            triage([("4417", "new:acme", true, "Theirs, past the SLA."), ("4390", "new:acme", false, "Same customer; the other order tells the story.")]),
+            compose("Acme has two orders waiting; 4417 is past the SLA."),
+        ]
+        try await place.run()
+        let acme = try #require(place.matters.open.first)
+        #expect(acme.findings.map(\.id) == ["4417", "4390"] && acme.why == nil && place.matters.current.count == 1)
+
+        // 4390 turns out to be its own thing: it leaves Acme's matter, and both are written again (the new one first:
+        // same age, lower finding).
+        rows = [row(4417, "Acme Ltd", 4), row(4390, "Acme Ltd", 6)]
+        place.client.answers = [
+            triage([("4390", "new:beta", true, "The other warehouse's, as the row now says."), ("4417", acme.id, true, "Still past the SLA.")]),
+            compose("Order 4390 waits on the other warehouse.", action: nil, on: "4390", page: nil),
+            compose("Acme's order 4417: four days now."),
+        ]
+        try await place.run()
+        let after = try #require(place.matters.matter(id: acme.id))
+        let beta = try #require(place.matters.open.first { $0.id != acme.id })
+        #expect(after.findings.map(\.id) == ["4417"] && after.view?.text == "Acme's order 4417: four days now." && !after.recompose)
+        #expect(beta.findings.map(\.id) == ["4390"] && beta.view?.text == "Order 4390 waits on the other warehouse." && !beta.recompose)
+        #expect(place.matters.matter(containing: FindingRef(job: Self.key, id: "4390"))?.id == beta.id && place.matters.stickers.count == 2)
+        let left = place.memory.lines(on: at).first { $0["left"] != nil }
+        #expect(left?["matter"] as? String == acme.id && left?["why"] as? String == "it belongs with \(beta.id)")
+    }
+
+    @Test func whatHappensWhileTheMinisterWritesWins() async throws {
+        let place = try Place(at: at)
+        defer { place.remove() }
+        var rows = [row(4417, "Acme Ltd", 3), row(4390, "Beta", 5)]
+        place.rows = { rows }
+        place.client.answers = [triage([("4417", "new:acme", true, "Theirs."), ("4390", "new:acme", true, "Theirs too.")]), compose("Two orders wait.")]
+        try await place.run()
+        let id = try #require(place.matters.open.first?.id)
+
+        // Put away while the sticker is written again (the minister asked for that): what was written is dropped, and
+        // the matter stays put away.
+        rows = [row(4417, "Acme Ltd", 4), row(4390, "Beta", 6)]
+        place.client.answers = [triage([("4417", id, true, "A day more."), ("4390", id, true, "A day more.")], recompose: [id]), compose("Both a day older.")]
+        place.client.onPrompt = { [matters = place.matters] prompt in if prompt.hasPrefix("Matter ") { matters.putAway(id) } }
+        try await place.run()
+        let putAway = try #require(place.matters.matter(id: id))
+        #expect(putAway.state == .quiet && putAway.why == Matter.putAway && putAway.view?.text == "Two orders wait." && !putAway.recompose)
+        #expect(place.memory.lines(on: at).contains { $0["overtaken"] != nil } && place.matters.stickers.isEmpty && place.minister.status.isEmpty)
+
+        // A finding gone while the sticker is written: what was written is for a matter made of something else now, so
+        // it is written again, at the next turn.
+        rows = [row(4417, "Acme Ltd", 5), row(4390, "Beta", 7)]
+        let gone = FindingRef(job: Self.key, id: "4390")
+        place.client.answers = [triage([("4417", id, true, "Back."), ("4390", id, true, "Back.")]), compose("Both, again."), compose("Only 4417 now.")]
+        place.client.onPrompt = { [matters = place.matters] prompt in if prompt.hasPrefix("Matter ") { matters.remove(gone) } }
+        try await place.run()
+        let between = try #require(place.matters.matter(id: id))
+        #expect(between.state == .open && between.recompose && between.view?.text == "Two orders wait." && between.findings.map(\.id) == ["4417"])
+        await place.minister.flush()
+        let written = try #require(place.matters.matter(id: id))
+        #expect(!written.recompose && written.view?.text == "Only 4417 now." && place.matters.stickers.map(\.text) == ["Only 4417 now."])
+        #expect(place.client.prompts.count == 7 && place.client.answers.isEmpty)
+    }
+
+    @Test func aStickerThatCouldntBeWrittenIsWrittenAtTheNextTurnWithoutJudgingAgain() async throws {
+        let place = try Place(at: at)
+        defer { place.remove() }
+        place.rows = { [self.row(4417, "Acme Ltd", 3)] }
+        place.client.answers = [triage([("4417", "new:acme", true, "Theirs.")])]   // nothing for the sticker
+        try await place.run()
+        let open = try #require(place.matters.open.first)
+        #expect(open.view == nil && open.recompose && place.minister.status == "The minister wrote no sticker for \(open.id).")
+        #expect(place.memory.lines(on: at).filter { $0["verdict"] != nil }.count == 1 && place.client.prompts.count == 2)
+
+        place.client.answers = [compose("Acme's order 4417 waits.")]
+        await place.minister.flush()
+        #expect(place.matters.open.first?.view?.text == "Acme's order 4417 waits." && place.minister.status.isEmpty)
+        #expect(place.client.prompts.count == 3 && place.client.systems.last == MinisterPrompt.composeSystem)
+        #expect(!place.memory.lines(on: at).contains { $0["verdict"] as? String == "unjudged" })
+    }
+
+    @Test func twoFlushesAtOnceTakeOneTurn() async throws {
+        let place = try Place(at: at)
+        defer { place.remove() }
+        place.rows = { [self.row(4417, "Acme Ltd", 3)] }
+        place.client.answers = [triage([("4417", "new:acme", true, "Theirs.")]), compose("Acme's order 4417 waits.")]
+        place.runner.run(place.job.id)
+        await place.runner.finish()
+        let first = Task { await place.minister.flush() }
+        let second = Task { await place.minister.flush() }
+        await first.value
+        await second.value
+        #expect(place.client.prompts.count == 2 && place.matters.open.count == 1 && !place.minister.isRunning)
+    }
+
+    // MARK: the jobs' side
+
+    @Test func aStickerLeavesWithItsJobOffEndedOrGoneAndComesBackJudgedAfresh() async throws {
+        let place = try Place(at: at)
+        defer { place.remove() }
+        place.rows = { [self.row(4417, "Acme Ltd", 3)] }
+        place.client.answers = [triage([("4417", "new:acme", true, "Theirs.")]), compose("Acme's order 4417 waits.")]
+        try await place.run()
+        let id = try #require(place.matters.open.first?.id)
+
+        try place.store.setOn(place.job.id, false)
+        place.minister.reconcile()
+        #expect(place.matters.stickers.isEmpty && place.matters.matter(id: id)?.state == .closed)
+        #expect(place.memory.lines(on: at).last?["closed"] as? String == "its job is off")
+
+        // On again: its next run reports everything anew, and the minister judges it afresh.
+        try place.store.setOn(place.job.id, true)
+        place.client.answers = [triage([("4417", "new:acme", true, "Theirs, still.")]), compose("Acme's order 4417 still waits.")]
+        try await place.run()
+        #expect(place.matters.stickers.map(\.text) == ["Acme's order 4417 still waits."] && place.matters.current.count == 1 && place.matters.all.count == 2)
+
+        // Its end came.
+        let jobJSON = place.root.appendingPathComponent("linked/jobs/sales/stuck-orders/job.json")
+        let json = try String(contentsOf: jobJSON, encoding: .utf8).replacingOccurrences(of: #""every_minutes": 60,"#, with: #""every_minutes": 60, "ends": "2026-09-20","#)
+        try json.write(to: jobJSON, atomically: true, encoding: .utf8)
+        _ = place.store.refresh()
+        place.minister.reconcile()
+        #expect(place.matters.stickers.isEmpty && place.matters.current.isEmpty && place.memory.lines(on: at).last?["closed"] as? String == "its job ended")
+
+        // Gone: a matter (here a quiet one) of a job that is no longer there closes too.
+        place.matters.save(Matter(id: "m-quiet", findings: [FindingRef(job: Self.key, id: "4417")], state: .quiet, jobName: "Stuck orders", byline: nil, createdAt: at, updatedAt: at))
+        try FileManager.default.removeItem(at: place.root.appendingPathComponent("linked/jobs/sales/stuck-orders"))
+        _ = place.store.refresh()
+        place.minister.reconcile()
+        #expect(place.matters.current.isEmpty && place.memory.lines(on: at).last?["closed"] as? String == "its job is gone")
+    }
+
+    @Test func aStickerWithAnUntilLeavesWhenItsTimeComes() async throws {
+        let place = try Place(at: at)
+        defer { place.remove() }
+        var now = at
+        place.minister.clock = { now }
+        place.matters.clock = { now }
+        place.rows = { [self.row(4417, "Acme Ltd", 3)] }
+        var meeting = compose("Acme's order review is at 11.")
+        meeting["until"] = "2026-09-21T11:00:00-04:00"
+        place.client.answers = [triage([("4417", "new:acme", true, "A meeting of theirs.")]), meeting]
+        try await place.run()
+        let id = try #require(place.matters.open.first?.id)
+        #expect(place.matters.stickers.count == 1 && MinisterPrompt.composeSystem.contains("always give its sticker an until"))
+        now = at.addingTimeInterval(3_600)   // 11:13
+        #expect(place.matters.stickers.isEmpty)   // the sticker leaves by itself
+        place.minister.reconcile()
+        let quiet = try #require(place.matters.matter(id: id))
+        #expect(quiet.state == .quiet && quiet.why == Matter.timePassed && place.memory.lines(on: at).last?["quiet"] as? String == Matter.timePassed)
+    }
+
+    // MARK: what the minister and the page are shown
+
+    @Test func thePromptsHideSecretsInRowsTheirRolesAndWhatAButtonSaid() throws {
+        var job = FolderJob(id: UUID(), source: .team, path: "sales/stuck-orders", name: "Stuck orders")
+        job.map = FindingsMap(id: "order_id", about: ["customer"], at: "when", what: "note")
+        let token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789"
+        let row = FindingRow(id: "4417", values: ["order_id": 4417, "customer": token, "note": "card 4111-1111-1111-1111 on file", "api_key": "plain", "when": "2026-09-21T11:00"],
+                             columns: ["order_id", "customer", "note", "api_key", "when"])
+        let shown = MinisterPrompt.Shown(ref: FindingRef(job: Self.key, id: "4417"), job: job, row: row, changed: nil, putAwayAt: nil)
+        let prompt = MinisterPrompt.triage([shown], descriptions: [:], matters: [], now: at)
+        #expect(!prompt.contains(token) && !prompt.contains("4111-1111") && !prompt.contains("plain"))
+        #expect(prompt.contains("about: (hidden)") && prompt.contains("what: (hidden)") && prompt.contains("at: 2026-09-21T11:00 (an event)"))
+        var matter = Matter(id: "m-1", findings: [shown.ref], state: .open, jobName: "Stuck orders", byline: nil, createdAt: at, updatedAt: at)
+        matter.presses = [FindingPress(label: "Nudge", at: at, said: "sent with " + token, failed: false)]
+        let compose = MinisterPrompt.compose(matter, findings: [shown], descriptions: [:], notes: nil, now: at)
+        #expect(!compose.contains(token) && compose.contains("Pressed: Nudge · (hidden)"))
+    }
+
+    @Test func theMatterPageSaysWhenAStickerWasWrittenAndWhyAMatterIsntShown() {
+        let later = at.addingTimeInterval(600)
+        var matter = Matter(id: "m-1", findings: [], state: .open, view: MatterView(text: "Hi", tone: .urgent), jobName: "Stuck orders", byline: "Lena Park",
+                            createdAt: at, updatedAt: later)
+        #expect(MatterPage.byline(matter, now: later) == "Stuck orders · shared by Lena Park · " + JobWords.time(at, now: later))
+        matter.writtenAt = at.addingTimeInterval(300)
+        #expect(MatterPage.byline(matter, now: later).hasSuffix(JobWords.time(at.addingTimeInterval(300), now: later)))
+        #expect(MatterPage.stateLine(matter) == "Urgent")
+        matter.view?.tone = .calm
+        #expect(MatterPage.stateLine(matter) == nil)
+        matter.state = .quiet
+        matter.why = Matter.putAway
+        #expect(MatterPage.stateLine(matter) == "Kept quiet: You put it away.")
+        matter.state = .closed
+        #expect(MatterPage.stateLine(matter) == "Over: its findings are gone.")
     }
 
     // MARK: the checks on what the minister answers

@@ -139,7 +139,7 @@ extension AppDelegate {
             let ref = FindingRef(job: job, id: row.id)
             self.matters.record(press, on: ref)
             memory.append(["finding": ref.key, "matter": self.matters.matter(containing: ref)?.id ?? "", "pressed": action.label,
-                           "said": press.said, "failed": press.failed])
+                           "said": MemoryLog.redacted(press.said), "failed": press.failed])
         }
     }
 
@@ -155,10 +155,7 @@ extension AppDelegate {
         stickersPanel = StickersPanel(model: model, hideFromScreenShare: config.hideFromScreenShare,
                                       open: { [weak self] id in self?.morningPanel.showMatter(id: id) },
                                       more: { [weak self] in self?.morningPanel.showJobs() },
-                                      putAway: { [weak model, weak self] id in
-                                          model?.putAway(id)
-                                          self?.folderJobs?.runner.memory?.append(["matter": id, "put_away": true])
-                                      })
+                                      putAway: { [weak model] id in model?.putAway(id) })
         model.$all
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.placeRunStickers() }
@@ -180,11 +177,13 @@ extension AppDelegate {
 
     // MARK: cards inbox
 
-    /// Cards that tool-pack scripts write into `cards/inbox/`, picked up into Morning Files at the jobs' tick. A card's
-    /// buttons open its page or ask about it in chat.
+    /// Cards that tool-pack scripts write into `cards/inbox/`, picked up into Morning Files at the jobs' tick, which is
+    /// also when the minister's matters follow the jobs (one turned off loses its stickers). What jobs wrote there in
+    /// earlier versions goes first: jobs report findings now.
     func setupCardInbox() {
+        RetiredJobCards.cleanUp(inbox: Config.dir.appendingPathComponent("cards/inbox"))
         let inbox = CardInbox(store: morning)
-        folderJobs?.runner.onTick = { [weak inbox] in inbox?.scan() }
+        folderJobs?.runner.onTick = { [weak inbox, weak self] in inbox?.scan(); self?.minister?.reconcile() }
         morningPanel.onAskAboutCard = { [weak self] card, question in self?.askAboutCard(card, question: question) }
         cardInbox = inbox
         inbox.scan()

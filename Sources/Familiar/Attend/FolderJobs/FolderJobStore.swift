@@ -128,7 +128,9 @@ final class FolderJobStore: ObservableObject {
         return removed
     }
 
-    /// Turns a team job on or off for you. Off, it doesn't run or keep a card; what it left stays.
+    /// Turns a team job on or off for you. Off, it doesn't run; what it left stays, except the record of what it last
+    /// reported: the minister lets its matters go when it goes off, so once it's on again its next run reports every
+    /// finding anew, to be judged afresh.
     func setOn(_ id: UUID, _ on: Bool) throws {
         guard let index = jobs.firstIndex(where: { $0.id == id }) else { throw FolderJobError("That job is gone.") }
         let job = jobs[index]
@@ -139,6 +141,7 @@ final class FolderJobStore: ObservableObject {
         try writeOn(next)
         teamOn = next
         jobs[index].on = on
+        if !on { try? FileManager.default.removeItem(at: findingsFile(for: job)) }
     }
 
     /// Keeps how a run went, in its `run.json`.
