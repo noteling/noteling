@@ -125,7 +125,8 @@ enum FolderJobWords {
 
 /// A job's page among the jobs: the header every job's page has (its name, what it does and how often, its last run and
 /// how it stands, Run now or the on/off switch), what it is for, what's wrong, its input files, and its
-/// latest result: the preview's files shown as they are, then every file to open or save.
+/// latest result: its receipt, what became of each finding (`FindingVerdictsView`), the preview's files shown as they
+/// are, then every file to open or save.
 struct FolderJobPage: View {
     @ObservedObject var store: FolderJobStore
     @ObservedObject var runner: FolderJobRunner
@@ -135,6 +136,10 @@ struct FolderJobPage: View {
     var now: () -> Date = Date.init
     /// Asked for permission when a team job is turned on here.
     var notifier: JobNotifier? = nil
+    /// The minister's matters, for what became of each finding; nil leaves that out.
+    var matters: Matters? = nil
+    /// Opens a matter's page from a finding's line.
+    var openMatter: ((String) -> Void)? = nil
     @State private var problem: String?
     @State private var notice: String?
 
@@ -193,6 +198,9 @@ struct FolderJobPage: View {
                         if let note = folderJob.state.note {
                             Label(note, systemImage: "exclamationmark.triangle").font(.system(size: 12))
                                 .foregroundStyle(Pad.redInk).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                        }
+                        if let matters {
+                            FindingVerdictsView(matters: matters, store: store, job: folderJob, now: now, open: openMatter)
                         }
                         FolderJobResultView(result: result, actions: files, report: report)
                     } else {

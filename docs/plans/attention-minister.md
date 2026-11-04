@@ -6,7 +6,9 @@ and open.
 **Status (2026-11-03):** steps 1–4 shipped in 0.8.0; step 5, the removal, is in 0.8.1: the Morning folder, the cards
 inbox, the card step, the attention test and the reading jobs of earlier versions are gone, and the Jobs window took
 their place. Who's Who went with the folder (the user's call: "we can always add it later"); its people stay in
-`morning/morning.sqlite` for the phase that gives the minister the person's side.
+`morning/morning.sqlite` for the phase that gives the minister the person's side. Before the UAT, 0.8.1 also got the
+job page's receipt of the minister ("3 findings: 1 on a sticker, 2 kept quiet", each finding with its verdict and why)
+and the menu bar's Stickers submenu.
 
 ## Why
 

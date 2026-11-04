@@ -26,8 +26,7 @@ struct MatterPage: View {
                 if let view = matter.view {
                     Text(view.text).font(HandFont.font(size: 20)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 } else {
-                    Text(matter.state == .closed ? "This is over." : "The minister hasn't written this one up yet.")
-                        .font(.system(size: 14)).foregroundStyle(Pad.inkSoft)
+                    Text(Self.noSticker(matter)).font(.system(size: 14)).foregroundStyle(Pad.inkSoft)
                 }
                 Text(Self.byline(matter, now: now())).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
                 if let line = Self.stateLine(matter) {
@@ -69,6 +68,16 @@ struct MatterPage: View {
     /// "Stuck orders · shared by Lena Park · 9:02 AM".
     static func byline(_ matter: Matter, now: Date) -> String {
         [matter.jobName, matter.byline.map { "shared by " + $0 }, JobWords.time(matter.shownAt, now: now)].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// In place of the sticker's words when there are none: a quiet matter has no sticker by the minister's choice, an
+    /// open one is waiting for its words, a closed one is over.
+    static func noSticker(_ matter: Matter) -> String {
+        switch matter.state {
+        case .open: return "The minister hasn't written this one up yet."
+        case .quiet: return "Not on a sticker."
+        case .closed: return "This is over."
+        }
     }
 
     /// Why it isn't on a sticker, or that it is over; "Urgent" while it is and urgent; nil otherwise.
