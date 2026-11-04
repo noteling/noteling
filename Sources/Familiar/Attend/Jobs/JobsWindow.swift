@@ -37,12 +37,17 @@ import SwiftUI
         route = .jobs
     }
 
-    /// Each screen's heading.
-    static func title(for route: Route, jobName: (UUID) -> String?) -> String {
+    /// Each screen's heading; a matter's says whether it is on a sticker, kept quiet, or over.
+    static func title(for route: Route, jobName: (UUID) -> String?, matterState: (String) -> Matter.State? = { _ in nil }) -> String {
         switch route {
         case .jobs: return "Jobs"
         case .folderJob(let id): return jobName(id) ?? "Job"
-        case .matter: return "On your note"
+        case .matter(let id):
+            switch matterState(id) {
+            case .quiet: return "Kept quiet"
+            case .closed: return "Over"
+            case .open, nil: return "On your note"
+            }
         }
     }
 }
@@ -73,7 +78,8 @@ struct JobsWindowView: View {
     }
 
     private var heading: String {
-        JobsNavigation.title(for: navigation.route, jobName: { folderJobs.store.job(id: $0)?.name })
+        JobsNavigation.title(for: navigation.route, jobName: { folderJobs.store.job(id: $0)?.name },
+                             matterState: { folderJobs.matters?.matter(id: $0)?.state })
     }
 
     private var header: some View {
@@ -108,7 +114,8 @@ struct JobsWindowView: View {
         case .jobs:
             JobsPage(folderJobs: folderJobs, setup: setup, navigation: navigation)
         case .folderJob(let id):
-            FolderJobPage(store: folderJobs.store, runner: folderJobs.runner, id: id, files: files, setup: setup, notifier: folderJobs.notifier).id(id)
+            FolderJobPage(store: folderJobs.store, runner: folderJobs.runner, id: id, files: files, setup: setup, notifier: folderJobs.notifier,
+                          matters: folderJobs.matters, openMatter: { navigation.open(.matter($0), returningTo: .folderJob(id)) }).id(id)
         case .matter(let id):
             if let matters = folderJobs.matters {
                 MatterPage(matters: matters, store: folderJobs.store, buttons: folderJobs.buttons, id: id).id(id)

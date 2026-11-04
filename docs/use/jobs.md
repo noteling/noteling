@@ -36,7 +36,9 @@ A job's row says:
 Click a job to open its page:
 
 - **Input**: the files it reads, such as the list of items it checks.
-- **Latest result**: what its last run that worked left. Short tables and notes are shown right there, as they are.
+- **Latest result**: what its last run that worked left. First what became of its findings, "3 findings: 1 on a
+  sticker, 2 kept quiet", then each one with the minister's verdict and why; click one to open it. No sticker is a
+  judgment, not a failure, and this is where it says so. Then short tables and notes, shown right there, as they are.
   Every file has **Open**, **Save as…** and **Show in Finder**, so you can take the full results into Excel.
 
 ## Its stickers, and when it tells you
@@ -58,8 +60,9 @@ quiet in Noteling's memory, with the reason, and you can ask in chat: "anything 
 - Drag a sticker to move the whole stack. Beside the note, the stickers go where the note goes; once you've put them
   somewhere else they stay there, whatever the note does, until **Put back beside Noteling** in their right-click menu.
 - Right-click a sticker for **Open**, **Put away**, **Bigger** and **Smaller** (the size is remembered) and **Hide
-  stickers**. Hidden stickers come back from **Show Stickers** in the menu bar, and when Noteling next starts; an urgent
-  one still notifies you meanwhile.
+  stickers**. **Stickers** in the menu bar's pencil icon has them too: each sticker, to open it, **Hide Stickers**, and
+  **Put back beside Noteling** once you've moved them. Hidden stickers come back from **Show Stickers** there, and when
+  Noteling next starts; an urgent one still notifies you meanwhile.
 
 ## Before it starts, and after it ends
 

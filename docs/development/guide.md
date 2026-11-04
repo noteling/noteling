@@ -195,7 +195,9 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    from the menu bar's **Jobs…**, the chat's **Open Jobs** tab after it ran or turned on a job, a job's notification, or a
    sticker (on its matter's page). It takes the focus only when clicked into, remembers where it was dragged
    (`FloatingWindowPlacement("jobsWindow")`), and shows one screen at a time: the list (`JobsPage`), a job's page
-   (`FolderJobPage`) and a matter's page (`MatterPage`; Back goes to Jobs).
+   (`FolderJobPage`) and a matter's page (`MatterPage`; Back goes to Jobs, or to the job's page a finding's line opened
+   it from). The menu bar's **Stickers** submenu (`StickersPanel.menuBar`) lists the stickers to open, hides and shows
+   them, and puts the stack back beside the bubble.
    - The list has every job kept as a folder, the person's own and the team's. Jobs that need attention come first (one
      that needs a secret in Settings, one whose last run failed), then the person's own, then the team's, each by name. A
      row says what the job does ("Prices on the GM items · from your team's tools"), how often it runs ("Every 15
@@ -206,8 +208,10 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
      page also lists folders in the jobs folders that can't be a job, and why, and a `watches/` folder left behind
      (watches no longer run).
    - A job's page starts with the same header (`JobHeader`): its name, what it does and how often, its last run, how it
-     stands and its buttons; then what it is for, what's wrong, its input files, and its latest result: the findings as a
-     table and whatever else the run left, each file with Open, Save as… and Show in Finder (`JobFileActions`).
+     stands and its buttons; then what it is for, what's wrong, its input files, and its latest result: the minister's
+     receipt, "3 findings: 1 on a sticker, 2 kept quiet", each finding with its verdict and why, opening its matter
+     (`FindingVerdictsView`, in `Attend/Minister`); the findings as a table and whatever else the run left, each file
+     with Open, Save as… and Show in Finder (`JobFileActions`).
    - What earlier versions kept for the Morning folder, the cards inbox, the attention test and the reading jobs is
      deleted at launch (`RetiredMorning`: `cards/`, `attention/`, `calendar/`, `runs/`); `morning/` itself is left, with
      the Who's Who people kept there, for the phase that gives the minister the person's side.

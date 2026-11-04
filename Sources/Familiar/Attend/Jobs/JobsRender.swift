@@ -71,6 +71,9 @@ enum JobsRender {
                             view: MatterView(text: "K-1 shows 18.99 on the event page; the team expects 16.99. The event price starts at 9 AM, so look again after that before raising it.", tone: .calm),
                             jobName: gm.name, byline: "Yang", createdAt: ran, updatedAt: ran)
         matters.save(matter)
+        matters.save(Matter(id: "gm-k-3", findings: [FindingRef(job: "team/holiday/oct/gm", id: "K-3")], state: .quiet,
+                            why: "The page timed out, which says nothing about the price; the next run checks it again.",
+                            jobName: gm.name, byline: "Yang", createdAt: ran, updatedAt: ran))
         let buttons = FolderJobButtons(store: store, execute: { _ in NSNull() })
         buttons.hasSecret = { _ in true }
         var panel = FolderJobsPanel(store: store, runner: runner, notifier: JobNotifier(), buttons: buttons)
@@ -90,6 +93,7 @@ enum JobsRender {
         try save("job-ended.png", .folderJob(autumn.id))
         if let winter = store.jobs.first(where: { $0.path == "winter/launch" }) { try save("job-upcoming.png", .folderJob(winter.id)) }
         try save("matter.png", .matter(matter.id))
+        try save("matter-quiet.png", .matter("gm-k-3"))
         func page(_ name: String, height: CGFloat, showingOutside: Bool = false) throws {
             try image(JobsPage(folderJobs: panel, setup: setup, navigation: navigation, showingOutside: showingOutside)
                 .foregroundStyle(Pad.ink).background(Pad.fieldPaper),

@@ -121,7 +121,9 @@ tracks no state and never says "resolved". After a run that works:
   `access_token` or `card_number`, or a value that looks like a key or a card number) hidden. The chat sees the table
   the same way; the file itself is the person's, as the job wrote it. The chat and the minister read the log, the matters
   and a job's folder and output with four read-only tools (list, read, search, rows), and nothing else on the Mac;
-- the job's row and page say what it came to: "Checked Orders API: read 2,113, found 3 · 9:02 AM · next 10:02 AM".
+- the job's row and page say what it came to: "Checked Orders API: read 2,113, found 3 · 9:02 AM · next 10:02 AM", and
+  the page says what became of each finding: "3 findings: 1 on a sticker, 2 kept quiet", then each with the minister's
+  verdict and why, opening its matter. That is where you see what happened to your work when no sticker shows.
 
 **What the minister does with them.** After a batch of changes (about a minute, so one run of several jobs is one
 turn), the minister sorts the new and changed findings into *matters* (one thing worth attention, which may be several

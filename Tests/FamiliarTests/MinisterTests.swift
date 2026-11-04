@@ -384,6 +384,13 @@ struct MinisterTests {
         #expect(MatterPage.stateLine(matter) == "Kept quiet: You put it away.")
         matter.state = .closed
         #expect(MatterPage.stateLine(matter) == "Over: its findings are gone.")
+
+        // In place of the sticker's words when there are none: a quiet matter has none by choice, not because it waits.
+        #expect(MatterPage.noSticker(matter) == "This is over.")
+        matter.state = .quiet
+        #expect(MatterPage.noSticker(matter) == "Not on a sticker.")
+        matter.state = .open
+        #expect(MatterPage.noSticker(matter) == "The minister hasn't written this one up yet.")
     }
 
     // MARK: the checks on what the minister answers
