@@ -81,7 +81,7 @@ extension AppDelegate {
 
     /// The minister's stickers as sticky notes beside the bubble: they follow the orb and step aside while the pad is
     /// open or the bubble is away, until the person drags them to a spot of their own, which is remembered, as their
-    /// size is. A click opens the matter, the x puts it away, and the right-click menu has the rest.
+    /// size is. A click opens the matter, the x puts it away, and the right-click menu and the menu bar's Stickers have the rest.
     func setupRunStickers() {
         let model: Matters = matters
         var home: NSPoint?
@@ -122,17 +122,29 @@ extension AppDelegate {
         stickersPanel.orderFrontRegardless()
     }
 
-    /// The menu bar's Hide Stickers / Show Stickers.
-    @objc func toggleStickers() {
-        guard let stickersPanel else { return }
-        stickersPanel.hidden.toggle()
-        placeRunStickers()
+    /// The menu bar's Stickers submenu, filled as the menu opens: each sticker to open it, Hide Stickers or Show
+    /// Stickers, and Put back beside Noteling once the stack was moved; its title carries the count.
+    func updateStickersMenu() {
+        guard let submenu = stickersMenuItem.submenu else { return }
+        let shown = matters?.shown ?? [], more = matters?.more ?? 0, hidden = stickersPanel?.hidden == true
+        stickersMenuItem.title = StickersPanel.menuBarTitle(count: shown.count + more, hidden: hidden)
+        submenu.autoenablesItems = false
+        submenu.removeAllItems()
+        for item in StickersPanel.menuBar(stickers: shown, more: more, hidden: hidden, detached: stickersPanel?.isDetached == true) {
+            guard let item else { submenu.addItem(.separator()); continue }
+            let entry = WindowDragHandle.ClosureMenuItem(title: item.title) { [weak self] in self?.stickersPanel?.choose(item.choice) }
+            entry.isEnabled = item.enabled
+            if case .open(let id) = item.choice, let sticker = shown.first(where: { $0.id == id }) {
+                entry.toolTip = [sticker.title, sticker.byline.map { "shared by " + $0 }, JobWords.time(sticker.at)].compactMap { $0 }.joined(separator: " · ")
+            }
+            submenu.addItem(entry)
+        }
     }
 
     /// The stickers were hidden from their own menu: a callout under the menu bar icon says where they come back from.
     func showStickersHiddenHint() {
         guard let target = statusItemRect else { return }
-        hideHint.show(under: target, title: "The stickers are hidden", subtitle: "Show Stickers, in this menu, brings them back", seconds: 4.5) { [weak self] in
+        hideHint.show(under: target, title: "The stickers are hidden", subtitle: "Stickers › Show Stickers, in this menu, brings them back", seconds: 4.5) { [weak self] in
             self?.stickersPanel?.hidden = false
             self?.placeRunStickers()
         }

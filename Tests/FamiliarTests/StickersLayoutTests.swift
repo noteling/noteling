@@ -114,11 +114,30 @@ import Testing
         #expect(StickersPanel.menu(pointing: nil, detached: false, scale: 0.85)[1]?.enabled == false)
     }
 
-    /// The menu bar's item says which way it goes, and how many stickers wait while they're hidden.
-    @Test func theMenuBarItemSaysHideOrShowWithTheCount() {
-        #expect(AppDelegate.stickersMenuTitle(hidden: false, count: 3) == "Hide Stickers")
-        #expect(AppDelegate.stickersMenuTitle(hidden: true, count: 2) == "Show Stickers (2)")
-        #expect(AppDelegate.stickersMenuTitle(hidden: true, count: 0) == "Show Stickers")
+    /// The menu bar's Stickers submenu: each sticker on the screen to open it, "and N more…" for Jobs, then Hide
+    /// Stickers; while hidden, Show Stickers with how many wait; Put back beside Noteling once the stack was moved. Its
+    /// own title carries the count.
+    @Test func theMenuBarSubmenuOpensHidesShowsAndPutsBack() {
+        let at = Date()
+        let lena = Sticker(id: "m-1", title: "Mail", text: "Lena asks for\nthe deck by 3.", byline: nil, at: at, urgent: true)
+        let long = Sticker(id: "m-2", title: "GM", text: String(repeating: "x", count: 80), byline: "Yang", at: at, urgent: false)
+        let shown = StickersPanel.menuBar(stickers: [lena, long], more: 1, hidden: false, detached: false)
+        #expect(shown.map { $0?.title } == ["Lena asks for the deck by 3.", String(repeating: "x", count: 60) + "…", "and 1 more…", nil, "Hide Stickers"])
+        #expect(shown[0]?.choice == .open("m-1") && shown[2]?.choice == .more && shown[4]?.choice == .hide)
+        #expect(shown.compactMap { $0 }.allSatisfy { $0.enabled })
+
+        let none = StickersPanel.menuBar(stickers: [], more: 0, hidden: false, detached: true)
+        #expect(none.map { $0?.title } == ["No stickers", nil, "Hide Stickers", "Put back beside Noteling"])
+        #expect(none[0]?.enabled == false && none[2]?.enabled == false && none[3]?.choice == .attach)
+
+        let hidden = StickersPanel.menuBar(stickers: [lena], more: 2, hidden: true, detached: false)
+        #expect(hidden.map { $0?.title } == ["Show Stickers (3)"] && hidden[0]?.choice == .show)
+        #expect(StickersPanel.menuBar(stickers: [], more: 0, hidden: true, detached: false).map { $0?.title } == ["Show Stickers"])
+
+        #expect(StickersPanel.menuBarTitle(count: 0, hidden: false) == "Stickers")
+        #expect(StickersPanel.menuBarTitle(count: 2, hidden: false) == "Stickers (2)")
+        #expect(StickersPanel.menuBarTitle(count: 2, hidden: true) == "Stickers (2, hidden)")
+        #expect(StickersPanel.menuBarTitle(count: 0, hidden: true) == "Stickers (hidden)")
     }
 
     /// The spot and the size are kept in the config; an older file without them means beside the bubble, as designed.

@@ -28,7 +28,7 @@ enum StickerDrag { case moved, ended }
 
 /// One line of the stickers' right-click menu; a nil in the list is a separator.
 struct StickerMenuItem: Equatable {
-    enum Choice: Equatable { case open(String), putAway(String), bigger, smaller, attach, hide }
+    enum Choice: Equatable { case open(String), putAway(String), bigger, smaller, attach, hide, show, more }
     let title: String
     var enabled = true
     let choice: Choice
@@ -167,6 +167,7 @@ final class StickersPanel: NSPanel {
     private let model: Matters
     private let host: FirstClickHost<StickersView>
     private let open: (String) -> Void
+    private let more: () -> Void
     private let putAway: (String) -> Void
     /// Where the orb was when the panel was last placed, for the shrink that waits for a leaving sticker.
     private var orb = NSRect.zero
@@ -180,7 +181,7 @@ final class StickersPanel: NSPanel {
     /// Where the person put the stack, its bottom-left corner on the screen; nil while it sits beside the orb.
     private(set) var home: NSPoint?
     var isDetached: Bool { home != nil }
-    /// Hidden by Hide stickers (the right-click menu or the menu bar) until Show Stickers, in this run of the app.
+    /// Hidden by Hide stickers (the right-click menu or the menu bar's Stickers) until Show Stickers there, in this run of the app.
     var hidden = false
     /// Out of the way while Noteling works in front of the person, as the bubble is.
     var hiddenForControl = false
@@ -195,6 +196,7 @@ final class StickersPanel: NSPanel {
         self.look = look
         self.home = home
         self.open = open
+        self.more = more
         self.putAway = putAway
         let relay = Relay()
         host = FirstClickHost(rootView: StickersView(model: model, look: look, open: open, more: more, putAway: putAway,
@@ -330,6 +332,41 @@ final class StickersPanel: NSPanel {
         return items
     }
 
+    /// The menu bar's Stickers submenu: each sticker on the screen, to open it; "and N more…", which opens Jobs; then
+    /// Hide Stickers, or while they're hidden, Show Stickers with how many wait; and the way back beside the orb once
+    /// the stack was moved. A nil is a separator line.
+    nonisolated static func menuBar(stickers: [Sticker], more: Int, hidden: Bool, detached: Bool) -> [StickerMenuItem?] {
+        var items: [StickerMenuItem?] = []
+        if hidden {
+            let waiting = stickers.count + more
+            items.append(StickerMenuItem(title: waiting > 0 ? "Show Stickers (\(waiting))" : "Show Stickers", choice: .show))
+        } else {
+            for sticker in stickers { items.append(StickerMenuItem(title: menuLine(sticker), choice: .open(sticker.id))) }
+            if more > 0 { items.append(StickerMenuItem(title: "and \(more) more…", choice: .more)) }
+            if stickers.isEmpty { items.append(StickerMenuItem(title: "No stickers", enabled: false, choice: .more)) }
+            items.append(nil)
+            items.append(StickerMenuItem(title: "Hide Stickers", enabled: !stickers.isEmpty, choice: .hide))
+        }
+        if detached { items.append(StickerMenuItem(title: "Put back beside Noteling", choice: .attach)) }
+        return items
+    }
+
+    /// The submenu's own title, with how many stickers there are: "Stickers", "Stickers (2)", "Stickers (2, hidden)".
+    nonisolated static func menuBarTitle(count: Int, hidden: Bool) -> String {
+        switch (count, hidden) {
+        case (0, false): return "Stickers"
+        case (0, true): return "Stickers (hidden)"
+        case (let n, false): return "Stickers (\(n))"
+        case (let n, true): return "Stickers (\(n), hidden)"
+        }
+    }
+
+    /// A sticker's words as one menu line.
+    nonisolated static func menuLine(_ sticker: Sticker) -> String {
+        JobWords.clip(sticker.text.split(whereSeparator: \.isWhitespace).joined(separator: " "), menuTextLimit)
+    }
+    nonisolated static let menuTextLimit = 60
+
     /// The right-click menu for where the pointer is: a sticker still on the screen, or the stack itself.
     func contextMenu() -> NSMenu {
         let sticker = pointed.flatMap { id in model.shown.contains { $0.id == id } ? id : nil }
@@ -357,6 +394,10 @@ final class StickersPanel: NSPanel {
             hidden = true
             onChange?()
             onHide?()
+        case .show:
+            hidden = false
+            onChange?()
+        case .more: more()
         }
     }
 

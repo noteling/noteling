@@ -225,7 +225,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         menu.autoenablesItems = false
         menu.addItem(NSMenuItem(title: Self.jobsMenuTitle, action: #selector(menuShowJobs), keyEquivalent: ""))
-        stickersMenuItem = NSMenuItem(title: "Hide Stickers", action: #selector(toggleStickers), keyEquivalent: "")
+        stickersMenuItem = NSMenuItem(title: "Stickers", action: nil, keyEquivalent: "")
+        stickersMenuItem.submenu = NSMenu(title: "Stickers")
         menu.addItem(stickersMenuItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Point the Pen   ⌃⌥Space", action: #selector(menuWand), keyEquivalent: ""))
@@ -270,8 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             : "Stop Working in \(assistant.peek.appName)   \(HotKey.display(config.hotkey))"
         tasksMenuItem.isEnabled = desktop.tasks.hasTasks
         hideMenuItem.isEnabled = panel.isVisible || origami.isFlying
-        stickersMenuItem.title = Self.stickersMenuTitle(hidden: stickersPanel?.hidden == true, count: matters?.stickers.count ?? 0)
-        stickersMenuItem.isEnabled = stickersPanel?.hidden == true || (matters?.stickers.count ?? 0) > 0
+        updateStickersMenu()
         origamiMenuItem.title = origami.isFlying ? "Land Noteling   Esc" : "Fold into a Crane"
         origamiMenuItem.isEnabled = origami.isFlying || canTakeOrigamiFlight
         let scripts = registry.packs.reduce(0) { $0 + $1.scripts.count }
@@ -281,12 +281,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             : "Tools: \(missing.map { "\($0.pack.name) needs \($0.keys.joined(separator: ", "))" }.joined(separator: "; ")) — open Settings"
         screenPermItem.title = "Screen Recording: " + (Permissions.screenRecordingGranted ? "granted ✓" : "not granted — click to fix")
         axPermItem.title = "Accessibility: " + (Permissions.accessibilityGranted ? "granted ✓" : "not granted — click to fix")
-    }
-
-    /// "Hide Stickers" while they're on the screen; "Show Stickers (2)" while hidden, with how many wait.
-    nonisolated static func stickersMenuTitle(hidden: Bool, count: Int) -> String {
-        guard hidden else { return "Hide Stickers" }
-        return count > 0 ? "Show Stickers (\(count))" : "Show Stickers"
     }
 
     /// Screen rect of the menu bar icon, if it is on screen.
