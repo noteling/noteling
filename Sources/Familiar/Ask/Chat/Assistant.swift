@@ -140,10 +140,12 @@ final class Assistant: ObservableObject {
     static let fullDraftTab = "Open full draft"
     static let discardTab = "Discard"
     static let retryTab = "Try again"
+    /// On a draft with a way to show: Teach me runs it once, right there, before it is kept.
+    static let tryTab = "Try it"
     /// A saved job changed, or a job ran, in chat: where to see it.
     static let openJobsTab = "Open Jobs"
     static let openSettingsTab = "Open Settings"
-    static let reservedTabs = [continueTab, skipContextTab, keepTab, fullDraftTab, discardTab, retryTab]
+    static let reservedTabs = [continueTab, skipContextTab, keepTab, fullDraftTab, discardTab, retryTab, tryTab]
 
     init(config: Config, watcher: ContextWatcher, registry: ToolRegistry, shell: ShellState, learning: WatchLearnSession,
          execution: ExecutionCoordinator? = nil, desktop: DesktopExecutionService? = nil) {
@@ -254,6 +256,11 @@ final class Assistant: ObservableObject {
             if s == Self.keepTab { Task { await learning.keep() }; return }
             if s == Self.discardTab { learning.discard(); return }
             if s == Self.retryTab { learning.retry(); return }
+            if s == Self.tryTab, let path = pendingDraft?.path, !path.steps.isEmpty {
+                // The way as it would be kept, taught once on the screen; the review stays until Keep it or Discard.
+                showMe?.start(path, bundleID: inFront?.bundleID ?? learning.pendingRecording?.meta.bundles.first)
+                return
+            }
         }
         if Self.reservedTabs.contains(s) { suggestions = reviewTabs([]); return }   // a stale tab: never a question for Claude
         if let intent = intentWords.intent(ofTab: s) {   // a verb: the same thing, taken the way they chose
@@ -271,7 +278,8 @@ final class Assistant: ObservableObject {
         if awaitingPurpose { return [Self.continueTab, Self.discardTab] }
         if awaitingContext { return [Self.skipContextTab, Self.discardTab] }
         if let draft = pendingDraft {
-            return sugg + [Self.fullDraftTab, draft.parsed ? Self.keepTab : Self.retryTab, Self.discardTab]
+            let tryIt = draft.parsed && draft.path?.steps.isEmpty == false ? [Self.tryTab] : []
+            return sugg + [Self.fullDraftTab] + tryIt + [draft.parsed ? Self.keepTab : Self.retryTab, Self.discardTab]
         }
         if draftFailed { return sugg + [Self.retryTab, Self.discardTab] }
         return sugg
@@ -392,6 +400,9 @@ final class Assistant: ObservableObject {
             field("Caution", caveat, limit: 120)
             if d.caveats.count > 1 { lines.append("\(d.caveats.count - 1) more cautions in the full draft.") }
         }
+        if d.path?.steps.isEmpty == false {
+            lines.append("**Try it** to be taught the way once on your screen, the way it will be kept.")
+        }
         lines.append("Open full draft for complete instructions and any shortened details. To change something, just tell me, and I'll write it again.")
         return lines.joined(separator: "\n\n")
     }
@@ -413,6 +424,17 @@ final class Assistant: ObservableObject {
         if !d.screensMarkdown.isEmpty { s += "\n\n## Screens\n" + d.screensMarkdown }
         if !d.glossaryMarkdown.isEmpty { s += "\n\n## Glossary\n" + d.glossaryMarkdown }
         if !d.caveats.isEmpty { s += "\n\n" + d.caveats.map { "_\($0)_" }.joined(separator: "\n") }
+        if let path = d.path, !path.steps.isEmpty {
+            // Each step and what Teach me will look for, so one kept by its place alone shows before it is kept.
+            s += "\n\n## The way Teach me will show\n" + path.steps.enumerated().map { i, step in
+                let found: String
+                if let label = step.label { found = "finds “\(label)”" }
+                else if step.domID != nil { found = "finds it by the page's own id for it" }
+                else if let r = step.rect, r.count == 4, r[2] > 0, r[3] > 0 { found = "finds it by where it was: it may drift if the page changes" }
+                else { found = "finds what is at the spot clicked: it may miss" }
+                return "\(i + 1). \(step.say) (\(found))"
+            }.joined(separator: "\n")
+        }
         let matches = d.matchURLs + d.matchTitles.map { "“\($0)”" } + d.matchBundles
         s += "\n\nMatches: " + (matches.isEmpty ? "nothing (would not be saved)" : matches.joined(separator: ", "))
         s += "\nKeep it → \(root.lastPathComponent)/\(d.packDir)/docs/workflows/\(d.workflowSlug).md"

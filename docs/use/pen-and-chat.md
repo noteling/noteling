@@ -66,7 +66,8 @@ Show Noteling how you do something once, and it keeps the steps:
    (or press ⌃⌥Space). Each click flashes as it is kept, ringed with the name Noteling will look for next time. One it
    couldn't name shows in amber at the top of the screen: click there, then point at what you meant with the pen.
 2. Name it in a few words, such as "Submit an expense", with anything to skip or watch out for.
-3. Look over the steps it wrote. To change something, just type it. Then choose **Keep it**.
+3. Look over the steps it wrote. To change something, just type it. **Try it** walks you through the way once on your
+   screen, the way it will be kept, so you know it works. Then choose **Keep it**.
 
 From then on, the pen and chat use those steps in that app or on that page. Ask "submit an expense for me", and with
 control on, Noteling does it by following your steps. What Watch Me keeps is a tool in your tools folder, not a job: it
