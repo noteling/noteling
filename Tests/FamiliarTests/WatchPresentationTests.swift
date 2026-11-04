@@ -65,6 +65,43 @@ struct WatchPresentationTests {
     }
 
     @Test
+    func aDraftWithAWayOffersToTryItAndListsHowEachStepIsFound() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        fixture.draft.path = ShowPath(title: "Submit an expense", recorded: "2026-11-04", steps: [
+            ShowStep(say: "Expand Billing in the left menu", role: "AXGroup", label: "Billing", rect: [0, 0.1, 0.2, 0.05]),
+            ShowStep(say: "Open the export menu", role: "AXButton", domID: "export-menu"),
+            ShowStep(say: "Choose the report", role: "AXGroup", rect: [0.3, 0.4, 0.2, 0.05]),
+            ShowStep(say: "Press Save", rect: [0.5, 0.6, 0, 0]),
+        ])
+        let (assistant, learning) = fixture.makeAssistant()
+        var opened: [String] = []
+        assistant.onOpenWatchDraft = { opened.append($1) }
+        try await recordAndStop(learning)
+        await (try #require(learning.summarize(purpose: "Submit an expense"))).value
+        #expect(assistant.suggestions == [Assistant.fullDraftTab, Assistant.tryTab, Assistant.keepTab, Assistant.discardTab])
+        #expect(assistant.transcript.last?.text.contains("**Try it**") == true)
+        // Trying it teaches the way on the screen; the review stays until it is kept or discarded.
+        assistant.askSuggestion(Assistant.tryTab)
+        #expect(learning.phase == .review && assistant.question.isEmpty)
+        #expect(assistant.suggestions == [Assistant.fullDraftTab, Assistant.tryTab, Assistant.keepTab, Assistant.discardTab])
+        // The full draft says what Teach me will look for at each step, so one kept by its place shows now.
+        assistant.askSuggestion(Assistant.fullDraftTab)
+        let document = try #require(opened.first)
+        #expect(document.contains("## The way Teach me will show"))
+        #expect(document.contains("1. Expand Billing in the left menu (finds “Billing”)"))
+        #expect(document.contains("2. Open the export menu (finds it by the page's own id for it)"))
+        #expect(document.contains("3. Choose the report (finds it by where it was: it may drift if the page changes)"))
+        #expect(document.contains("4. Press Save (finds what is at the spot clicked: it may miss)"))
+        // A draft without a way offers no Try it.
+        fixture.draft.path = nil
+        assistant.askSuggestion(Assistant.discardTab)
+        try await recordAndStop(learning)
+        await (try #require(learning.summarize(purpose: "Submit an expense"))).value
+        #expect(assistant.suggestions == [Assistant.fullDraftTab, Assistant.keepTab, Assistant.discardTab])
+    }
+
+    @Test
     func malformedLargeDraftOffersFullOutputAndRetryWithoutDumpingItIntoChat() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }

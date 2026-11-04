@@ -126,11 +126,14 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    Noteling waits for both steps before generating one draft from the recording and your inputs, then puts a compact
    review on the pad, including the source's reading rules and any uncertainty notice. Retry preserves both inputs. Typing while a draft is under review revises it: the text joins the recording's context as "Changes requested after reviewing the draft", and the draft is written again from the same recording. Earlier requests still apply, and a failed draft can be revised the same way.
    **Open full draft** shows the complete steps, screens, glossary, caveats and source details in a separate, read-only
-   text window with search and copy. Long documents stay out of the chat layout. **Keep it** saves the complete draft as a tool pack (`SKILL.md`,
+   text window with search and copy, and the way Teach me will show with what it will look for at each step (a name,
+   the page's id, or where it was, which may drift). Long documents stay out of the chat layout. **Try it**, on a draft
+   with a way, teaches it once on the screen as it would be kept (the tour opens where it starts), so a step that
+   misses shows before it is kept; the review stays until **Keep it** or **Discard**. **Keep it** saves the complete draft as a tool pack (`SKILL.md`,
    `docs/screens.md`, `docs/workflows/<task>.md`, `docs/glossary.md`) into `~/.noteling/tools/<site>/` without touching
    existing files (new workflows get `-2`, `-3`; screens are added only when new); **Discard** throws the draft away. Either
    way the recording folder is deleted, as it is when you clear the pad or quit; anything left behind by a crash is swept
-   after 7 days. The pen and control are off while it watches.
+   after 7 days. Control is off while it watches; the pen only fixes the last step.
    Each click also keeps what finds its control again later: the control around what was clicked (the text inside a
    button stands for the button; a card built from plain groups is the clicked text, or the card itself, never the
    page's root or anything that fills most of the page: `ShowFinder.pick`), its Accessibility role, the page's own id
