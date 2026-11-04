@@ -63,7 +63,8 @@ deleting or paying in the background** in Settings.
 Show Noteling how you do something once, and it keeps the steps:
 
 1. Choose **Watch Me** in the menu bar, or the eye on the chat pad. Do the task, then choose **Stop Watching**
-   (or press ⌃⌥Space).
+   (or press ⌃⌥Space). Each click flashes as it is kept, ringed with the name Noteling will look for next time. One it
+   couldn't name shows in amber at the top of the screen: click there, then point at what you meant with the pen.
 2. Name it in a few words, such as "Submit an expense", with anything to skip or watch out for.
 3. Look over the steps it wrote. To change something, just type it. Then choose **Keep it**.
 

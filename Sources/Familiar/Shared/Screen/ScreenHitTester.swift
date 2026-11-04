@@ -34,6 +34,7 @@ struct ScreenHit {
     var windowTitle: String?
     var ownerBundleID: String? = nil
     var windowFrame: NSRect? = nil     // AppKit global coordinates
+    var ownerPID: pid_t? = nil
 }
 
 @MainActor
@@ -82,7 +83,8 @@ enum ScreenHitTester {
             }
         }
         let bundle = ownerPID.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier }
-        return ScreenHit(screenPoint: point, element: info, windowOwner: owner, windowTitle: title, ownerBundleID: bundle, windowFrame: windowFrame)
+        return ScreenHit(screenPoint: point, element: info, windowOwner: owner, windowTitle: title, ownerBundleID: bundle, windowFrame: windowFrame,
+                         ownerPID: ownerPID)
     }
 
     /// An element's frame in AppKit global coordinates.

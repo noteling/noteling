@@ -69,6 +69,16 @@ extension AppDelegate {
             self.stickersPanel?.hiddenForControl = entering
             self.placeRunStickers()
         }
+        // While Watch Me records, the pen points at what the last click meant: from the caption, the pad or the menu.
+        recorder.onFixRequest = { [weak self] in self?.fixWatchStep() }
+        assistant.onFixWatchStep = { [weak self] in self?.fixWatchStep() }
+        learning.$phase
+            .receive(on: RunLoop.main)
+            .sink { [weak self] phase in
+                guard let self, phase != .recording, self.wand.isPointing else { return }
+                self.wand.cancel()   // the recording ended under the pen: nothing left to fix
+            }
+            .store(in: &cancellables)
         taskPanel = BackgroundTaskPanelController(store: desktop.tasks, hideFromScreenShare: config.hideFromScreenShare)
         let showMe = ShowMeConversation(registry: registry)
         showMe.hideFromScreenShare = { [weak self] in self?.config.hideFromScreenShare ?? false }
@@ -78,6 +88,20 @@ extension AppDelegate {
             guard let self, self.panel.isVisible, !self.shell.expanded, !self.origami.isFlying else { return }
             self.hop()
         }
+    }
+
+    /// The pen, while Watch Me records: it points at what the last click meant, and that becomes the click's step. The
+    /// highlight shows what will be kept, as a click there would keep it.
+    func fixWatchStep() {
+        guard assistant.watching, !wand.isActive, let step = recorder.captured.last else { return }
+        origami.cancel()
+        recorder.setHUDHidden(true)
+        wand.point(caption: "Point at what you clicked for step \(step.number)  ·  Esc to leave it as it is",
+                   resolve: { [weak self] p in self?.recorder.pointing(at: p) },
+                   then: { [weak self] p in
+                       self?.recorder.setHUDHidden(false)
+                       if let p { self?.recorder.fixLastStep(at: p) }
+                   })
     }
 
     @objc func menuStopWork() {
