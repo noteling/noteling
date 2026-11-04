@@ -23,6 +23,8 @@ enum ShowFinder {
         var enabled: Bool = true
         /// That part of the window: a browser's page area, else the window.
         var area: CGRect? = nil
+        /// Found by where it was alone, and it says nothing its card says: the best guess, not a sure match.
+        var unsure = false
     }
 
     /// Roles a person clicks. Text inside one of these is taken for the control itself.
@@ -48,24 +50,38 @@ enum ShowFinder {
         // A browser's own toolbar is laid out the same on every page, and its buttons are named for their state
         // ("New download available" today, "Downloads" tomorrow): there, a named step is also its place.
         let placeForNamed = inBrowsersOwnUI(step)
-        var best: (found: Found<N>, rank: Double)?
-        var stack: [(N, N?)] = [(window, nil)]
+        // A step named by the text inside a group of plain parts (a row that says "Billing") is that group again.
+        let heldRole = step.role.flatMap { want != nil && !controls.contains($0) && $0 != "AXStaticText" ? $0 : nil }
+        var best: (found: Found<N>, rank: Double, at: Int)?
+        // Every node seen and the one it is inside, by index: to climb from a text to the group around it, and to go
+        // from a thing to the ones beside it.
+        var seen: [(node: N, parent: Int?)] = []
+        var stack: [(node: N, owner: Int?, parent: Int?)] = [(window, nil, nil)]
         var visited = 0
-        while let (node, owner) = stack.popLast() {
+        while let (node, owner, parent) = stack.popLast() {
             if visited >= budget || (visited % 64 == 63 && now() > deadline) { break }
             visited += 1
             let role = node.string(kAXRoleAttribute) ?? ""
             if skipping.contains(role) { continue }
+            let me = seen.count
+            seen.append((node, parent))
             let isControl = controls.contains(role)
-            if let how = match(node, role: role, want: want, wantRole: step.role, wantID: wantID, was: wasRect, isControl: isControl,
+            if var how = match(node, role: role, want: want, wantRole: step.role, wantID: wantID, was: wasRect, isControl: isControl,
                                placeForNamed: placeForNamed) {
                 // The text inside a control stands for it, unless the "control" is a whole row of a table.
-                var target = node, targetIsControl = isControl
-                if !isControl, let owner, let frame = owner.frame, let inner = node.frame,
+                var at = me, targetIsControl = isControl
+                if !isControl, let owner, let frame = seen[owner].node.frame, let inner = node.frame,
                    frame.width * frame.height <= max(inner.width * inner.height * 12, 6_000) {
-                    target = owner
+                    at = owner
                     targetIsControl = true
+                } else if let heldRole, how == .name, role == "AXStaticText",
+                          let holder = holder(of: me, in: seen, role: heldRole, was: wasRect) {
+                    // The text is the name of the group of the step's kind around it: its kind and its name.
+                    at = holder
+                    targetIsControl = true
+                    how = .kindAndName
                 }
+                let target = seen[at].node
                 let frame = target.frame.flatMap { $0.width >= 2 && $0.height >= 2 ? $0 : nil }
                 // A spot is never the page around it: a click once recorded as the page's root must find nothing. And a
                 // step of a control's kind is never plain text or a group that merely has its name: a heading "Search"
@@ -73,7 +89,7 @@ enum ShowFinder {
                 let tooBig = how == .place && frame.map { f in visibleArea.map { f.width * f.height > $0.width * $0.height * 0.4 } ?? false } ?? false
                 let wrongKind = how < .kindAndName && step.role.map { controls.contains($0) } == true && !targetIsControl
                 if tooBig || wrongKind {
-                    stack.append(contentsOf: node.children.reversed().map { ($0, isControl ? node : owner) })
+                    stack.append(contentsOf: node.children.reversed().map { ($0, isControl ? me : owner, me) })
                     continue
                 }
                 let visible = frame.map { frame in visibleArea.map { $0.intersects(frame) } ?? true } ?? false
@@ -81,14 +97,96 @@ enum ShowFinder {
                 if let was, let frame { rank -= min(3, hypot(frame.midX - was.x, frame.midY - was.y) / 400) }
                 if how == .place, let frame { rank -= Double(frame.width * frame.height) / 1_000_000 }   // the smallest that holds the spot
                 if best == nil || rank > best!.rank {
-                    best = (Found(node: target, frame: frame, how: how, visible: visible, enabled: target.flag("AXEnabled") ?? true), rank)
+                    best = (Found(node: target, frame: frame, how: how, visible: visible, enabled: target.flag("AXEnabled") ?? true), rank, at)
                 }
             }
-            let next = isControl ? node : owner
-            stack.append(contentsOf: node.children.reversed().map { ($0, next) })
+            let next = isControl ? me : owner
+            stack.append(contentsOf: node.children.reversed().map { ($0, next, me) })
         }
-        return best?.found
+        guard let best else { return nil }
+        guard best.found.how == .place, want == nil else { return best.found }
+        return checked(best.found, at: best.at, in: seen, say: step.say, was: was, visibleArea: visibleArea)
     }
+
+    /// The group of `role` around the text at `index`, a few levels up at most: the one of about the recorded size
+    /// when the step says where it was, else the nearest that is still small next to the text.
+    private static func holder<N: PageNode>(of index: Int, in seen: [(node: N, parent: Int?)], role: String, was: CGRect?) -> Int? {
+        guard let text = seen[index].node.frame else { return nil }
+        let textArea = max(text.width * text.height, 1)
+        var at = seen[index].parent
+        for _ in 0..<4 {
+            guard let i = at else { return nil }
+            let node = seen[i].node
+            if node.string(kAXRoleAttribute) == role, let f = node.frame, f.contains(CGPoint(x: text.midX, y: text.midY)) {
+                let area = f.width * f.height
+                if let was, was.width * was.height > 0 {
+                    let wasArea = was.width * was.height
+                    if area >= wasArea / 4, area <= wasArea * 4 { return i }
+                } else if area <= max(textArea * 25, 20_000) {
+                    return i
+                }
+            }
+            at = seen[i].parent
+        }
+        return nil
+    }
+
+    /// A step kept only by where it was, checked against what its card says. The thing at the spot that says nothing
+    /// the card says, beside one of its kind and shape that does, is the neighbour of a page that moved: the one that
+    /// does is the step. When none does, the thing at the spot is still the best guess, and said to be a guess. A card
+    /// or a thing that says nothing to go by (an icon, "Click here") is taken as found.
+    private static func checked<N: PageNode>(_ found: Found<N>, at index: Int, in seen: [(node: N, parent: Int?)], say: String,
+                                             was: CGPoint?, visibleArea: CGRect?) -> Found<N> {
+        let card = keyWords(say)
+        guard !card.isEmpty, let frame = found.frame else { return found }
+        let own = keyWords(textOf(found.node))
+        guard !own.isEmpty, own.isDisjoint(with: card) else { return found }
+        let role = found.node.string(kAXRoleAttribute)
+        // Beside it: the others in what holds it, and, for rows each wrapped in a part of their own, in what holds that.
+        var beside: [N] = []
+        if let parent = seen[index].parent {
+            beside = seen[parent].node.children
+            if let grand = seen[parent].parent { beside += seen[grand].node.children.flatMap(\.children) }
+        }
+        let alike = beside.compactMap { node -> (N, CGRect)? in
+            guard node.string(kAXRoleAttribute) == role, let f = node.frame, f != frame,
+                  abs(f.width - frame.width) <= frame.width * 0.25, abs(f.height - frame.height) <= frame.height * 0.25,
+                  !keyWords(textOf(node)).isDisjoint(with: card) else { return nil }
+            return (node, f)
+        }
+        let spot = was ?? CGPoint(x: frame.midX, y: frame.midY)
+        guard let (node, f) = alike.min(by: { hypot($0.1.midX - spot.x, $0.1.midY - spot.y) < hypot($1.1.midX - spot.x, $1.1.midY - spot.y) }) else {
+            var guess = found
+            guess.unsure = true
+            return guess
+        }
+        let visible = visibleArea.map { $0.intersects(f) } ?? true
+        return Found(node: node, frame: f, how: .place, visible: visible, enabled: node.flag("AXEnabled") ?? true)
+    }
+
+    /// What a thing says: its name, else the text inside it.
+    static func textOf<N: PageNode>(_ node: N) -> String? {
+        name(node, role: node.string(kAXRoleAttribute) ?? "") ?? PageWalk.contentName(node)
+    }
+
+    /// The words of a text that tell one thing from another: not the ones every instruction has ("Click", "the",
+    /// "menu"), not numbers, and without a plural's s, so "Expand Billing in the left menu" is {billing}.
+    static func keyWords(_ text: String?) -> Set<String> {
+        guard let text else { return [] }
+        let words = text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        return Set(words.compactMap { word in
+            guard word.count >= 3, word.contains(where: \.isLetter), !commonWords.contains(word) else { return nil }
+            return word.count > 3 && word.hasSuffix("s") && !word.hasSuffix("ss") ? String(word.dropLast()) : word
+        })
+    }
+
+    static let commonWords: Set<String> = [
+        "the", "and", "for", "with", "your", "you", "this", "that", "from", "into", "onto", "then", "its", "our", "all",
+        "any", "new", "now", "here", "there", "click", "tap", "press", "open", "select", "choose", "pick", "expand",
+        "collapse", "go", "find", "use", "enter", "type", "show", "view", "see", "menu", "button", "link", "tab", "page",
+        "left", "right", "top", "bottom", "side", "sidebar", "list", "item", "row", "section", "panel", "field", "box",
+        "icon", "next", "back", "card", "option", "one", "under", "above", "below", "screen", "window",
+    ]
 
     /// Ids that name the page, not a control: a React or Vue mount, Next's root, the document's main. A step never
     /// goes by one, so a click once recorded as the page's root can't ring the whole page.
@@ -229,8 +327,9 @@ enum ShowFinder {
 
     /// Which element on the climb from what was clicked stands for the control, and what to call it: the first with a
     /// control's role; else, for something built from plain groups (a card), the nearest named thing around the click
-    /// that is still small next to the page, such as the clicked text itself; else what was clicked, found again by
-    /// where it was. Never the page's root or anything that fills most of the page: a click on a card is the card,
+    /// that is still small next to the page, such as the clicked text itself; else the nearest such thing that says
+    /// one name inside it (a row's "Billing", clicked on its icon or its padding); else what was clicked, found again
+    /// by where it was. Never the page's root or anything that fills most of the page: a click on a card is the card,
     /// not the page around it, and a click on the page's background is no control at all. `around` is the page's (or
     /// window's) frame; `rootChild` says the chain's last element sits right under it.
     static func pick<N: PageNode>(_ chain: [N], around: CGRect?, rootChild: Bool) -> (node: N, label: String?)? {
@@ -252,7 +351,46 @@ enum ShowFinder {
             if let f = node.frame, f.width * f.height > max(hitArea * 25, 20_000) { break }
             if let label = name(node, role: node.string(kAXRoleAttribute) ?? "") { return (node, label) }
         }
+        // A row or card of plain groups has no name of its own, but says one: kept by where it was alone, a page that
+        // moves it one row down rings its neighbour.
+        for (i, node) in chain.enumerated() {
+            if fillsThePage(node) || (rootChild && chain.count > 1 && i == chain.count - 1) { break }
+            if let f = node.frame, f.width * f.height > max(hitArea * 25, 20_000) { break }
+            if let label = textInside(node) { return (node, label) }
+        }
         return (hit, nil)
+    }
+
+    /// The name a thing built from plain groups says inside it, as one of its texts, so the text is found again where
+    /// the thing is: its only text (a count beside it aside, as on a row with a badge), or the one clearly larger than
+    /// the rest (a card's title over its details). Nil when it says several things alike, nothing, more than a short
+    /// name, or something secret.
+    static func textInside<N: PageNode>(_ node: N) -> String? {
+        var texts: [(text: String, height: CGFloat)] = []
+        var stack: [(N, Int)] = [(node, 0)]
+        var visited = 0
+        while let (current, depth) = stack.popLast() {
+            visited += 1
+            if visited > 60 { return nil }   // too much inside to be one thing
+            if current.string(kAXRoleAttribute) == "AXStaticText" {
+                if let text = current.string(kAXValueAttribute)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty, !isCount(text) {
+                    texts.append((text, current.frame?.height ?? 0))
+                }
+                continue
+            }
+            if depth < 4 { stack.append(contentsOf: current.children.reversed().map { ($0, depth + 1) }) }
+        }
+        guard let tallest = texts.indices.max(by: { texts[$0].height < texts[$1].height }) else { return nil }
+        let others = texts.indices.filter { $0 != tallest }
+        guard others.allSatisfy({ texts[$0].height * 1.3 <= texts[tallest].height }) else { return nil }
+        let text = texts[tallest].text
+        guard text.count <= 60, !PageWalk.looksLikeSecretValue(text) else { return nil }
+        return text
+    }
+
+    /// A count shown beside a name: "3", "(12)", "99+".
+    static func isCount(_ text: String) -> Bool {
+        text.range(of: #"^[\s(\[]*[\d.,:%]+\+?[)\]]?\s*$"#, options: .regularExpression) != nil
     }
 
     /// The window a step is looked for in: the focused window of the app in front, or of `fallback` (the app the person
