@@ -29,6 +29,8 @@ struct TourProgress: Equatable {
     var hint: String? = nil
     /// The step is a field the person has clicked into: done when they leave it.
     var inField = false
+    /// What is ringed is a guess: found where the step was, but it doesn't say what the step says.
+    var unsure = false
 
     var isOver: Bool { state == .done || state == .stopped }
     var isLast: Bool { current == steps.count - 1 }
@@ -39,6 +41,7 @@ struct TourProgress: Equatable {
     var instruction: String {
         if disabled { return hint ?? "It's greyed out: something on the page still needs finishing." }
         if inField { return "Type what it needs, then press Enter or Tab." }
+        if unsure { return "Not sure it's this one: the page may have changed since this was recorded. If it isn't, click the right one." }
         return "Click it when you're ready."
     }
 }
@@ -504,6 +507,7 @@ final class ShowCardModel: ObservableObject {
     var onRetry: () -> Void = {}
     var onGotIt: () -> Void = {}
     var onGo: () -> Void = {}
+    var onNext: () -> Void = {}
 }
 
 /// The step on a small sticky note beside the control: where we are, what to do, and a way out.
@@ -567,6 +571,13 @@ struct ShowCardView: View {
             if p.disabled {
                 Label(p.instruction, systemImage: "hourglass")
                     .font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
+            } else if p.unsure, !p.inField {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(p.instruction, systemImage: "questionmark.circle")
+                        .font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
+                    Button(p.isLast ? "Got it" : "Next", action: p.isLast ? model.onGotIt : model.onNext)
+                        .buttonStyle(CardButtonStyle(filled: true))
+                }
             } else if p.isLast, !p.inField {
                 HStack(spacing: 10) {
                     Text("Click it, or").font(.system(size: 12)).foregroundStyle(Pad.inkSoft)

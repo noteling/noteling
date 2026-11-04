@@ -102,6 +102,7 @@ final class ShowTour {
         overlay.card.onStop = { [weak self] in self?.stop() }
         overlay.card.onRetry = { [weak self] in self?.retry() }
         overlay.card.onGotIt = { [weak self] in self?.finish() }
+        overlay.card.onNext = { [weak self] in self?.skip() }
         overlay.card.onGo = { [weak self] in self?.goThere() }
         overlay.present(from: NSEvent.mouseLocation)
         overlay.update(progress)
@@ -151,6 +152,13 @@ final class ShowTour {
               let url = path.steps[progress.current].url, let target = URL(string: url) else { return }
         progress.elsewhere = nil
         go(.open(target), step: path.steps[progress.current])
+    }
+
+    /// "Next" on a step that is only a guess: they clicked the right one themselves, or will.
+    func skip() {
+        guard !ended, progress.state == .showing || progress.state == .offscreen else { return }
+        Log.info("show: step \(progress.current + 1) passed by hand")
+        advance()
     }
 
     /// "Got it" on the last step: they found it, nothing more to click.
@@ -293,7 +301,8 @@ final class ShowTour {
                 }
             }
             let result = found.map { Looked(offset: $0.offset, element: $0.found.node.element, frame: $0.found.frame,
-                                            visible: $0.found.visible, enabled: $0.found.enabled, area: $0.found.area) }
+                                            visible: $0.found.visible, enabled: $0.found.enabled, area: $0.found.area,
+                                            unsure: $0.found.unsure) }
             let readable = found != nil || ShowFinder.readable(app: target.app, window: target.window)
             let place = found == nil ? ShowTour.place(of: target.app, window: target.window) : nil
             await self?.looked(result, next: lookedAhead ? next : nil, lookedAhead: lookedAhead, for: index, readable: readable, place: place, app: target.app)
@@ -413,6 +422,7 @@ final class ShowTour {
         let visible: Bool
         let enabled: Bool
         let area: CGRect?
+        let unsure: Bool
     }
 
     private struct Next {
@@ -470,11 +480,13 @@ final class ShowTour {
         enabled = result.enabled
         progress.disabled = !result.enabled
         progress.hint = path.steps[index].blocked
+        progress.unsure = result.unsure
         inField = false
         fieldFocused = false
         progress.inField = false
         lastPoll = Date()
         if !result.enabled { Log.info("show: step \(index + 1) is disabled") }
+        if result.unsure { Log.info("show: step \(index + 1) is a guess: found by where it was, and it says nothing the card says") }
         // What shows of the window: the page's own area in a browser, else the window; outside it is out of view.
         visibleArea = result.area.map(Self.appKit) ?? Self.windowFrame(of: result.element)
         if result.visible, let axFrame = result.frame {
@@ -541,6 +553,7 @@ final class ShowTour {
         progress.disabled = false
         progress.inField = false
         progress.hint = nil
+        progress.unsure = false
         if progress.isLast {
             finish()
             return

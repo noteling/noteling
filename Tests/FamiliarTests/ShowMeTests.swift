@@ -117,9 +117,13 @@ struct ShowMeTests {
         let page = CGRect(x: 0, y: 100, width: 1_200, height: 800)
         let picked = try #require(ShowFinder.pick([text, card, list, root], around: page, rootChild: true))
         #expect(picked.node.role == "AXStaticText" && picked.label == "Ingestion Portal")
-        // Clicked on the card's padding: the card itself, to be found by where it is. On the page's background: nothing.
+        // Clicked on the card's padding: the card itself, named by what it says. On the page's background: nothing.
         let padding = try #require(ShowFinder.pick([card, list, root], around: page, rootChild: true))
-        #expect(padding.node.role == "AXGroup" && padding.node.frame == card.frame && padding.label == nil)
+        #expect(padding.node.role == "AXGroup" && padding.node.frame == card.frame && padding.label == "Ingestion Portal")
+        // A card that says nothing is the card, to be found by where it is.
+        let blank = FakeNode("AXGroup", [:], frame: card.frame, [FakeNode("AXImage", [:], frame: CGRect(x: 40, y: 200, width: 60, height: 60))])
+        let bare = try #require(ShowFinder.pick([blank, list, root], around: page, rootChild: true))
+        #expect(bare.node.frame == card.frame && bare.label == nil)
         #expect(ShowFinder.pick([root], around: page, rootChild: true) == nil)
         // The text inside a button is still the button.
         let inner = FakeNode("AXStaticText", ["AXValue": "Save"], frame: CGRect(x: 50, y: 206, width: 40, height: 18))
@@ -134,6 +138,100 @@ struct ShowMeTests {
         // The card recorded as itself is found again by where it is: the group of about that size at that spot.
         let kept = ShowStep(say: "Open Ingestion Portal", role: "AXGroup", rect: [20.0 / 1_200, 180.0 / 900, 280.0 / 1_200, 160.0 / 900])
         #expect(ShowFinder.find(kept, in: tree, visibleArea: Self.window, windowFrame: Self.window)?.frame == card.frame)
+    }
+
+    /// A left menu of rows built from plain groups, each an icon and a text, under a page whose banner above it may be
+    /// gone: `top` is where the first row is. `wrapped` puts each row in a slightly larger part of its own, as a list
+    /// item around a div.
+    static func menu(_ names: [String], top: CGFloat, wrapped: Bool = false) -> FakeNode {
+        let rows = names.enumerated().map { i, name -> FakeNode in
+            let y = top + CGFloat(i) * 44
+            let row = FakeNode("AXGroup", [:], frame: CGRect(x: 4, y: y + 2, width: 232, height: 40), [
+                FakeNode("AXImage", [:], frame: CGRect(x: 14, y: y + 12, width: 20, height: 20)),
+                FakeNode("AXStaticText", ["AXValue": name], frame: CGRect(x: 44, y: y + 13, width: 80, height: 18)),
+            ])
+            return wrapped ? FakeNode("AXGroup", [:], frame: CGRect(x: 0, y: y, width: 240, height: 44), [row]) : row
+        }
+        let menu = FakeNode("AXGroup", [:], frame: CGRect(x: 0, y: top, width: 240, height: 400), rows)
+        let heading = FakeNode("AXHeading", [:], frame: CGRect(x: 300, y: 60, width: 200, height: 30),
+                               [FakeNode("AXStaticText", ["AXValue": names.first ?? ""], frame: CGRect(x: 300, y: 60, width: 200, height: 30))])
+        let root = FakeNode("AXGroup", ["AXDOMIdentifier": "root"], frame: CGRect(x: 0, y: 0, width: 1_200, height: 900), [heading, menu])
+        return FakeNode("AXWindow", [:], frame: window, [FakeNode("AXWebArea", [:], frame: window, [root])])
+    }
+
+    /// The Billing row as recorded, when the menu started at 140 (under a 40-point banner): its place, as fractions.
+    static let billingRect: [Double] = [4.0 / 1_200, 142.0 / 900, 232.0 / 1_200, 40.0 / 900]
+
+    @Test func aRowOfPlainGroupsIsNamedByTheTextInsideIt() throws {
+        let page = CGRect(x: 0, y: 0, width: 1_200, height: 900)
+        let tree = Self.menu(["Billing", "Shipping"], top: 140)
+        let root = tree.children[0].children[0]
+        let menu = root.children[1], billing = menu.children[0]
+        // Clicked on the row's icon or its padding: the row, named by what it says.
+        let icon = try #require(ShowFinder.pick([billing.children[0], billing, menu, root], around: page, rootChild: true))
+        #expect(icon.node.frame == billing.frame && icon.node.role == "AXGroup" && icon.label == "Billing")
+        let padding = try #require(ShowFinder.pick([billing, menu, root], around: page, rootChild: true))
+        #expect(padding.node.frame == billing.frame && padding.label == "Billing")
+        // The menu between its rows says several things alike: no name, and never one of its rows'.
+        #expect(ShowFinder.textInside(menu) == nil)
+        // A count beside the name is not the name; a title larger than the details under it is.
+        let badged = FakeNode("AXGroup", [:], frame: CGRect(x: 0, y: 0, width: 232, height: 40), [
+            FakeNode("AXStaticText", ["AXValue": "Inbox"], frame: CGRect(x: 44, y: 11, width: 60, height: 18)),
+            FakeNode("AXStaticText", ["AXValue": "12"], frame: CGRect(x: 200, y: 11, width: 20, height: 18)),
+        ])
+        #expect(ShowFinder.textInside(badged) == "Inbox")
+        let card = FakeNode("AXGroup", [:], frame: CGRect(x: 0, y: 0, width: 280, height: 160), [
+            FakeNode("AXStaticText", ["AXValue": "Ingestion Portal"], frame: CGRect(x: 20, y: 20, width: 160, height: 26)),
+            FakeNode("AXGroup", [:], frame: CGRect(x: 20, y: 60, width: 240, height: 40), [
+                FakeNode("AXStaticText", ["AXValue": "Upload files"], frame: CGRect(x: 20, y: 60, width: 90, height: 16)),
+                FakeNode("AXStaticText", ["AXValue": "3 jobs"], frame: CGRect(x: 20, y: 80, width: 50, height: 16)),
+            ]),
+        ])
+        #expect(ShowFinder.textInside(card) == "Ingestion Portal")
+        // Nothing secret, and nothing as long as a sentence, is a name.
+        let key = FakeNode("AXGroup", [:], frame: CGRect(x: 0, y: 0, width: 232, height: 40),
+                           [FakeNode("AXStaticText", ["AXValue": "sk-abcdefghijklmnopqrstuvwx"], frame: CGRect(x: 0, y: 0, width: 200, height: 18))])
+        #expect(ShowFinder.textInside(key) == nil)
+        let sentence = FakeNode("AXGroup", [:], frame: CGRect(x: 0, y: 0, width: 232, height: 40),
+                                [FakeNode("AXStaticText", ["AXValue": String(repeating: "word ", count: 20)], frame: CGRect(x: 0, y: 0, width: 200, height: 18))])
+        #expect(ShowFinder.textInside(sentence) == nil)
+    }
+
+    @Test func aRowNamedByItsTextIsFoundAgainAfterThePageMoves() throws {
+        // Recorded under a banner; shown a week later without it, every row one slot higher.
+        let step = ShowStep(say: "Expand Billing in the left menu", role: "AXGroup", label: "Billing", rect: Self.billingRect)
+        let moved = Self.menu(["Billing", "Shipping", "Returns"], top: 96)
+        let found = try #require(ShowFinder.find(step, in: moved, visibleArea: Self.window, windowFrame: Self.window))
+        // The row, not the text in it nor the heading that says Billing too, and as itself: its kind and its name.
+        #expect(found.frame == CGRect(x: 4, y: 98, width: 232, height: 40) && found.how == .kindAndName && !found.unsure)
+    }
+
+    @Test func aStepKeptByItsPlaceAloneRingsTheRowItsCardNames() throws {
+        // A step recorded before rows were named: its place only. The page moved, so the spot is on Shipping now.
+        let old = ShowStep(say: "Expand Billing in the left menu", role: "AXGroup", rect: Self.billingRect)
+        let billingNow = CGRect(x: 4, y: 98, width: 232, height: 40)
+        for wrapped in [false, true] {
+            let moved = Self.menu(["Billing", "Shipping", "Returns"], top: 96, wrapped: wrapped)
+            let found = try #require(ShowFinder.find(old, in: moved, visibleArea: Self.window, windowFrame: Self.window))
+            #expect(found.frame == billingNow && found.how == .place && !found.unsure, "wrapped: \(wrapped)")
+        }
+        // Where it was, it is: no doubt.
+        let still = try #require(ShowFinder.find(old, in: Self.menu(["Billing", "Shipping"], top: 140), visibleArea: Self.window, windowFrame: Self.window))
+        #expect(still.frame == CGRect(x: 4, y: 142, width: 232, height: 40) && !still.unsure)
+        // No row says Billing: the one at the spot is still the best guess, and a guess.
+        let gone = try #require(ShowFinder.find(old, in: Self.menu(["Orders", "Shipping", "Returns"], top: 96), visibleArea: Self.window, windowFrame: Self.window))
+        #expect(gone.frame == CGRect(x: 4, y: 142, width: 232, height: 40) && gone.unsure)
+        // A card that says nothing to go by is not second-guessed.
+        let vague = ShowStep(say: "Click here", role: "AXGroup", rect: Self.billingRect)
+        let taken = try #require(ShowFinder.find(vague, in: Self.menu(["Orders", "Shipping"], top: 96), visibleArea: Self.window, windowFrame: Self.window))
+        #expect(!taken.unsure)
+        #expect(ShowFinder.keyWords("Expand Billing in the left menu") == ["billing"])
+        #expect(ShowFinder.keyWords("Open the Invoices tab") == ["invoice"] && ShowFinder.keyWords("Click here").isEmpty)
+        // The card says so, and offers to go on.
+        var progress = TourProgress(title: "Billing", steps: ["Expand Billing in the left menu"], current: 0, state: .showing)
+        #expect(progress.instruction == "Click it when you're ready.")
+        progress.unsure = true
+        #expect(progress.instruction.hasPrefix("Not sure it's this one"))
     }
 
     @Test func anEmptyPageIsNotReadableYet() {

@@ -171,7 +171,9 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
    screen now, on the person's own screen, and they do the clicks. "Ways you can teach" lists the active packs' paths in
    the prompt. The tool starts from the furthest step already on the page and returns at once; `ShowTour` then looks for
    each step (`ShowFinder`: the page's id, then role and name, then the name without its numbers, then part of it; a
-   control without a name by where it was), rings it (`ShowOverlay`: the dim with a cutout below the pad, the breathing ring
+   row or card of plain groups by the text inside it, which Watch Me keeps as its name; a control without a name by
+   where it was, checked against the card's words: a neighbour that says what the card says is taken instead, and one
+   that says nothing of it is shown as a guess, "Not sure it's this one", with a Next button), rings it (`ShowOverlay`: the dim with a cutout below the pad, the breathing ring
    and the purple arrow above everything, and the step's sticky note, the only part that takes clicks), follows it as the
    page moves, scrolls one that is out of view into it, and moves on when the person clicks inside it. A step is looked
    for 10 s once the page can be read, then the note offers **Look again**. Esc or the note's × stops it. The pad keeps a
