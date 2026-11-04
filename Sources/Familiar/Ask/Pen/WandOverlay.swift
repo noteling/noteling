@@ -74,6 +74,36 @@ final class WandController {
     var isActive: Bool { !panels.isEmpty }
     var isShowingNotes: Bool { !shown.isEmpty }
 
+    /// Pointing at one control for someone else rather than asking about it, such as Watch Me's "this is what I
+    /// clicked": the caption says what it is for, the highlight shows what `resolve` says a point picks, a click hands
+    /// the point to `then`, and Esc hands it nil. No notes, no circling, no stickers.
+    private var pointing: (caption: String, resolve: (NSPoint) -> (frame: NSRect, label: String)?, then: (NSPoint?) -> Void)?
+    var isPointing: Bool { pointing != nil }
+    var pointingCaption: String? { pointing?.caption }
+
+    func point(caption: String, resolve: @escaping (NSPoint) -> (frame: NSRect, label: String)?, then: @escaping (NSPoint?) -> Void) {
+        guard !isActive else { return }
+        hideNotes()
+        pointing = (caption, resolve, then)
+        scene = nil
+        sceneNotes = []
+        scan = nil
+        placed = []
+        edges = []
+        unplaced = []
+        below = []
+        lastHit = nil
+        for screen in NSScreen.screens {
+            let p = WandPanel(screen: screen, controller: self)
+            if hideFromScreenShare { p.sharingType = .none }
+            p.orderFrontRegardless()
+            panels.append(p)
+        }
+        panels.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }?.makeKey()
+        WandCursor.cursor.push()
+        Log.info("wand: pointing (\(caption))")
+    }
+
     func activate() {
         guard !isActive else { return }
         hideNotes()
@@ -248,11 +278,24 @@ final class WandController {
     }
 
     func cancel() {
+        if let pointing {
+            self.pointing = nil
+            deactivate()
+            pointing.then(nil)
+            return
+        }
         deactivate()
         onCancel?()
     }
 
     func pick(at point: NSPoint) {
+        if let pointing {
+            self.pointing = nil
+            deactivate()
+            Log.info("wand: pointed at (\(Int(point.x)), \(Int(point.y)))")
+            pointing.then(point)
+            return
+        }
         var target = hitTest(at: point)
         target.notes = notes(on: target)
         let on = Set(target.notes.map(\.id))
@@ -429,7 +472,17 @@ final class WandController {
     /// Throttled hit test for hover highlighting.
     func hover(at point: NSPoint) -> WandTarget {
         if let (t, p, target) = lastHit, Date().timeIntervalSince(t) < 0.04, abs(p.x - point.x) < 2, abs(p.y - point.y) < 2 { return target }
-        let target = hitTest(at: point)
+        var target: WandTarget
+        if let pointing {
+            // What a click here would hand over, as whoever asked for the pointing sees it.
+            target = WandTarget(screenPoint: point, element: nil, windowOwner: nil, windowTitle: nil)
+            if let picked = pointing.resolve(point) {
+                target.element = AXElementInfo(role: "AXUnknown", frame: picked.frame)
+                target.named = picked.label
+            }
+        } else {
+            target = hitTest(at: point)
+        }
         lastHit = (Date(), point, target)
         return target
     }
@@ -555,7 +608,7 @@ final class WandView: NSView {
     }
 
     private func extendStroke(to p: NSPoint) {
-        guard !stroke.isEmpty else { return }
+        guard !stroke.isEmpty, !controller.isPointing else { return }
         stroke.append(p)
         guard Self.span(stroke) > Self.dragThreshold else { return }
         let path = CGMutablePath()
@@ -572,6 +625,12 @@ final class WandView: NSView {
         let pts = stroke
         stroke = []
         let dragged = Self.span(pts) > Self.dragThreshold
+        // Pointing for someone else: a click is the point; a circle or a note means nothing here.
+        if controller.isPointing {
+            clearInk()
+            if !dragged, !strokeIsNote { controller.pick(at: start) }
+            return
+        }
         // A sticker clicked is that note: right-click edits it, a click asks about it.
         if !dragged, let id = sticker(at: start), let original = controller.note(id: id) {
             clearInk()
@@ -826,7 +885,7 @@ final class WandView: NSView {
         labelPill.addSublayer(labelText)
         root.addSublayer(labelPill)
 
-        let (hint, text) = ShimmerBorder.captionPill(bounds: bounds, scale: scale, width: 620, text: Self.caption)
+        let (hint, text) = ShimmerBorder.captionPill(bounds: bounds, scale: scale, width: 620, text: controller.pointingCaption ?? Self.caption)
         captionText = text
         root.addSublayer(hint)
     }

@@ -49,6 +49,7 @@ final class Assistant: ObservableObject {
     let registry: ToolRegistry
     var onStartWand: (() -> Void)?
     var onCancelWand: (() -> Void)?       // the app drops an active pen before a recording starts
+    var onFixWatchStep: (() -> Void)?     // the pen while recording: point at what the last click meant
     var onNotesChanged: (() -> Void)?     // a note was kept or removed: the app recounts the badge
     var onShowNotes: (() -> Void)?        // the badge was clicked: the app shows the notes on the page
     /// The app shows the capture moment (`CaptureFlash`) each time a question takes the screen.
@@ -218,7 +219,10 @@ final class Assistant: ObservableObject {
     func startWand() {
         guard !busy else { return }
         guard !awaitingPurpose, !awaitingContext else { status = "Finish or discard Watch Me before using the pen."; return }
-        guard !watching else { status = "Watching — stop watching before picking up the pen."; return }
+        guard !watching else {
+            if let onFixWatchStep { onFixWatchStep() } else { status = "Watching — stop watching before picking up the pen." }
+            return
+        }
         onStartWand?()
     }
 

@@ -290,14 +290,16 @@ enum ShowFinder {
         var inPage = true
     }
 
+    /// `app` asks that app alone what is at the point, past whatever is above it: the pen's own overlay, while it
+    /// points at what a click meant. Without it the system answers, as for a click, menus and all.
     @MainActor
-    static func control(at point: NSPoint) -> Control? {
+    static func control(at point: NSPoint, app: pid_t? = nil) -> Control? {
         guard Permissions.accessibilityGranted else { return nil }
         let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
-        let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, 0.3)
+        let asked = app.map(AXUIElementCreateApplication) ?? AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(asked, 0.3)
         var hit: AXUIElement?
-        guard AXUIElementCopyElementAtPosition(system, Float(point.x), Float(primaryMaxY - point.y), &hit) == .success,
+        guard AXUIElementCopyElementAtPosition(asked, Float(point.x), Float(primaryMaxY - point.y), &hit) == .success,
               let hit else { return nil }
         // The climb from what was clicked up to the page (or window) around it, where it ends.
         var chain = [AXPageNode(element: hit)]

@@ -119,6 +119,8 @@ final class WatchRecorder {
     let watcher: ContextWatcher
     var hotkeyLabel = "⌃⌥Space"
     var onClickCount: ((Int) -> Void)?
+    /// The caption was clicked to fix its last step: the app picks up the pen to point at what was meant.
+    var onFixRequest: (() -> Void)?
 
     private(set) var isRecording = false
     private(set) var dir: URL?
@@ -131,8 +133,9 @@ final class WatchRecorder {
     private var sampled: (at: Date, ctx: ScreenContext?)?
     private var restoreWatcherInterval = false
     private var monitors: [Any] = []
-    private var huds: [NSPanel] = []
-    private var captions: [CATextLayer] = []
+    private let hud = WatchHUD()
+    /// Clicks the person pointed at with the pen after they were kept, by event.
+    private var fixedEvents: Set<Int> = []
     private var pollTimer: Timer?
     private var captureChain: Task<Void, Never>?
     private var typing: (field: Field, text: String)?
@@ -146,6 +149,7 @@ final class WatchRecorder {
     init(config: Config, watcher: ContextWatcher) {
         self.config = config
         self.watcher = watcher
+        hud.onFix = { [weak self] in self?.onFixRequest?() }
     }
 
     var clickCount: Int { meta.clicks }
@@ -204,8 +208,7 @@ final class WatchRecorder {
         pollTimer?.invalidate(); pollTimer = nil
         for m in monitors { NSEvent.removeMonitor(m) }
         monitors.removeAll()
-        for p in huds { p.orderOut(nil) }
-        huds.removeAll(); captions.removeAll()
+        hud.hide()
         for pid in heldBrowsers { BrowserAccessibility.release(pid) }
         heldBrowsers = []
         if restoreWatcherInterval {
@@ -259,6 +262,7 @@ final class WatchRecorder {
         startedAt = Date()
         meta = WatchMeta(startedAt: Self.iso.string(from: startedAt))
         lastFullScene = nil; lastScene = nil; sampled = nil; typing = nil; focusedCache = nil
+        fixedEvents = []
         try saveMeta()
         try saveEvents()
     }
@@ -331,7 +335,7 @@ final class WatchRecorder {
         return s.count > 120 ? String(s.prefix(120)) + "…" : s
     }
 
-    static func prettyRole(_ ax: String) -> String {
+    nonisolated static func prettyRole(_ ax: String) -> String {
         ax.replacingOccurrences(of: "AX", with: "")
             .replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression).lowercased()
     }
@@ -386,8 +390,10 @@ final class WatchRecorder {
         if let l = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { e in keys(e); return e }) { monitors.append(l) }
     }
 
+    /// Whether a click landed on one of Noteling's own windows. One that lets clicks through, such as the border and
+    /// the caption while it offers nothing, isn't where the click went.
     private func isOwnWindow(_ p: NSPoint) -> Bool {
-        NSApp.windows.contains { w in w.isVisible && !huds.contains { $0 === w } && w.frame.contains(p) }
+        NSApp.windows.contains { w in w.isVisible && !w.ignoresMouseEvents && w.frame.contains(p) }
     }
 
     /// The watcher's view when it runs (at 1 s while recording); otherwise our own sample, at most once a second.
@@ -422,7 +428,10 @@ final class WatchRecorder {
         meta.clicks += 1
         let n = meta.clicks
         onClickCount?(n)
-        updateCaption()
+        // A click on a named control is kept as it is: shown at once. One that found nothing, or nothing with a name,
+        // gets a second look once the page has caught up, and is shown as it ends up.
+        let sure = control.map { $0.name != nil || $0.domID != nil } ?? false
+        if sure { settled(index, control: control, at: p) }
         let wantFull = lastFullScene.map { l in ctx.map { !$0.sameScene(as: l) } ?? false } ?? true || n % 8 == 0
         if wantFull { lastFullScene = ctx }
         let s = session
@@ -430,9 +439,21 @@ final class WatchRecorder {
         enqueue { [weak self] in
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard let self, self.session == s else { return }
-            if control == nil { self.lookAgain(at: p, for: index, hit: target, bundle: bundle, page: page) }
+            if !sure { self.lookAgain(at: p, for: index, first: control, hit: target, bundle: bundle, page: page) }
             await self.captureCrop(session: s, eventIndex: index, at: p, alsoFull: wantFull)
         }
+    }
+
+    /// The steps kept so far, one per click, as the caption shows them.
+    var captured: [CapturedStep] {
+        events.filter { $0.kind == "click" }.enumerated().map { CapturedStep.of($1, number: $0 + 1, fixed: fixedEvents.contains($1.index)) }
+    }
+
+    /// A click's step is what it will be: the caption says so, and a flash rings what was kept where it was clicked.
+    private func settled(_ index: Int, control: ShowFinder.Control?, at p: NSPoint) {
+        guard isRecording, let step = captured.first(where: { $0.event == index }) else { return }
+        hud.update(steps: captured, hotkey: hotkeyLabel)
+        hud.flash(step, frame: control?.frame, at: p)
     }
 
     /// What a click's control adds to its event: the role and name a person would use, the page's own id for it and
@@ -449,23 +470,91 @@ final class WatchRecorder {
         if !control.inPage, ContextWatcher.browserBundles.contains(bundle ?? "") { e.url = nil }
     }
 
-    /// A second look for the control under a click that resolved to none at once. An item that had just appeared (a
-    /// menu's, after the click that opened it) is unknown to the browser's hit test for a moment and known the next
-    /// time it is asked, so the click is asked about again once the tree has caught up, provided the page is still the
-    /// one clicked on: a click that went somewhere has nothing left under it. If there is still none, the spot is kept
-    /// (a rect without a size), so the step can be found by the control there next time, and the log says so. A
-    /// picked click is never dropped in silence.
-    private func lookAgain(at p: NSPoint, for index: Int, hit: ScreenHit, bundle: String?, page: (url: String?, title: String?)) {
+    /// A second look at a click that found no control at once, or none with a name. An item that had just appeared
+    /// (a menu's, after the click that opened it) is unknown to the browser's hit test for a moment and known the next
+    /// time it is asked, and a page's tree may name a thing a moment after it is drawn, so the click is asked about
+    /// again once the tree has caught up, provided the page is still the one clicked on: a click that went somewhere
+    /// has nothing left under it. What the second look finds is kept only when it says better what was clicked (see
+    /// `secondLook(_:betterThan:)`). If there is still nothing, the spot is kept (a rect without a size), so the step
+    /// can be found by the control there next time, and the log says so. A picked click is never dropped in silence.
+    private func lookAgain(at p: NSPoint, for index: Int, first: ShowFinder.Control?, hit: ScreenHit, bundle: String?,
+                           page: (url: String?, title: String?)) {
         guard isRecording else { return }
+        var final = first
         let ctx = currentContext()
-        guard ctx?.url == page.url, ctx?.windowTitle == page.title else { return }
-        if let control = ShowFinder.control(at: p) {
-            update(session: session, index) { Self.keep(control, in: &$0, hit: hit.element, bundle: bundle, window: hit.windowFrame) }
-            Log.info("watch: click \(index) resolved on a second look: \(Self.prettyRole(control.role)) “\(control.name ?? "")”")
-        } else if let window = hit.windowFrame {
-            update(session: session, index) { $0.rect = Self.spot(p, in: window) }
-            Log.info("watch: click \(index) resolved to nothing at (\(Int(p.x)), \(Int(p.y))); kept the spot")
+        if ctx?.url == page.url, ctx?.windowTitle == page.title {
+            let second = ShowFinder.control(at: p)
+            if Self.secondLook(second, betterThan: first), let second {
+                update(session: session, index) { Self.keep(second, in: &$0, hit: hit.element, bundle: bundle, window: hit.windowFrame) }
+                Log.info("watch: click \(index) resolved on a second look: \(Self.prettyRole(second.role)) “\(second.name ?? "")”")
+                final = second
+            } else if first == nil, let window = hit.windowFrame {
+                update(session: session, index) { $0.rect = Self.spot(p, in: window) }
+                Log.info("watch: click \(index) resolved to nothing at (\(Int(p.x)), \(Int(p.y))); kept the spot")
+            }
         }
+        settled(index, control: final, at: p)
+    }
+
+    /// Whether a second look at a click, once the page has caught up, says better what was clicked than the first:
+    /// something where the first found nothing, or a named control where the first found only a thing without a name,
+    /// provided it is that thing, inside it or around it. A menu that opened over the spot is not what was clicked,
+    /// so a named control elsewhere never replaces what the click found.
+    nonisolated static func secondLook(_ second: ShowFinder.Control?, betterThan first: ShowFinder.Control?) -> Bool {
+        guard let second else { return false }
+        guard let first else { return true }
+        guard first.name == nil, first.domID == nil, second.name != nil else { return false }
+        return first.frame.insetBy(dx: -2, dy: -2).contains(second.frame) || second.frame.insetBy(dx: -2, dy: -2).contains(first.frame)
+    }
+
+    // MARK: fixing a step with the pen
+
+    /// The border and the caption step aside while the pen, which has its own, points at a step.
+    func setHUDHidden(_ hidden: Bool) {
+        guard isRecording else { return }
+        hud.setHidden(hidden)
+    }
+
+    /// What the pen would keep for the last step if it pointed here: the control, as a click's would be found, and
+    /// the words to show beside it. Asks the app under the pen, past the pen's own overlay.
+    func pointing(at p: NSPoint) -> (frame: NSRect, label: String)? {
+        let hit = ScreenHitTester.hitTest(at: p)
+        guard let pid = hit.ownerPID, let control = ShowFinder.control(at: p, app: pid) else { return nil }
+        return (control.frame, control.name ?? "? a \(Self.prettyRole(control.role)) with no name")
+    }
+
+    /// The last click's step becomes what the pen pointed at: its kind, name, the page's id for it and its place, as
+    /// a click on it would have kept them. The page it was on stays the page it was clicked on. Returns false when
+    /// there is no click to fix or nothing under the pen.
+    @discardableResult
+    func fixLastStep(at p: NSPoint) -> Bool {
+        guard isRecording, let last = events.last(where: { $0.kind == "click" }) else { return false }
+        let hit = ScreenHitTester.hitTest(at: p)
+        guard let pid = hit.ownerPID, let control = ShowFinder.control(at: p, app: pid) else {
+            Log.info("watch: the pen found nothing to keep for click \(last.index)")
+            return false
+        }
+        let bundle = hit.ownerBundleID ?? currentContext()?.bundleID
+        let page = currentContext()?.url
+        update(session: session, last.index) { Self.pointed(control, in: &$0, bundle: bundle, window: hit.windowFrame, page: page) }
+        fixedEvents.insert(last.index)
+        Log.info("watch: click \(last.index) fixed with the pen: \(Self.prettyRole(control.role)) “\(control.name ?? "")”")
+        settled(last.index, control: control, at: p)
+        return true
+    }
+
+    /// What a step fixed with the pen keeps: the control pointed at, in place of whatever the click found. A value
+    /// glimpsed from the clicked control is dropped, since it was another's. The page stays the one clicked on, unless
+    /// the control is in the browser's own part of the window (no page) or the click had none and this one is on `page`.
+    nonisolated static func pointed(_ control: ShowFinder.Control, in e: inout WatchEvent, bundle: String?, window: NSRect?, page: String?) {
+        e.role = prettyRole(control.role)
+        e.axRole = control.role
+        e.label = control.name.flatMap { looksSecret($0) ? nil : $0 }
+        e.value = nil
+        e.domID = ShowFinder.isControlID(control.domID) ? control.domID : nil
+        e.rect = window.map { NoteAnchor.fractions(of: control.frame, in: $0) }
+        let browser = ContextWatcher.browserBundles.contains(bundle ?? "")
+        if browser, !control.inPage { e.url = nil } else if browser, e.url == nil { e.url = page }
     }
 
     /// Where a click was, as fractions of its window and with no size: see `ShowStep.rect`.
@@ -643,32 +732,5 @@ final class WatchRecorder {
 
     // MARK: HUD
 
-    private var captionText: String { "Noteling is watching · \(meta.clicks) click\(meta.clicks == 1 ? "" : "s") · \(hotkeyLabel) to stop" }
-
-    private func updateCaption() { for c in captions { c.string = captionText } }
-
-    private func showHUD() {
-        for s in NSScreen.screens {
-            let p = NSPanel(contentRect: s.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-            p.level = .screenSaver
-            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-            p.isOpaque = false
-            p.backgroundColor = .clear
-            p.hasShadow = false
-            p.ignoresMouseEvents = true
-            p.hidesOnDeactivate = false
-            p.isReleasedWhenClosed = false
-            let v = NSView(frame: NSRect(origin: .zero, size: s.frame.size))
-            v.wantsLayer = true
-            if let layer = v.layer {
-                ShimmerBorder.install(on: layer, bounds: v.bounds, dim: 0)
-                let (pill, text) = ShimmerBorder.captionPill(bounds: v.bounds, scale: s.backingScaleFactor, width: 460, text: captionText)
-                layer.addSublayer(pill)
-                captions.append(text)
-            }
-            p.contentView = v
-            p.orderFrontRegardless()
-            huds.append(p)
-        }
-    }
+    private func showHUD() { hud.show(hotkey: hotkeyLabel) }
 }

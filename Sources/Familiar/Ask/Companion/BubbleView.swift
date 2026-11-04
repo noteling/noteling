@@ -69,7 +69,7 @@ struct BubbleView: View {
         )
         .contextMenu {
             Button("Open chat") { shell.expanded = true }
-            Button("Point the pen") { state.startWand() }
+            Button(state.watching ? "Point at what you clicked" : "Point the pen") { state.startWand() }
             Button(state.watching ? "Stop watching" : "Watch me") { state.toggleWatching() }
             Divider()
             Button("Fold into a crane") { onOrigami?() }
@@ -136,8 +136,8 @@ struct BubbleView: View {
             cast = true
             charging = false
             withAnimation(.easeOut(duration: 0.2)) { charge = 0 }
-            MainActor.assumeIsolated {   // the pad says why the pen is off while busy or watching
-                if state.busy || state.watching { shell.expanded = true } else { state.startWand() }
+            MainActor.assumeIsolated {   // the pad says why the pen is off while busy; while watching it fixes a step
+                if state.busy { shell.expanded = true } else { state.startWand() }
             }
         }
         RunLoop.main.add(t, forMode: .common)

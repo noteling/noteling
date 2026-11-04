@@ -115,7 +115,13 @@ mouse, and it uses the company's own notes and scripts for the tool you are in.
 8. **Watch me**: menu bar → **Watch Me** (or the eye on the pad). Do the task the way you normally do, then press ⌃⌥Space or
    **Stop Watching**. Noteling records clicks (with the real labels of what you clicked, via Accessibility), a crop around each
    click, a full frame whenever the screen changes, and text typed into named form fields, into
-   `~/.noteling/recordings/<stamp>/` (folder 0700, files 0600). After stopping, enter a short name or description, then
+   `~/.noteling/recordings/<stamp>/` (folder 0700, files 0600). Each click shows as it is kept (`WatchHUD`): a ring on
+   what a way shown later will look for, with its name, and the caption's second line lists the last steps. A click that
+   found nothing, or nothing with a name, gets a second look 350 ms later, kept only if it names that thing or the
+   control around or inside it (`WatchRecorder.secondLook`), so a menu that opened over the spot is never taken for
+   what was clicked. A step still kept by its place alone, or not at all, shows in amber, and the caption then takes a
+   click: the pen comes up (as it does from the pad, the bubble or the menu while recording) and its highlight shows
+   what a click would keep; a click there replaces the last step (`fixLastStep`), Esc leaves it. After stopping, enter a short name or description, then
    optionally add context such as reading rules, exceptions or where to stop. **Skip context** continues without it.
    Noteling waits for both steps before generating one draft from the recording and your inputs, then puts a compact
    review on the pad, including the source's reading rules and any uncertainty notice. Retry preserves both inputs. Typing while a draft is under review revises it: the text joins the recording's context as "Changes requested after reviewing the draft", and the draft is written again from the same recording. Earlier requests still apply, and a failed draft can be revised the same way.
