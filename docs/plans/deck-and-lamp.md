@@ -8,7 +8,14 @@ person writes on it, what the minister writes on it, and how it reaches them.
 notes as files in `memos/` (`notes/` was already the pen's), their panels, the scribe on the pad with the instant draft,
 the hotkey (⌃⌥N), the menu bar's New Note, the bubble's New note, the notes root in recall, the timed wake, and
 `--render-paper`. Not yet: the pad's Pin tab (the hotkey and the scribe cover it for now), a note that sleeps until its
-when, the minister holding back a card about something you have a note on. Step 2 is next.
+when, the minister holding back a card about something you have a note on.
+Step 2 built on `feature/deck-cards` (stacked on step 1): the stack is a deck, one card at a time on the paper with the
+verbs under it (`Attend/Stickers/StickersPanel.swift`: `DeckModel`, `StickersView`, `CardView`, `StampView`); the
+minister writes a `headline`; Do it holds the card off the deck for five seconds with undo, then presses the action and
+the matter goes quiet with what was done; Mine takes the matter (`yours`) and makes a note of it; Not now puts it away;
+keys once the deck is clicked; stamps in the memory log; `--render-paper` renders the deck too and `--render-stickers`
+is gone. The sticker config keys stay (no default changed, so no new key). Not yet: Mine from the matter's page.
+Step 3 is next.
 
 ## Why
 

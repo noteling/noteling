@@ -37,32 +37,37 @@ Click a job to open its page:
 
 - **Input**: the files it reads, such as the list of items it checks.
 - **Latest result**: what its last run that worked left. First what became of its findings, "3 findings: 1 on a
-  sticker, 2 kept quiet", then each one with the minister's verdict and why; click one to open it. No sticker is a
+  sticker, 2 kept quiet", then each one with the minister's verdict and why; click one to open it. No card is a
   judgment, not a failure, and this is where it says so. Then short tables and notes, shown right there, as they are.
   Every file has **Open**, **Save as…** and **Show in Finder**, so you can take the full results into Excel.
 
-## Its stickers, and when it tells you
+## Its cards, and when it tells you
 
 A job reports what it found as rows. Noteling's minister reads what changed and decides which of it deserves your
-attention now, as a sticky note beside Noteling's note on your screen: a sentence or two in plain words, the job's name,
-who shared it and when. It shows only sure things: yours, needing you, true now, and new to you. Everything else stays
-quiet in Noteling's memory, with the reason, and you can ask in chat: "anything about Acme?", "why did I get that sticker?",
-"what did the orders job find yesterday?".
+attention now, as a card on paper beside Noteling's note on your screen: a headline, a sentence or two in plain words,
+the page, and the job's name with who shared it and when. It shows only sure things: yours, needing you, true now, and
+new to you. Everything else stays quiet in Noteling's memory, with the reason, and you can ask in chat: "anything about
+Acme?", "why did I get that card?", "what did the orders job find yesterday?".
 
-- Up to three stickers sit there, urgent ones first, and **and 2 more** above them opens Jobs. They step aside while the
-  chat is open, and come back with it.
-- Click a sticker to open it: the words, why you're seeing it, the rows behind it, the buttons the job offers (such as
-  **Nudge the warehouse**, which asks first), and **Open page**.
-- The small × that appears when you point at a sticker puts it away. It stays away until something about it changes and
-  the minister thinks you should see it again.
-- A sticker leaves by itself when the job no longer reports what it was about.
-- An urgent sticker is also a notification. Clicking the notification opens the sticker.
-- Drag a sticker to move the whole stack. Beside the note, the stickers go where the note goes; once you've put them
-  somewhere else they stay there, whatever the note does, until **Put back beside Noteling** in their right-click menu.
-- Right-click a sticker for **Open**, **Put away**, **Bigger** and **Smaller** (the size is remembered) and **Hide
-  stickers**. **Stickers** in the menu bar's pencil icon has them too: each sticker, to open it, **Hide Stickers**, and
-  **Put back beside Noteling** once you've moved them. Hidden stickers come back from **Show Stickers** there, and when
-  Noteling next starts; an urgent one still notifies you meanwhile.
+- One card at a time, urgent ones first; **2 more** above it opens Jobs, where every card waits. The deck steps aside
+  while the chat is open, and comes back with it.
+- Under the card, three verbs on paper tabs. **Its action** (such as **Nudge warehouse**, the button the minister picked
+  from the job's own) has Noteling do it, as you: a line under the deck counts down a few seconds with **undo**, then
+  it runs and the line says what came of it. **Mine** turns the card into a note of your own, pinned near the deck,
+  with the matter still a click away on it. **Not now** puts it away: it stays away until something about it changes
+  and the minister thinks you should see it again. The small × when you point at the card is Not now too.
+- Click the deck once and the keys do the same: **←** its action, **→** Mine, **↑** Not now, **⏎** opens it, **Esc**
+  gives the keys back.
+- Click a card to open it: the words, why you're seeing it, the rows behind it, every button the job offers, and
+  **Open page**.
+- A card leaves by itself when the job no longer reports what it was about.
+- An urgent card is also a notification. Clicking the notification opens the card.
+- Drag the card to move the deck. Beside the note, the deck goes where the note goes; once you've put it somewhere else
+  it stays there, whatever the note does, until **Put back beside Noteling** in its right-click menu.
+- Right-click the card for **Open**, its action, **Mine**, **Not now**, **Bigger** and **Smaller** (the size is
+  remembered) and **Hide stickers**. **Stickers** in the menu bar's pencil icon has the deck too: each card waiting, to
+  open it, **Hide Stickers**, and **Put back beside Noteling** once you've moved it. Hidden cards come back from **Show
+  Stickers** there, and when Noteling next starts; an urgent one still notifies you meanwhile.
 
 ## Before it starts, and after it ends
 

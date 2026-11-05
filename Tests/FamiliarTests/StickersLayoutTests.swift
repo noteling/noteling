@@ -56,7 +56,7 @@ import Testing
         let offRight = StickersPanel.frame(contentHeight: 100, width: width, home: NSPoint(x: 2000, y: 100), visible: visible)
         #expect(offRight.maxX == visible.maxX && offRight.minY == 100)
         let wider = StickersPanel.frame(contentHeight: 100, width: StickersPanel.width(1.6), home: NSPoint(x: 1300, y: 100), visible: visible)
-        #expect(wider.maxX == visible.maxX && wider.width == 346)
+        #expect(wider.maxX == visible.maxX && wider.width == StickersPanel.width(1.6))
     }
 
     /// Beside the orb only while the bubble is collapsed and fully there and no crane is flying; at the person's own
@@ -95,52 +95,46 @@ import Testing
         #expect(StickersLook.bigger(than: 1.6) == nil && StickersLook.smaller(than: 0.85) == nil)
         #expect(StickersLook.bigger(than: 1.1) == 1.2 && StickersLook.smaller(than: 1.1) == 1)   // a hand-edited value still steps
         #expect(StickersLook.clamped(3) == 1.6 && StickersLook.clamped(0.1) == 0.85 && StickersLook.clamped(.nan) == 1 && StickersLook.clamped(1.2) == 1.2)
-        #expect(StickersPanel.width(1) == 216 && StickersPanel.width(1.2) == 259 && StickersPanel.width(1.6) == 346)
-        #expect(StickerView.width(1) == 200 && StickerView.width(1.4) == 302 - 16)
+        #expect(StickersPanel.width(1) == 312 && StickersPanel.width(1.2) == 368 && StickersPanel.width(1.6) == 480)
+        #expect(StickersPanel.designWidth == PaperLook.cardWidth + 2 * PaperLook.margin)
     }
 
     /// Over a sticker the menu starts with Open and Put away; the size is always there, Bigger and Smaller greyed at
     /// the ends; Put back beside Noteling only once the stack was moved; Hide stickers last.
     @Test func theRightClickMenuFitsWhatIsUnderThePointer() {
-        let onSticker = StickersPanel.menu(pointing: "m-1", detached: false, scale: 1)
-        #expect(onSticker.map { $0?.title } == ["Open", "Put away", nil, "Bigger", "Smaller", nil, "Hide stickers"])
-        #expect(onSticker[0]?.choice == .open("m-1") && onSticker[1]?.choice == .putAway("m-1") && onSticker[6]?.choice == .hide)
-        let allEnabled = onSticker.compactMap { $0 }.allSatisfy { $0.enabled }
-        #expect(allEnabled)
-
+        let at = Date(timeIntervalSince1970: 1_790_000_000)
+        let action = MatterView.Action(finding: FindingRef(job: "team/pages", id: "1"), run: "nudge", label: "Nudge warehouse")
+        let card = Sticker(id: "m-1", title: "Pages up", text: "Down.", byline: nil, at: at, urgent: false, action: action)
+        let onCard = StickersPanel.menu(pointing: card, detached: false, scale: 1)
+        #expect(onCard.map { $0?.title } == ["Open", "Nudge warehouse", "Mine", "Not now", nil, "Bigger", "Smaller", nil, "Hide stickers"])
+        #expect(onCard[0]?.choice == .open("m-1") && onCard[1]?.choice == .doIt("m-1") && onCard[2]?.choice == .mine("m-1") && onCard[3]?.choice == .putAway("m-1"))
+        let plain = Sticker(id: "m-2", title: "Pages up", text: "Down.", byline: nil, at: at, urgent: false)
+        #expect(StickersPanel.menu(pointing: plain, detached: false, scale: 1).map { $0?.title } == ["Open", "Mine", "Not now", nil, "Bigger", "Smaller", nil, "Hide stickers"])
         let moved = StickersPanel.menu(pointing: nil, detached: true, scale: 1.6)
         #expect(moved.map { $0?.title } == ["Bigger", "Smaller", nil, "Put back beside Noteling", "Hide stickers"])
-        #expect(moved[0]?.enabled == false && moved[1]?.enabled == true && moved[3]?.choice == .attach)
+        #expect(moved[0]?.enabled == false && moved[1]?.enabled == true)
         #expect(StickersPanel.menu(pointing: nil, detached: false, scale: 0.85)[1]?.enabled == false)
     }
 
-    /// The menu bar's Stickers submenu: each sticker on the screen to open it, "and N more…" for Jobs, then Hide
-    /// Stickers; while hidden, Show Stickers with how many wait; Put back beside Noteling once the stack was moved. Its
-    /// own title carries the count.
     @Test func theMenuBarSubmenuOpensHidesShowsAndPutsBack() {
-        let at = Date()
+        let at = Date(timeIntervalSince1970: 1_790_000_000)
         let lena = Sticker(id: "m-1", title: "Mail", text: "Lena asks for\nthe deck by 3.", byline: nil, at: at, urgent: true)
-        let long = Sticker(id: "m-2", title: "GM", text: String(repeating: "x", count: 80), byline: "Yang", at: at, urgent: false)
-        let shown = StickersPanel.menuBar(stickers: [lena, long], more: 1, hidden: false, detached: false)
-        #expect(shown.map { $0?.title } == ["Lena asks for the deck by 3.", String(repeating: "x", count: 60) + "…", "and 1 more…", nil, "Hide Stickers"])
-        #expect(shown[0]?.choice == .open("m-1") && shown[2]?.choice == .more && shown[4]?.choice == .hide)
-        #expect(shown.compactMap { $0 }.allSatisfy { $0.enabled })
-
-        let none = StickersPanel.menuBar(stickers: [], more: 0, hidden: false, detached: true)
+        let long = Sticker(id: "m-2", title: "GM", headline: String(repeating: "x", count: 80), text: "Short.", byline: "Yang", at: at, urgent: false)
+        let shown = StickersPanel.menuBar(stickers: [lena, long], hidden: false, detached: false)
+        #expect(shown.map { $0?.title } == ["Lena asks for the deck by 3.", String(repeating: "x", count: 60) + "…", nil, "Hide Stickers"])
+        #expect(shown[0]?.choice == .open("m-1") && shown[1]?.choice == .open("m-2") && shown[3]?.choice == .hide)
+        let none = StickersPanel.menuBar(stickers: [], hidden: false, detached: true)
         #expect(none.map { $0?.title } == ["No stickers", nil, "Hide Stickers", "Put back beside Noteling"])
-        #expect(none[0]?.enabled == false && none[2]?.enabled == false && none[3]?.choice == .attach)
-
-        let hidden = StickersPanel.menuBar(stickers: [lena], more: 2, hidden: true, detached: false)
-        #expect(hidden.map { $0?.title } == ["Show Stickers (3)"] && hidden[0]?.choice == .show)
-        #expect(StickersPanel.menuBar(stickers: [], more: 0, hidden: true, detached: false).map { $0?.title } == ["Show Stickers"])
-
+        #expect(none[0]?.enabled == false && none[2]?.enabled == false)
+        let hidden = StickersPanel.menuBar(stickers: [lena], hidden: true, detached: false)
+        #expect(hidden.map { $0?.title } == ["Show Stickers (1)"] && hidden[0]?.choice == .show)
+        #expect(StickersPanel.menuBar(stickers: [], hidden: true, detached: false).map { $0?.title } == ["Show Stickers"])
         #expect(StickersPanel.menuBarTitle(count: 0, hidden: false) == "Stickers")
         #expect(StickersPanel.menuBarTitle(count: 2, hidden: false) == "Stickers (2)")
         #expect(StickersPanel.menuBarTitle(count: 2, hidden: true) == "Stickers (2, hidden)")
         #expect(StickersPanel.menuBarTitle(count: 0, hidden: true) == "Stickers (hidden)")
     }
 
-    /// The spot and the size are kept in the config; an older file without them means beside the bubble, as designed.
     @Test func theSpotAndTheSizeAreRememberedInTheConfig() throws {
         let fresh = try JSONDecoder().decode(Config.self, from: Data("{}".utf8))
         #expect(fresh.stickersX == nil && fresh.stickersY == nil && fresh.stickerScale == 1)
@@ -152,19 +146,13 @@ import Testing
         #expect(restored.stickersX == 300 && restored.stickersY == 100.5 && restored.stickerScale == 1.4)
     }
 
-    @Test func aStickerSaysWhoSharedItAndWhen() {
+    @Test func aCardSaysWhereItCameFromAndWhen() {
         let at = Date(timeIntervalSince1970: 1_790_000_000)
-        let time = JobWords.clock(at)
+        let time = JobWords.time(at, now: at)
         let shared = Sticker(id: "m-1", title: "Pages up", text: "3 pages are down.", byline: "Yang", at: at, urgent: false)
-        #expect(StickerView.byline(shared) == "Yang · " + time)
+        #expect(shared.line(now: at) == "Pages up · shared by Yang · " + time)
         let own = Sticker(id: "m-2", title: "Orders stuck", text: "2 orders waited over an hour.", byline: nil, at: at, urgent: false)
-        #expect(StickerView.byline(own) == time)
-    }
-
-    @Test func stickersLeanALittleEitherWayDownTheStack() {
-        #expect([0, 1, 2].map(StickerView.tilt) == [-1.2, 0.8, -0.6])
-        #expect(StickerView.tilt(3) == StickerView.tilt(0))
-        #expect(StickerView.width(1) == StickersPanel.width(1) - 16)
-        #expect(StickersView.moreWords(2) == "and 2 more")
+        #expect(own.line(now: at) == "Orders stuck · " + time)
+        #expect(StickersView.moreWords(2) == "2 more")
     }
 }

@@ -31,6 +31,7 @@ enum MinisterPrompt {
     static let composeSystem = """
     You are Noteling's attention minister, writing one sticker and its notes for one matter. The sticker sits beside the person's note on their screen; the notes are read by you in later turns and by the person when they ask why.
     \(bar)
+    headline: the thing in a few words, at most \(MatterView.headlineLimit) characters, as a person would head a sticky: "Checkout is down", "Acme's order 4417", "Two-star review". Not the job's name, not a sentence.
     text: one or two sentences, at most \(MatterView.textLimit) characters, in plain words a colleague would use: name the thing and what needs the person; no job names, no column names, no ids except the one the person knows the thing by (an order number is fine). Say what is so, not what you did.
     action: one of the actions listed for the matter's findings, the one that fits best, or none. Never invent one.
     where: one of the pages listed, or none.
@@ -58,7 +59,8 @@ enum MinisterPrompt {
     static var composeDefinition: [String: Any] {
         ["name": composeTool,
          "description": "The sticker and the notes for this matter.",
-         "input_schema": ["type": "object", "additionalProperties": false, "required": ["text", "tone", "notes"], "properties": [
+         "input_schema": ["type": "object", "additionalProperties": false, "required": ["headline", "text", "tone", "notes"], "properties": [
+            "headline": ["type": "string", "maxLength": MatterView.headlineLimit],
             "text": ["type": "string", "maxLength": MatterView.textLimit],
             "action": ["type": ["object", "null"], "additionalProperties": false, "required": ["finding", "run"],
                        "properties": ["finding": ["type": "string"], "run": ["type": "string"]]],
@@ -94,7 +96,7 @@ enum MinisterPrompt {
         out += "\nMatters now:\n"
         if matters.isEmpty { out += "(none)\n" }
         for matter in matters {
-            let state = matter.state == .quiet ? "quiet (\(matter.why ?? "no reason kept"))" : "open"
+            let state = matter.state == .quiet ? "quiet (\(matter.why ?? "no reason kept"))" : matter.state == .yours ? "yours (the person took it onto a note of their own; show it again only for a change that needs them)" : "open"
             let text = matter.view.map { " · “\($0.text)”" } ?? ""
             out += "- \(matter.id) · \(state)\(text) · findings: \(matter.findings.map(\.key).joined(separator: ", "))\n"
         }
@@ -105,7 +107,7 @@ enum MinisterPrompt {
     /// The compose turn: the matter's findings in full, their jobs' descriptions, the actions and pages to choose from,
     /// and what was written before.
     static func compose(_ matter: Matter, findings: [Shown], descriptions: [String: String], notes: String?, now: Date) -> String {
-        var out = "Matter \(matter.id)" + (matter.state == .quiet ? " (quiet: \(matter.why ?? ""))" : "") + ".\n"
+        var out = "Matter \(matter.id)" + (matter.state == .quiet ? " (quiet: \(matter.why ?? ""))" : matter.state == .yours ? " (yours: the person took it)" : "") + ".\n"
         let byJob = Dictionary(grouping: findings, by: \.ref.job)
         for job in byJob.keys.sorted() {
             guard let first = byJob[job]?.first else { continue }
@@ -124,7 +126,7 @@ enum MinisterPrompt {
         let pages = findings.compactMap { $0.job.map?.place(of: $0.row) }
         out += "\nPages: " + (pages.isEmpty ? "(none)" : pages.joined(separator: ", ")) + "\n"
         if let view = matter.view {
-            out += "\nThe sticker as it is: “\(view.text)” · \(view.tone.rawValue)" + (view.action.map { " · action \($0.run) on \($0.finding.key)" } ?? "") + "\n"
+            out += "\nThe sticker as it is: " + (view.headline.map { "“\($0)” · " } ?? "") + "“\(view.text)” · \(view.tone.rawValue)" + (view.action.map { " · action \($0.run) on \($0.finding.key)" } ?? "") + "\n"
         }
         if let notes, !notes.isEmpty { out += "\nThe notes as they are:\n\(notes)\n" }
         if !matter.presses.isEmpty {
@@ -213,6 +215,10 @@ enum MinisterPrompt {
 
     /// The compose tool's input, checked against what the matter has: its findings' actions and pages.
     static func parseCompose(_ input: [String: Any], findings: [Shown]) throws -> (view: MatterView, notes: String?) {
+        guard let head = input["headline"] as? String else { throw MinisterError("Give headline: the thing in a few words.") }
+        let headline = head.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+        guard !headline.isEmpty else { throw MinisterError("The headline is empty.") }
+        guard headline.count <= MatterView.headlineLimit else { throw MinisterError("The headline is \(headline.count) characters; the most is \(MatterView.headlineLimit).") }
         guard let raw = input["text"] as? String else { throw MinisterError("Give text: the sticker's words.") }
         let text = raw.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
         guard !text.isEmpty else { throw MinisterError("The sticker's text is empty.") }
@@ -245,7 +251,7 @@ enum MinisterPrompt {
         guard notes.count <= Matters.notesLimit else {
             throw MinisterError("The notes are \(notes.count.formatted()) characters; the most is \(Matters.notesLimit.formatted()).")
         }
-        return (MatterView(text: text, action: action, page: page, tone: tone, until: until), notes.isEmpty ? nil : notes)
+        return (MatterView(headline: headline, text: text, action: action, page: page, tone: tone, until: until), notes.isEmpty ? nil : notes)
     }
 }
 

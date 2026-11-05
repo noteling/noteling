@@ -118,7 +118,7 @@ struct MemoPanelView: View {
                 state.beginEditing()
                 wordsFocused = true
             }
-            .gesture(DragGesture(minimumDistance: StickerView.dragDistance).onChanged { _ in actions.drag(.moved) }.onEnded { _ in actions.drag(.ended) })
+            .gesture(DragGesture(minimumDistance: CardView.dragDistance).onChanged { _ in actions.drag(.moved) }.onEnded { _ in actions.drag(.ended) })
             .help(state.memo.collapsed ? "Click to open" : "Click to write  ·  Drag to move  ·  Right-click for more")
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Note: \(state.memo.firstLine)")
@@ -151,7 +151,7 @@ struct MemoPanelView: View {
     private var strip: some View {
         Color.clear.frame(width: paperWidth, height: (PaperLook.strip + 2) * scale).contentShape(Rectangle())
             .onTapGesture(count: 2) { actions.collapse() }
-            .gesture(DragGesture(minimumDistance: StickerView.dragDistance).onChanged { _ in actions.drag(.moved) }.onEnded { _ in actions.drag(.ended) })
+            .gesture(DragGesture(minimumDistance: CardView.dragDistance).onChanged { _ in actions.drag(.moved) }.onEnded { _ in actions.drag(.ended) })
             .help("Drag to move  ·  Double-click to fold")
     }
 }

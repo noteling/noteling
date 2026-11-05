@@ -100,6 +100,45 @@ func runRenderPaper() {
     }
     .frame(width: 800, height: 330, alignment: .topLeading)
     render(onDesk(darkDesk, dark: true), "desk-dark.png")
+    // The deck as the panel draws it: "2 more" above the card on top, the verbs under it; then a card being stamped,
+    // and the line of a press waiting to run.
+    func deckModel(_ count: Int) -> DeckModel {
+        let matters = Matters(directory: nil)
+        matters.clock = { now }
+        let findings = [("pages", "1", "nudge", "Nudge warehouse"), ("gm", "K-1", "fix", "Fix the price"), ("orders", "4417", nil, nil), ("stock", "S-1", "reorder", "Reorder"), ("reviews", "R-1", nil, nil)]
+        for (index, card) in cards.prefix(count).enumerated() {
+            let (job, id, run, label) = findings[index]
+            let ref = FindingRef(job: "team/" + job, id: id)
+            let at = now.addingTimeInterval(-Double(index * 20 + 2) * 60)
+            let action = run.map { MatterView.Action(finding: ref, run: $0, label: label ?? $0) }
+            let byline = card.byline.components(separatedBy: " · ")
+            let shared = byline.first { $0.hasPrefix("shared by ") }.map { String($0.dropFirst(10)) }
+            var matter = Matter(id: "m-\(index + 1)", findings: [ref], state: .open,
+                                view: MatterView(headline: card.headline, text: card.text, action: action, page: card.page, tone: card.urgent ? .urgent : .calm),
+                                jobName: byline[0], byline: shared, createdAt: at, updatedAt: at)
+            matter.writtenAt = at
+            matters.save(matter)
+        }
+        let model = DeckModel(matters: matters)
+        model.clock = { now }
+        return model
+    }
+    func deckView(_ model: DeckModel, scale: CGFloat = 1) -> some View {
+        StickersView(model: model, look: StickersLook(scale: scale)).padding(8).background(Color(white: 0.96))
+    }
+    render(deckView(deckModel(3)), "deck.png")
+    render(deckView(deckModel(1)), "deck-one.png")
+    let stamping = deckModel(2)
+    stamping.stamped = (stamping.card?.id ?? "", .doIt)
+    render(deckView(stamping), "deck-stamped.png")
+    let waiting = deckModel(2)
+    waiting.pending = PendingPress(id: "m-1", label: "Nudge warehouse", until: Date().addingTimeInterval(4.4))   // counted against the clock on the wall
+    render(deckView(waiting), "deck-undo.png")
+    let done = deckModel(1)
+    done.said = "Nudge warehouse · 10:13 AM"
+    render(deckView(done), "deck-said.png")
+    render(deckView(deckModel(3), scale: PaperLook.steps[0]), "deck-smallest.png")
+    render(deckView(deckModel(3), scale: PaperLook.steps[PaperLook.steps.count - 1]), "deck-biggest.png")
     // The sizes Bigger and Smaller step through, side by side.
     let sizes = HStack(alignment: .top, spacing: 24) {
         memoView(dictated, scale: PaperLook.steps[0], tilt: false)
