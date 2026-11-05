@@ -14,15 +14,15 @@ import Testing
 
     @Test func theMenuOffersThePageTheColoursFoldingTheLevelTheSizeAndRemoval() {
         let plain = MemoPanel.menu(for: memo(), scale: 1)
-        #expect(plain.map { $0?.title ?? "" } == ["Yellow", "Pink", "Blue", "Green", "", "Fold", "Keep on top", "Bigger", "Smaller", "", "Remove"])
+        #expect(plain.map { $0?.title ?? "" } == ["Yellow", "Pink", "Blue", "Green", "", "Fold", "Pinned", "Bigger", "Smaller", "", "Remove"])
         #expect(plain.compactMap { $0 }.first { $0.checked }?.title == "Yellow")
         var folded = memo(page: "https://docs.example.com/q4")
         folded.collapsed = true
-        folded.onTop = true
+        folded.pinned = true
         folded.colour = .pink
         let items = MemoPanel.menu(for: folded, scale: PaperLook.steps.last!)
-        #expect(items.map { $0?.title ?? "" } == ["Open page", "", "Yellow", "Pink", "Blue", "Green", "", "Unfold", "Keep on top", "Bigger", "Smaller", "", "Remove"])
-        #expect(items.compactMap { $0 }.filter(\.checked).map(\.title) == ["Pink", "Keep on top"])
+        #expect(items.map { $0?.title ?? "" } == ["Open page", "", "Yellow", "Pink", "Blue", "Green", "", "Unfold", "Pinned", "Bigger", "Smaller", "", "Remove"])
+        #expect(items.compactMap { $0 }.filter(\.checked).map(\.title) == ["Pink", "Pinned"])
         #expect(items.compactMap { $0 }.first { $0.title == "Bigger" }?.enabled == false)
         #expect(items.compactMap { $0 }.first { $0.title == "Smaller" }?.enabled == true)
     }
@@ -54,61 +54,67 @@ import Testing
         panel.onOpenPage = { opened.append($0) }
         panel.onResize = { sizes.append($0) }
         panel.onRemove = { removed += 1 }
-        #expect(panel.level == MemoPanel.desktopLevel)
+        // New: pinned, above the windows of its own Space, not every Space.
+        #expect(panel.level == .floating && !panel.collectionBehavior.contains(.canJoinAllSpaces))
         panel.choose(.colour(.blue))
         panel.choose(.collapse)
-        panel.choose(.onTop)
+        panel.choose(.pin)
         panel.choose(.openPage)
         panel.choose(.bigger)
         panel.choose(.remove)
         #expect(changes.map(\.colour) == [.blue, .blue, .blue])
-        #expect(changes.map(\.collapsed) == [false, true, true] && changes.last?.onTop == true)
-        // Kept on top: above the windows of its own Space, not every Space.
-        #expect(panel.level == .floating && !panel.collectionBehavior.contains(.canJoinAllSpaces))
+        #expect(changes.map(\.collapsed) == [false, true, true] && changes.last?.pinned == false)
+        // Unpinned: on the desktop, the same on every Space.
+        #expect(panel.level == MemoPanel.desktopLevel && panel.collectionBehavior.contains(.canJoinAllSpaces))
         #expect(opened == ["https://docs.example.com/q4"] && sizes == [PaperLook.steps[2]] && removed == 1)   // bigger than 1 is 1.2
         #expect(panel.contextMenu().items.map(\.title).first == "Open page")
     }
 
-    @Test func aNoteLivesOnTheDesktopAndComesUpWhenNewDueOrWrittenOn() {
-        // On the desktop: under every window, the same on every Space; never over a full-screen app.
-        let desk = MemoPanel.level(onTop: false, up: false)
-        #expect(desk.level == MemoPanel.desktopLevel && desk.behaviour.contains(.canJoinAllSpaces) && !desk.behaviour.contains(.fullScreenAuxiliary))
-        // Up: on top of everything, wherever the person is.
-        let up = MemoPanel.level(onTop: false, up: true)
+    @Test func aNoteIsPinnedOverItsSpaceOrLiesOnTheDesktopAndComesUpWhenWokenOrWrittenOn() {
+        // Up: on top of everything, wherever the person is, full-screen apps too.
+        let up = MemoPanel.level(pinned: false, up: true)
         #expect(up.level == .floating && up.behaviour.contains(.canJoinAllSpaces) && up.behaviour.contains(.fullScreenAuxiliary))
-        // Kept on top: above the windows of its own Space only.
-        let kept = MemoPanel.level(onTop: true, up: false)
-        #expect(kept.level == .floating && !kept.behaviour.contains(.canJoinAllSpaces))
+        // Pinned: above the windows of its own Space only.
+        let pinned = MemoPanel.level(pinned: true, up: false)
+        #expect(pinned.level == .floating && !pinned.behaviour.contains(.canJoinAllSpaces))
+        // On the desktop: under every window, the same on every Space; never over a full-screen app.
+        let desk = MemoPanel.level(pinned: false, up: false)
+        #expect(desk.level == MemoPanel.desktopLevel && desk.behaviour.contains(.canJoinAllSpaces) && !desk.behaviour.contains(.fullScreenAuxiliary))
 
         let panel = MemoPanel(memo: memo(), scale: 1, hideFromScreenShare: false)
-        #expect(!panel.up && panel.level == MemoPanel.desktopLevel)
-        panel.raise(for: 60)
-        #expect(panel.up && panel.level == .floating)
-        panel.settle()
-        #expect(!panel.up && panel.level == MemoPanel.desktopLevel)
-        // Woken: up and glowing until it has been clicked and the mouse has left it.
-        panel.raise()
-        panel.state.warm = true
-        panel.hovered(false)
-        #expect(panel.up && panel.state.warm)   // never clicked: still up
-        panel.hovered(true)
+        var changes: [Memo] = []
+        panel.onChange = { changes.append($0) }
+        // New: pinned where it was made, and it stays; no clock takes it down.
+        #expect(!panel.up && panel.memo.pinned && panel.level == .floating && !panel.collectionBehavior.contains(.canJoinAllSpaces))
+        panel.pin(false)
+        #expect(panel.level == MemoPanel.desktopLevel && changes.last?.pinned == false)
+        panel.pin(false)
+        #expect(changes.count == 1)   // already lying there: nothing said
+        // Woken: up everywhere and glowing until clicked; then had, and pinned where the person is.
+        panel.wake()
+        #expect(panel.up && panel.state.warm && panel.collectionBehavior.contains(.canJoinAllSpaces))
         panel.sendEvent(NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: panel.windowNumber,
                                            context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
-        #expect(panel.up)
-        panel.hovered(false)
-        #expect(!panel.up && !panel.state.warm)
+        #expect(!panel.up && !panel.state.warm && panel.memo.pinned && changes.last?.pinned == true)
+        #expect(panel.level == .floating && !panel.collectionBehavior.contains(.canJoinAllSpaces))
+        // Written on: up while the keyboard is on it, back in its place when the keyboard leaves.
+        panel.pin(false)
+        panel.raise()
+        panel.state.beginEditing()
+        panel.resignKey()
+        #expect(!panel.up && !panel.state.editing && panel.level == MemoPanel.desktopLevel)
     }
 
-    @Test func theWindowsTickOnTheMinuteAndBringANewNoteUpButNotTheOnesFromBeforeLaunch() {
+    @Test func theWindowsTickOnTheMinuteAndANewNoteIsPinnedWithNoClockOnIt() {
         let store = MemoStore(directory: nil)
         store.clock = { self.at }
         store.save(memo("n-old", text: "From yesterday"))
         let windows = MemoWindows(store: store, scale: 1, hideFromScreenShare: false)
         windows.shows = false
         windows.start()
-        #expect(windows.panels["n-old"]?.up == false)
         let fresh = windows.newNote(memo("n-new", text: "Just pinned"))
-        #expect(windows.panels[fresh.id]?.up == true)
+        #expect(windows.panels.values.allSatisfy { !$0.up && $0.memo.pinned && $0.level == .floating })
+        #expect(windows.panels[fresh.id]?.collectionBehavior.contains(.canJoinAllSpaces) == false)
 
         let later = at.addingTimeInterval(600)
         windows.tick(now: later)
@@ -118,30 +124,34 @@ import Testing
         #expect(MemoWindows.nextMinute(after: twenty) == Date(timeIntervalSinceReferenceDate: 1_001 * 60 + 0.3))
     }
 
-    @Test func showMyNotesBringsEveryNoteUpForAMinuteAsIfNew() {
+    @Test func aGlanceBringsEveryNoteUpUntilAClickElsewhereAndAPinMeanwhileHolds() {
         let store = MemoStore(directory: nil)
         store.clock = { self.at }
         let windows = MemoWindows(store: store, scale: 1, hideFromScreenShare: false)
         windows.shows = false
         windows.start()
-        #expect(!windows.hasNotes)
+        #expect(!windows.hasNotes && !windows.hasPinned)
         store.save(memo("n-1", text: "Call Marco"))
         store.save(memo("n-2", text: "Dentist"))
         windows.sync()
-        for panel in windows.panels.values { panel.settle() }
-        #expect(windows.hasNotes)
-        #expect(windows.panels.values.allSatisfy { !$0.up })
+        windows.panels["n-2"]!.pin(false)
+        #expect(windows.hasNotes && windows.hasPinned)
 
         windows.showAll()
-        #expect(windows.panels.values.allSatisfy { $0.up && $0.level == .floating })
-        #expect(windows.panels.values.allSatisfy { $0.collectionBehavior.contains(.canJoinAllSpaces) })
-        // Clicked and left, a note settles back to the desktop as a new one does.
-        let one = windows.panels["n-1"]!
-        one.sendEvent(NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: one.windowNumber,
-                                         context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
-        one.hovered(false)
-        #expect(!one.up && one.level == MemoPanel.desktopLevel)
-        #expect(windows.panels["n-2"]?.up == true)
+        #expect(windows.glancing)
+        #expect(windows.panels.values.allSatisfy { $0.up && $0.level == .floating && $0.collectionBehavior.contains(.canJoinAllSpaces) })
+        windows.panels["n-2"]!.pin(true)   // pinned while up: it holds
+        windows.endGlance()
+        #expect(!windows.glancing)
+        #expect(windows.panels.values.allSatisfy { !$0.up && $0.memo.pinned && $0.level == .floating && !$0.collectionBehavior.contains(.canJoinAllSpaces) })
+
+        windows.unpinAll()
+        #expect(!windows.hasPinned && windows.panels.values.allSatisfy { $0.level == MemoPanel.desktopLevel })
+        // A note that woke is passed by: it stays up and glowing until it is had.
+        windows.panels["n-1"]!.wake()
+        windows.showAll()
+        windows.endGlance()
+        #expect(windows.panels["n-1"]!.up && windows.panels["n-1"]!.state.warm && windows.panels["n-2"]!.up == false)
     }
 
     @Test func theWindowsKeepAPanelForEveryNoteAndPlaceANewOneAboveTheOrb() {
