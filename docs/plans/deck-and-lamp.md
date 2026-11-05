@@ -42,7 +42,9 @@ on the desktop (under windows, the same on every Space) instead of floating over
 the one real annoyance; a note comes up on top when new (a minute), when its when comes (until clicked) and while
 written on; Keep on top per note replaces Keep below windows; the when words move on the minute; the × became the
 peel, a 28-point round button over the corner on hover, and removed files go to the Trash. No TTL: an easy peel was
-chosen over a note that leaves on its own. The deck, lamp, receipt and teaching are still to be tried.
+chosen over a note that leaves on its own. The deck, lamp, receipt and teaching are still to be tried. PR #99, stacked on
+the release branch; live check of the desktop level, the minute tick and the wake on the PR; `release/0.9.1` carries
+the bump for the 0.9.1 pre-release (tag v0.9.1), cut the same day.
 
 ## Why
 
