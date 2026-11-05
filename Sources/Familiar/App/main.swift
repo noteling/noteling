@@ -44,6 +44,8 @@ if CommandLine.arguments.contains("--record-synthetic") {
     MainActor.assumeIsolated { runRenderCard() }
 } else if CommandLine.arguments.contains("--render-stickers") {
     MainActor.assumeIsolated { runRenderStickers() }
+} else if CommandLine.arguments.contains("--render-paper") {
+    MainActor.assumeIsolated { runRenderPaper() }
 } else if let index = CommandLine.arguments.firstIndex(of: "--render-background-task"), index + 1 < CommandLine.arguments.count {
     MainActor.assumeIsolated {
         do { try BackgroundTaskRender.render(to: URL(fileURLWithPath: CommandLine.arguments[index + 1])) }
@@ -116,6 +118,11 @@ if CommandLine.arguments.contains("--record-synthetic") {
         exit(0)
     }
     RunLoop.main.run()
+} else if let flag = CommandLine.arguments.first(where: { $0.hasPrefix("--render-") }) {
+    // A render this build doesn't know must not fall through to the app: an older app once launched whole, with its
+    // jobs and its config save, when asked for a render it had never heard of.
+    print("\(flag) isn't a render this Noteling knows.")
+    exit(2)
 } else {
     MainActor.assumeIsolated { runApp() }
 }

@@ -61,6 +61,8 @@ struct Recall {
                      about: "Noteling's log, one file a day (2026-11-02.jsonl), one JSON object per line: each job's run (ran), each finding new, changed or gone with its row, the minister's verdict on each finding and why (verdict, why), each sticker it wrote (sticker), and what the person put away (put_away) or pressed (pressed)."),
                 Root(name: "matters", url: home.appendingPathComponent("matters"),
                      about: "The minister's matters, one folder each: matter.json (its findings, state, sticker) and notes.md (its notes on what it is and why)."),
+                Root(name: "notes", url: home.appendingPathComponent("memos"),
+                     about: "The person's own notes, pinned on their screen, one markdown file each (n-1a2b3c4d.md): a few lines of front matter (colour, when, page, asked, matter), then `# headline`, the words, and `- [ ]` checklist lines. Read them to know what the person already knows or means to do; never write them."),
                 Root(name: "jobs", url: home.appendingPathComponent("jobs"),
                      about: "The person's own jobs, one folder each: job.json, job.md, job.py, input/."),
                 Root(name: "results", url: home.appendingPathComponent("job-results"),

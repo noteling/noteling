@@ -4,6 +4,12 @@ Written 2026-11-05, at 0.8.3, on `main`. Decided in discussion; the leans at the
 `attention-minister.md`, whose minister, matters and memory stay as they are. This plan is about the paper: what the
 person writes on it, what the minister writes on it, and how it reaches them.
 
+**Status (2026-11-05):** step 1 built on `feature/paper-and-memos`: the paper (`Attend/Paper/PaperView.swift`), your
+notes as files in `memos/` (`notes/` was already the pen's), their panels, the scribe on the pad with the instant draft,
+the hotkey (⌃⌥N), the menu bar's New Note, the bubble's New note, the notes root in recall, the timed wake, and
+`--render-paper`. Not yet: the pad's Pin tab (the hotkey and the scribe cover it for now), a note that sleeps until its
+when, the minister holding back a card about something you have a note on. Step 2 is next.
+
 ## Why
 
 The stickers as shipped (0.8.0 to 0.8.3) are three slabs of paper beside the orb, always on, each headed by the name of
@@ -147,7 +153,7 @@ be read and reversed. The minister's questions ride the same deck; no new UI.
 
 ## Storage and model
 
-- **Your notes** are files: `~/.noteling/notes/<id>.md`, the text as the body and a short front matter (headline,
+- **Your notes** are files: `~/.noteling/memos/<id>.md` (`notes/` is the pen's folder already), the text as the body and a short front matter (headline,
   position, colour, collapsed, created, the when, the page, the words you said, and the matter id when it came from a
   card). The scribe is the compose writer the minister already has, reached from the pad as a tool, so one writer
   knows the paper's fields. Finder is the folder: edit the file and the

@@ -70,6 +70,12 @@ final class Assistant: ObservableObject {
     }
     /// The four reading tools: the packs' docs, the memory log, the matters, the jobs and what they found.
     var recall: Recall?
+    /// More tools for the chat, from the app: the scribe that writes your notes.
+    var extraRoutes: () -> [ToolRoute] = { [] }
+    /// A question was sent, with what was on the screen; and the turn ended. The app lets the scribe put a note up at
+    /// once and take an unwritten draft down.
+    var onQuestion: ((String, ScreenContext?) -> Void)?
+    var onTurnEnd: (() -> Void)?
     /// Showing the way on screen: the show_me tool, and the list of its steps on the pad. The pad folds to its note
     /// when a way starts, so the chat isn't in the way of the screen it is taught on; the steps are on the pad when
     /// it is opened again.
@@ -488,6 +494,7 @@ final class Assistant: ObservableObject {
             return
         }
         let ctx = watcher.current ?? watcher.sample()
+        onQuestion?(q, ctx)
         chatBusy = true
         let generation = captureGeneration
         let briefing = briefs?.source(for: ctx) != nil
@@ -1087,7 +1094,7 @@ final class Assistant: ObservableObject {
                 let words = intentWords
                 let wanted = Prompt.intents(words, pinned: intent)
                 let teaching = intent == .explain || intent == .act ? [] : (showMe?.routes(context: ctx, words: words) ?? [])
-                let sourceRoutes = (folderJobs?.routes() ?? []) + teaching
+                let sourceRoutes = (folderJobs?.routes() ?? []) + teaching + extraRoutes()
                 if controlAllowed, let desktop {
                     return try await desktop.prepare(id: id, registry: registry, context: ctx, background: background,
                                                      title: title, systemExtra: wanted, facts: facts, additionalRoutes: sourceRoutes,
@@ -1205,6 +1212,7 @@ final class Assistant: ObservableObject {
 
     private func finishRequest() {
         chatBusy = false
+        onTurnEnd?()
         diagnoseChat(.requestFinished)
     }
 
