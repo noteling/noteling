@@ -14,15 +14,15 @@ import Testing
 
     @Test func theMenuOffersThePageTheColoursFoldingTheLevelTheSizeAndRemoval() {
         let plain = MemoPanel.menu(for: memo(), scale: 1)
-        #expect(plain.map { $0?.title ?? "" } == ["Yellow", "Pink", "Blue", "Green", "", "Fold", "Keep below windows", "Bigger", "Smaller", "", "Remove"])
+        #expect(plain.map { $0?.title ?? "" } == ["Yellow", "Pink", "Blue", "Green", "", "Fold", "Keep on top", "Bigger", "Smaller", "", "Remove"])
         #expect(plain.compactMap { $0 }.first { $0.checked }?.title == "Yellow")
         var folded = memo(page: "https://docs.example.com/q4")
         folded.collapsed = true
-        folded.below = true
+        folded.onTop = true
         folded.colour = .pink
         let items = MemoPanel.menu(for: folded, scale: PaperLook.steps.last!)
-        #expect(items.map { $0?.title ?? "" } == ["Open page", "", "Yellow", "Pink", "Blue", "Green", "", "Unfold", "Keep below windows", "Bigger", "Smaller", "", "Remove"])
-        #expect(items.compactMap { $0 }.filter(\.checked).map(\.title) == ["Pink", "Keep below windows"])
+        #expect(items.map { $0?.title ?? "" } == ["Open page", "", "Yellow", "Pink", "Blue", "Green", "", "Unfold", "Keep on top", "Bigger", "Smaller", "", "Remove"])
+        #expect(items.compactMap { $0 }.filter(\.checked).map(\.title) == ["Pink", "Keep on top"])
         #expect(items.compactMap { $0 }.first { $0.title == "Bigger" }?.enabled == false)
         #expect(items.compactMap { $0 }.first { $0.title == "Smaller" }?.enabled == true)
     }
@@ -54,18 +54,68 @@ import Testing
         panel.onOpenPage = { opened.append($0) }
         panel.onResize = { sizes.append($0) }
         panel.onRemove = { removed += 1 }
-        #expect(panel.level == .floating)
+        #expect(panel.level == MemoPanel.desktopLevel)
         panel.choose(.colour(.blue))
         panel.choose(.collapse)
-        panel.choose(.below)
+        panel.choose(.onTop)
         panel.choose(.openPage)
         panel.choose(.bigger)
         panel.choose(.remove)
         #expect(changes.map(\.colour) == [.blue, .blue, .blue])
-        #expect(changes.map(\.collapsed) == [false, true, true] && changes.last?.below == true)
-        #expect(panel.level == MemoPanel.belowLevel)
+        #expect(changes.map(\.collapsed) == [false, true, true] && changes.last?.onTop == true)
+        // Kept on top: above the windows of its own Space, not every Space.
+        #expect(panel.level == .floating && !panel.collectionBehavior.contains(.canJoinAllSpaces))
         #expect(opened == ["https://docs.example.com/q4"] && sizes == [PaperLook.steps[2]] && removed == 1)   // bigger than 1 is 1.2
         #expect(panel.contextMenu().items.map(\.title).first == "Open page")
+    }
+
+    @Test func aNoteLivesOnTheDesktopAndComesUpWhenNewDueOrWrittenOn() {
+        // On the desktop: under every window, the same on every Space; never over a full-screen app.
+        let desk = MemoPanel.level(onTop: false, up: false)
+        #expect(desk.level == MemoPanel.desktopLevel && desk.behaviour.contains(.canJoinAllSpaces) && !desk.behaviour.contains(.fullScreenAuxiliary))
+        // Up: on top of everything, wherever the person is.
+        let up = MemoPanel.level(onTop: false, up: true)
+        #expect(up.level == .floating && up.behaviour.contains(.canJoinAllSpaces) && up.behaviour.contains(.fullScreenAuxiliary))
+        // Kept on top: above the windows of its own Space only.
+        let kept = MemoPanel.level(onTop: true, up: false)
+        #expect(kept.level == .floating && !kept.behaviour.contains(.canJoinAllSpaces))
+
+        let panel = MemoPanel(memo: memo(), scale: 1, hideFromScreenShare: false)
+        #expect(!panel.up && panel.level == MemoPanel.desktopLevel)
+        panel.raise(for: 60)
+        #expect(panel.up && panel.level == .floating)
+        panel.settle()
+        #expect(!panel.up && panel.level == MemoPanel.desktopLevel)
+        // Woken: up and glowing until it has been clicked and the mouse has left it.
+        panel.raise()
+        panel.state.warm = true
+        panel.hovered(false)
+        #expect(panel.up && panel.state.warm)   // never clicked: still up
+        panel.hovered(true)
+        panel.sendEvent(NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: panel.windowNumber,
+                                           context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+        #expect(panel.up)
+        panel.hovered(false)
+        #expect(!panel.up && !panel.state.warm)
+    }
+
+    @Test func theWindowsTickOnTheMinuteAndBringANewNoteUpButNotTheOnesFromBeforeLaunch() {
+        let store = MemoStore(directory: nil)
+        store.clock = { self.at }
+        store.save(memo("n-old", text: "From yesterday"))
+        let windows = MemoWindows(store: store, scale: 1, hideFromScreenShare: false)
+        windows.shows = false
+        windows.start()
+        #expect(windows.panels["n-old"]?.up == false)
+        let fresh = windows.newNote(memo("n-new", text: "Just pinned"))
+        #expect(windows.panels[fresh.id]?.up == true)
+
+        let later = at.addingTimeInterval(600)
+        windows.tick(now: later)
+        #expect(windows.panels.values.allSatisfy { $0.state.now == later })
+        // 10:13:20 ticks next at 10:14:00.3, in step with the menu bar's clock.
+        let twenty = Date(timeIntervalSinceReferenceDate: 1_000 * 60 + 20)
+        #expect(MemoWindows.nextMinute(after: twenty) == Date(timeIntervalSinceReferenceDate: 1_001 * 60 + 0.3))
     }
 
     @Test func theWindowsKeepAPanelForEveryNoteAndPlaceANewOneAboveTheOrb() {

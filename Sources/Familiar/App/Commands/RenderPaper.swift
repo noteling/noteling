@@ -80,6 +80,11 @@ func runRenderPaper() {
         render(onDesk(memoView(memo, tilt: false)), "\(name).png")
     }
     render(onDesk(memoView(dictated, collapsed: true, tilt: false)), "memo-collapsed.png")
+    // The peel, as it shows when the mouse is on the paper.
+    render(onDesk(ZStack(alignment: .topLeading) {
+        memoView(dictated, tilt: false)
+        PeelButton(help: "Take this note down", action: {}).offset(x: PeelButton.offset, y: PeelButton.offset)
+    }), "memo-peel.png")
     for (card, name) in zip(cards, ["card-urgent", "card-prices", "card-orders", "card-stock", "card-review"]) {
         render(onDesk(cardView(card)), "\(name).png")
     }

@@ -35,6 +35,15 @@ alone (`DeckModel.needs`). The phase's build order is done: PRs #93 to #97, stac
 carries the version bump for a pre-release DMG, cut with `scripts/release.sh` by the user (notarization is an outward
 action this session couldn't take), then `gh release create v0.9.0 --prerelease`. One UAT of the whole phase follows.
 
+**UAT, round one (2026-11-05):** chat-to-note "VERY smooth"; the paper "good enough that I would not hate it
+initially". Fixed on `feature/uat-notes` (stacked on the release branch) for a 0.9.1 pre-release: the ⌃⌥N hotkey is
+gone (never found; ⌃⌥Space and "note: …" already cover quick capture) and New note stays in the orb's menu; notes live
+on the desktop (under windows, the same on every Space) instead of floating over everything on every Space, which was
+the one real annoyance; a note comes up on top when new (a minute), when its when comes (until clicked) and while
+written on; Keep on top per note replaces Keep below windows; the when words move on the minute; the × became the
+peel, a 28-point round button over the corner on hover, and removed files go to the Trash. No TTL: an easy peel was
+chosen over a note that leaves on its own. The deck, lamp, receipt and teaching are still to be tried.
+
 ## Why
 
 The stickers as shipped (0.8.0 to 0.8.3) are three slabs of paper beside the orb, always on, each headed by the name of

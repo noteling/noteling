@@ -15,6 +15,8 @@ final class MemoStore: ObservableObject {
     var memory: MemoryLog?
     /// A note's when came: the app brings it forward.
     var onWake: ((Memo) -> Void)?
+    /// Whether a removed note's file goes to the Trash rather than away; tests keep the Trash clean.
+    var trashes = true
 
     static let folder = "memos"
 
@@ -58,10 +60,16 @@ final class MemoStore: ObservableObject {
     }
 
     /// Takes the note away for good; what it said stays in the log.
-    func remove(_ id: String) {
+    /// Takes a note away. Its file goes to the Trash, where a wrong click is undone in Finder; a blank note, or a draft
+    /// the scribe never claimed, just goes. The log remembers its first line either way.
+    func remove(_ id: String, toTrash: Bool = true) {
         guard let memo = memo(id: id) else { return }
         all.removeAll { $0.id == id }
-        if let directory { try? FileManager.default.removeItem(at: Self.file(id, in: directory)) }
+        if let directory {
+            let file = Self.file(id, in: directory)
+            let trashed = toTrash && trashes && (try? FileManager.default.trashItem(at: file, resultingItemURL: nil)) != nil
+            if !trashed { try? FileManager.default.removeItem(at: file) }
+        }
         memory?.append(["note": id, "removed": memo.firstLine])
         scheduleWake()
     }

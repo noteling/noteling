@@ -66,7 +66,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var memoScribe: MemoScribe?
     /// The deck is open: the person clicked the lamp, and no card has run out since.
     var deckOpen = false
-    var noteHotKey: HotKey?
 
     var watcherMenuItem: NSMenuItem!
     var hideMenuItem: NSMenuItem!
@@ -237,7 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         stickersMenuItem = NSMenuItem(title: "Stickers", action: nil, keyEquivalent: "")
         stickersMenuItem.submenu = NSMenu(title: "Stickers")
         menu.addItem(stickersMenuItem)
-        menu.addItem(NSMenuItem(title: "New Note   \(HotKey.display(config.noteHotkey))", action: #selector(menuNewNote), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "New Note", action: #selector(menuNewNote), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Point the Pen   ⌃⌥Space", action: #selector(menuWand), keyEquivalent: ""))
         watchMenuItem = NSMenuItem(title: "Watch Me", action: #selector(menuWatch), keyEquivalent: "")
@@ -313,13 +312,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func setupHotKey() {
         hotKey?.unregister()
         hotKey = nil
-        noteHotKey?.unregister()
-        noteHotKey = nil
-        if let (code, mods) = HotKey.parse(config.noteHotkey) {
-            noteHotKey = HotKey(keyCode: code, modifiers: mods) { [weak self] in self?.newNote() }
-        } else if !config.noteHotkey.isEmpty {
-            Log.info("hotkey: cannot parse the note hotkey \"\(config.noteHotkey)\"")
-        }
         let spec = config.hotkey.isEmpty ? "control+option+space" : config.hotkey
         guard let (code, mods) = HotKey.parse(spec) else { Log.info("hotkey: cannot parse \"\(spec)\""); return }
         hotKey = HotKey(keyCode: code, modifiers: mods) { [weak self] in
