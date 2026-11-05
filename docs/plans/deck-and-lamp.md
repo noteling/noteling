@@ -15,7 +15,12 @@ minister writes a `headline`; Do it holds the card off the deck for five seconds
 the matter goes quiet with what was done; Mine takes the matter (`yours`) and makes a note of it; Not now puts it away;
 keys once the deck is clicked; stamps in the memory log; `--render-paper` renders the deck too and `--render-stickers`
 is gone. The sticker config keys stay (no default changed, so no new key). Not yet: Mine from the matter's page.
-Step 3 is next.
+Step 3 built on `feature/lamp` (stacked on step 2): `LampState` and `LampView` in `Shared/Shell/Lamp.swift` (a door:
+Ask draws it on the bubble's top-left corner, Attend sets it from the deck); off, warm, hot; hover words; click opens
+or closes the deck, or Jobs when nothing needs you; right-click: the deck, New note, Jobs…, Hide the lamp (config
+`lampHidden`, back from Stickers › Show the Lamp); the pencil in the menu bar carries a dot; the deck shows only while
+opened (`shows(opened:)`), Esc closes it, and it closes by itself when the last card is stamped; Stickers › Open the
+Deck for a hidden bubble. The urgent notification is unchanged. Step 4 is next.
 
 ## Why
 

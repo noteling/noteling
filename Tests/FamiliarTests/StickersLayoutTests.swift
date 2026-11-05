@@ -64,7 +64,7 @@ import Testing
     @Test func theStickersShowBesideACollapsedBubbleOrAtTheirOwnSpot() {
         func beside(bubbleVisible: Bool = true, alpha: CGFloat = 1, expanded: Bool = false, flying: Bool = false, count: Int = 1,
                     hidden: Bool = false, controlling: Bool = false) -> Bool {
-            StickersPanel.shows(count: count, hidden: hidden, controlling: controlling, detached: false,
+            StickersPanel.shows(count: count, opened: true, hidden: hidden, controlling: controlling, detached: false,
                                 bubbleVisible: bubbleVisible, alpha: alpha, expanded: expanded, flying: flying)
         }
         #expect(beside())
@@ -78,7 +78,7 @@ import Testing
 
         func own(bubbleVisible: Bool = false, alpha: CGFloat = 0, expanded: Bool = true, flying: Bool = true, count: Int = 1,
                  hidden: Bool = false, controlling: Bool = false) -> Bool {
-            StickersPanel.shows(count: count, hidden: hidden, controlling: controlling, detached: true,
+            StickersPanel.shows(count: count, opened: true, hidden: hidden, controlling: controlling, detached: true,
                                 bubbleVisible: bubbleVisible, alpha: alpha, expanded: expanded, flying: flying)
         }
         #expect(own())                           // the bubble is away, the pad open, a crane flying: the stack stays
@@ -89,6 +89,16 @@ import Testing
 
     /// Bigger and Smaller move through five steps, from a little smaller than designed to a good deal bigger, and a
     /// remembered size outside them is brought back in.
+    @Test func theDeckShowsOnlyOnceOpenedFromTheLampAndTheLampFollowsTheDeck() {
+        #expect(!StickersPanel.shows(count: 2, opened: false, hidden: false, controlling: false, detached: true, bubbleVisible: true, alpha: 1, expanded: false, flying: false))
+        #expect(StickersPanel.shows(count: 2, opened: true, hidden: false, controlling: false, detached: true, bubbleVisible: false, alpha: 0, expanded: true, flying: true))
+        #expect(LampState.of(count: 0, urgent: false) == .off && LampState.of(count: 2, urgent: false) == .warm && LampState.of(count: 1, urgent: true) == .hot)
+        #expect(LampState.words(count: 0, urgent: false) == "Nothing needs you" && LampState.words(count: 1, urgent: false) == "1 needs you")
+        #expect(LampState.words(count: 3, urgent: false) == "3 need you" && LampState.words(count: 3, urgent: true) == "3 need you, one can't wait")
+        #expect(LampState.words(count: 1, urgent: true) == "1 needs you, and can't wait")
+        #expect(AppDelegate.statusImage(lamp: .off)?.isTemplate == true && AppDelegate.statusImage(lamp: .hot)?.isTemplate == false)
+    }
+
     @Test func theSizeMovesInStepsAndTheWidthFollows() {
         #expect(StickersLook.steps == [0.85, 1, 1.2, 1.4, 1.6])
         #expect(StickersLook.bigger(than: 1) == 1.2 && StickersLook.smaller(than: 1) == 0.85)
@@ -121,8 +131,8 @@ import Testing
         let lena = Sticker(id: "m-1", title: "Mail", text: "Lena asks for\nthe deck by 3.", byline: nil, at: at, urgent: true)
         let long = Sticker(id: "m-2", title: "GM", headline: String(repeating: "x", count: 80), text: "Short.", byline: "Yang", at: at, urgent: false)
         let shown = StickersPanel.menuBar(stickers: [lena, long], hidden: false, detached: false)
-        #expect(shown.map { $0?.title } == ["Lena asks for the deck by 3.", String(repeating: "x", count: 60) + "…", nil, "Hide Stickers"])
-        #expect(shown[0]?.choice == .open("m-1") && shown[1]?.choice == .open("m-2") && shown[3]?.choice == .hide)
+        #expect(shown.map { $0?.title } == ["Open the Deck (2)", nil, "Lena asks for the deck by 3.", String(repeating: "x", count: 60) + "…", nil, "Hide Stickers"])
+        #expect(shown[0]?.choice == .show && shown[2]?.choice == .open("m-1") && shown[3]?.choice == .open("m-2") && shown[5]?.choice == .hide)
         let none = StickersPanel.menuBar(stickers: [], hidden: false, detached: true)
         #expect(none.map { $0?.title } == ["No stickers", nil, "Hide Stickers", "Put back beside Noteling"])
         #expect(none[0]?.enabled == false && none[2]?.enabled == false)

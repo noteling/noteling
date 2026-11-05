@@ -49,19 +49,25 @@ the page, and the job's name with who shared it and when. It shows only sure thi
 new to you. Everything else stays quiet in Noteling's memory, with the reason, and you can ask in chat: "anything about
 Acme?", "why did I get that card?", "what did the orders job find yesterday?".
 
+- **The lamp** at the top-left of Noteling's note is the whole ask. Off when nothing needs you, warm when something
+  does, hot when something can't wait; point at it for "3 need you". The pencil in the menu bar carries the same dot.
+  Click the lamp and the deck opens beside the note; click it again, or press **Esc** on the deck, and the deck waits
+  behind the lamp. With nothing on it, the lamp opens Jobs. Right-click the lamp for the deck, a new note, Jobs, and
+  **Hide the lamp** (back from **Stickers › Show the Lamp** in the menu bar). **Stickers › Open the Deck** opens it
+  too, for when the note is hidden.
 - One card at a time, urgent ones first; **2 more** above it opens Jobs, where every card waits. The deck steps aside
-  while the chat is open, and comes back with it.
+  while the chat is open, and comes back with it; it closes by itself when the last card is stamped.
 - Under the card, three verbs on paper tabs. **Its action** (such as **Nudge warehouse**, the button the minister picked
   from the job's own) has Noteling do it, as you: a line under the deck counts down a few seconds with **undo**, then
   it runs and the line says what came of it. **Mine** turns the card into a note of your own, pinned near the deck,
   with the matter still a click away on it. **Not now** puts it away: it stays away until something about it changes
   and the minister thinks you should see it again. The small × when you point at the card is Not now too.
 - Click the deck once and the keys do the same: **←** its action, **→** Mine, **↑** Not now, **⏎** opens it, **Esc**
-  gives the keys back.
+  closes the deck.
 - Click a card to open it: the words, why you're seeing it, the rows behind it, every button the job offers, and
   **Open page**.
 - A card leaves by itself when the job no longer reports what it was about.
-- An urgent card is also a notification. Clicking the notification opens the card.
+- An urgent card is also a notification, whether or not the deck is open. Clicking the notification opens the card.
 - Drag the card to move the deck. Beside the note, the deck goes where the note goes; once you've put it somewhere else
   it stays there, whatever the note does, until **Put back beside Noteling** in its right-click menu.
 - Right-click the card for **Open**, its action, **Mine**, **Not now**, **Bigger** and **Smaller** (the size is

@@ -59,14 +59,14 @@ import Testing
         #expect(StickersPanel.key(123, card: withAction) == .doIt("m-1") && StickersPanel.key(123, card: without) == nil)
         #expect(StickersPanel.key(124, card: withAction) == .mine("m-1") && StickersPanel.key(126, card: withAction) == .putAway("m-1"))
         #expect(StickersPanel.key(36, card: withAction) == .open("m-1") && StickersPanel.key(76, card: without) == .open("m-2"))
-        #expect(StickersPanel.key(53, card: withAction) == .hide && StickersPanel.key(53, card: nil) == .hide)
+        #expect(StickersPanel.key(53, card: withAction) == .close && StickersPanel.key(53, card: nil) == .close)
         #expect(StickersPanel.key(49, card: withAction) == nil && StickersPanel.key(123, card: nil) == nil)
     }
 
     @Test func theMenuBarListsEveryCardByItsHeadline() {
         var card = Sticker(id: "m-1", title: "Pages up", headline: "Checkout is down", text: "Two steps are down.", byline: "Yang", at: at, urgent: true)
         let items = StickersPanel.menuBar(stickers: [card], hidden: false, detached: false)
-        #expect(items.map { $0?.title ?? "" } == ["Checkout is down", "", "Hide Stickers"])
+        #expect(items.map { $0?.title ?? "" } == ["Open the Deck (1)", "", "Checkout is down", "", "Hide Stickers"])
         card.headline = nil
         #expect(StickersPanel.menuLine(card) == "Two steps are down.")
         #expect(StickersPanel.menuBar(stickers: [], hidden: false, detached: true).map { $0?.title ?? "" } == ["No stickers", "", "Hide Stickers", "Put back beside Noteling"])
@@ -82,6 +82,10 @@ import Testing
         let panel = StickersPanel(model: deck(matters), look: StickersLook(scale: 1.4), home: NSPoint(x: 300, y: 100), hideFromScreenShare: false)
         panel.onChange = { changes += 1 }
         panel.onHide = { hides += 1 }
+        var closes = 0
+        panel.onClose = { closes += 1 }
+        panel.choose(.close)
+        #expect(closes == 1)
         #expect(panel.isDetached && panel.home == NSPoint(x: 300, y: 100) && !panel.hidden)
         #expect(panel.contextMenu().items.map(\.title) == ["Bigger", "Smaller", "", "Put back beside Noteling", "Hide stickers"])
 
