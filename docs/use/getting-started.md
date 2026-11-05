@@ -16,7 +16,7 @@ tools check things for you, and find what needs you as stickers beside the note.
 3. Open Noteling. A small note appears on your desktop. What your jobs find comes as stickers beside it; **Jobs…** in the
    pencil icon in the menu bar opens the Jobs window, with every job and what it found. When you ask chat to turn on or
    run a job, the **Open Jobs** tab under its reply opens it too.
-4. A note of your own: press **⌃⌥N**, or tell the chat "remind me to…". See [Your own notes](notes.md).
+4. A note of your own: tell the chat "remind me to…", or right-click Noteling and choose **New note**. See [Your own notes](notes.md).
 
 ## Allow access
 

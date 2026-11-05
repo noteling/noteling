@@ -43,7 +43,6 @@ struct Config: Codable {
     var stickersY: Double? = nil
     var stickerScale: Double = 1              // how big the stickers are drawn, 1 = as designed (`StickersLook.steps`)
     var memoScale: Double = 1                 // how big your own notes are drawn, 1 = as designed (`PaperLook.steps`)
-    var noteHotkey: String = "control+option+n"   // a new note of your own, from anywhere
     var lampHidden: Bool = false              // the lamp on the bubble, hidden from its own menu
     var pokeHintsShown: Int = 0               // the "double-click to chat" callout shows on the first few pokes
     var secretsStore: String = "auto"         // "auto": Keychain for Developer ID builds, file for dev builds; or "file" / "keychain"
@@ -161,7 +160,6 @@ struct Config: Codable {
         stickersY = try c.decodeIfPresent(Double.self, forKey: .stickersY)
         stickerScale = try c.decodeIfPresent(Double.self, forKey: .stickerScale) ?? d.stickerScale
         memoScale = try c.decodeIfPresent(Double.self, forKey: .memoScale) ?? d.memoScale
-        noteHotkey = try c.decodeIfPresent(String.self, forKey: .noteHotkey) ?? d.noteHotkey
         lampHidden = try c.decodeIfPresent(Bool.self, forKey: .lampHidden) ?? d.lampHidden
         pokeHintsShown = try c.decodeIfPresent(Int.self, forKey: .pokeHintsShown) ?? 0
         secretsStore = try c.decodeIfPresent(String.self, forKey: .secretsStore) ?? d.secretsStore

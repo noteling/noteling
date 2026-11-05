@@ -247,6 +247,7 @@ extension AppDelegate {
         let store = MemoStore(directory: Config.dir.appendingPathComponent(MemoStore.folder))
         store.memory = matters?.memory ?? MemoryLog(directory: Config.dir.appendingPathComponent(MemoryLog.folder))
         memos = store
+        Log.info("notes: \(store.all.count) in \(MemoStore.folder)/")
         let windows = MemoWindows(store: store, scale: CGFloat(config.memoScale), hideFromScreenShare: config.hideFromScreenShare)
         windows.orbFrame = { [weak self] in
             guard let self, self.panel.isVisible, !self.shell.expanded else { return nil }

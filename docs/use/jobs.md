@@ -70,7 +70,7 @@ Acme?", "why did I get that card?", "what did the orders job find yesterday?".
   from the job's own) has Noteling do it, as you: a line under the deck counts down a few seconds with **undo**, then
   it runs and the line says what came of it. **Mine** turns the card into a note of your own, pinned near the deck,
   with the matter still a click away on it. **Not now** puts it away: it stays away until something about it changes
-  and the minister thinks you should see it again. The small × when you point at the card is Not now too.
+  and the minister thinks you should see it again. The round peel button over the card's corner, when you point at it, is Not now too.
 - Click the deck once and the keys do the same: **←** its action, **→** Mine, **↑** Not now, **⏎** opens it, **Esc**
   closes the deck.
 - Click a card to open it: the words, why you're seeing it, the rows behind it, every button the job offers, and

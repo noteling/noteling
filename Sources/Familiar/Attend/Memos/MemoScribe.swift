@@ -34,7 +34,7 @@ final class MemoScribe {
     /// The person sent a question with a page on the screen: if it reads as a note, the paper goes up now with their words.
     func began(_ question: String, page: String?) {
         pageOnScreen = page
-        if let draft { store.remove(draft) }
+        if let draft { store.remove(draft, toTrash: false) }
         draft = nil
         guard Self.looksLikeNote(question) else { return }
         var memo = store.blank()
@@ -46,7 +46,7 @@ final class MemoScribe {
 
     /// The turn ended: a draft the model never wrote on comes down.
     func turnEnded() {
-        if let draft { store.remove(draft) }
+        if let draft { store.remove(draft, toTrash: false) }
         draft = nil
     }
 
