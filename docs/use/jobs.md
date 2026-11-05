@@ -61,6 +61,11 @@ Acme?", "why did I get that card?", "what did the orders job find yesterday?".
 - **What's been handled**, at the top of Jobs and behind a dark lamp, is the receipt: today's tally ("Noteling did 2 ·
   you decided 5"), when each job last looked, the cards you took (**Yours**), what Noteling did and what each press
   came to, what you put away, and what you've taught it. Nothing is pushed at you; it is there when you look.
+- **Teaching it.** Put away two cards from one job within a week and, after the cards, the deck asks on blue paper:
+  "Stop showing its findings unless one can't wait?" **Yes, stop** is a lesson the minister reads at every turn, listed
+  under Taught on the receipt with **Forget**; **No, keep showing** holds the question for a week.
+- **Good news** comes last, on green paper: a payment that landed, a five-star review, something you were waiting for.
+  It needs nothing of you; **Thanks** puts it away, and it never lights the lamp on its own.
 - Under the card, three verbs on paper tabs. **Its action** (such as **Nudge warehouse**, the button the minister picked
   from the job's own) has Noteling do it, as you: a line under the deck counts down a few seconds with **undo**, then
   it runs and the line says what came of it. **Mine** turns the card into a note of your own, pinned near the deck,

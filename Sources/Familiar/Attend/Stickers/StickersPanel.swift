@@ -27,7 +27,7 @@ enum StickerDrag { case moved, ended }
 
 /// One line of the deck's right-click menu; a nil in the list is a separator.
 struct StickerMenuItem: Equatable {
-    enum Choice: Equatable { case open(String), doIt(String), mine(String), putAway(String), bigger, smaller, attach, hide, show, more, close }
+    enum Choice: Equatable { case open(String), doIt(String), mine(String), putAway(String), thanks(String), bigger, smaller, attach, hide, show, more, close }
     let title: String
     var enabled = true
     let choice: Choice
@@ -44,7 +44,7 @@ struct PendingPress: Equatable {
 /// state; this keeps only the moments between a stamp and its effect.
 @MainActor
 final class DeckModel: ObservableObject {
-    enum Verdict: String { case doIt = "do", mine, notNow = "not now" }
+    enum Verdict: String { case doIt = "do", mine, notNow = "not now", thanks }
 
     let matters: Matters
     /// A Do it waiting for its few seconds to pass.
@@ -55,6 +55,10 @@ final class DeckModel: ObservableObject {
     @Published var stamped: (id: String, verdict: Verdict)?
     /// The last card went: "Nothing needs you." shows for a moment, then the deck closes.
     @Published var ended = false
+    /// The minister's own question, asked after the cards: "Stop showing these?"
+    @Published var question: LessonQuestion?
+    /// What the person taught: the question comes from here and its answer goes here.
+    var lessons: Lessons? { didSet { refreshQuestion() } }
     var clock: () -> Date = Date.init
     /// How long a Do it can be taken back, and how long the stamp shows before the card goes.
     var undoSeconds: TimeInterval = 5
@@ -84,15 +88,35 @@ final class DeckModel: ObservableObject {
     var card: Sticker? { cards.first }
     var more: Int { max(0, cards.count - 1) }
     var count: Int { cards.count }
-    /// A card, the end, a press waiting or what it came to: something for the panel to show.
-    var hasSomethingToShow: Bool { count > 0 || ended || pending != nil || said != nil }
+    /// A card, a question, the end, a press waiting or what it came to: something for the panel to show.
+    var hasSomethingToShow: Bool { count > 0 || question != nil || ended || pending != nil || said != nil }
+    /// The questions waiting after the cards: one at most.
+    var asks: Int { question == nil ? 0 : 1 }
+    /// What lights the lamp: the cards that need the person, good news aside, and the question.
+    var needs: Int { cards.filter { !$0.good }.count + asks }
+
+    /// The minister's question as it stands, from the cards put away lately.
+    func refreshQuestion() {
+        guard let lessons else { question = nil; return }
+        question = lessons.question(putAway: Lessons.putAway(log: matters.memory, matters: matters, now: clock()))
+    }
+
+    /// The person answered the question: Yes is a lesson, No is remembered for a week.
+    func answer(_ yes: Bool) {
+        guard let question, let lessons else { return }
+        if yes { lessons.teach(job: question.job, name: question.name) } else { lessons.decline(job: question.job) }
+        matters.memory?.append(["stamp": yes ? "taught" : "kept", "job": question.job, "name": question.name])
+        self.question = nil
+        if cards.isEmpty { cardWent() }
+    }
 
     /// Today's tally for the end: "Noteling did 2 · you decided 5".
     var tally: String { Receipt.today(log: matters.memory, matters: matters, now: clock()).tally }
 
-    /// After a stamp: with no card left, the end shows for a moment.
+    /// After a stamp: with no card left, the end shows for a moment, unless a question waits first.
     private func cardWent() {
-        guard cards.isEmpty else { return }
+        refreshQuestion()
+        guard cards.isEmpty, question == nil else { return }
         ended = true
         DispatchQueue.main.asyncAfter(deadline: .now() + endSeconds) { [weak self] in self?.ended = false }
     }
@@ -100,7 +124,7 @@ final class DeckModel: ObservableObject {
     /// The person's verdict on the card: the stamp shows, then the card goes and the verdict takes effect.
     func stamp(_ verdict: Verdict, on id: String) {
         guard let matter = matters.matter(id: id), matter.state == .open, stamped == nil else { return }
-        if verdict == .doIt, matter.view?.action == nil { return }
+        if verdict == .doIt, matter.view?.action == nil || matter.isGood { return }
         if stampSeconds <= 0 { apply(verdict, to: matter); return }
         stamped = (id, verdict)
         DispatchQueue.main.asyncAfter(deadline: .now() + stampSeconds) { [weak self] in
@@ -114,6 +138,9 @@ final class DeckModel: ObservableObject {
         switch verdict {
         case .notNow:
             matters.putAway(matter.id)
+            cardWent()
+        case .thanks:
+            matters.thank(matter.id)
             cardWent()
         case .mine:
             if matters.take(matter.id) != nil { mine?(matter) }
@@ -196,10 +223,13 @@ struct StickersView: View {
             if model.card == nil, model.ended {
                 DeckEndView(tally: model.tally, scale: scale)
                     .transition(.scale(scale: 0.92).combined(with: .opacity))
+            } else if model.card == nil, let question = model.question {
+                DeckQuestionView(question: question, scale: scale, yes: { model.answer(true) }, no: { model.answer(false) })
+                    .transition(.scale(scale: 0.92).combined(with: .opacity))
             }
             if let card = model.card {
                 CardView(card: card, scale: scale, now: model.clock(), stamp: model.stamped?.id == card.id ? model.stamped?.verdict : nil,
-                         open: { model.open(card.id) }, putAway: { model.stamp(.notNow, on: card.id) }, drag: drag, point: { point(card.id, $0) })
+                         open: { model.open(card.id) }, putAway: { model.stamp(card.good ? .thanks : .notNow, on: card.id) }, drag: drag, point: { point(card.id, $0) })
                     .id(card.id)
                     .zIndex(1)
                     .transition(.asymmetric(insertion: .scale(scale: 0.92).combined(with: .opacity),
@@ -236,7 +266,8 @@ struct StickersView: View {
         .environment(\.colorScheme, .light)
     }
 
-    /// The verbs under the card: the action's own label, then Mine and Not now, as paper tabs tucked under the sheet.
+    /// The verbs under the card: the action's own label, then Mine and Not now, as paper tabs tucked under the sheet;
+    /// under good news, Mine and Thanks.
     private func verbs(_ card: Sticker, scale: CGFloat) -> some View {
         TabRow(spacing: 6, rowSpacing: -5) {
             if let action = card.action {
@@ -245,8 +276,13 @@ struct StickersView: View {
             }
             Button("Mine") { model.stamp(.mine, on: card.id) }.buttonStyle(PaperTabStyle()).zIndex(1)
                 .help("Becomes a note of your own  ·  →")
-            Button("Not now") { model.stamp(.notNow, on: card.id) }.buttonStyle(PaperTabStyle()).zIndex(0)
-                .help("Put away; back only if something about it changes  ·  ↑")
+            if card.good {
+                Button("Thanks") { model.stamp(.thanks, on: card.id) }.buttonStyle(PaperTabStyle()).zIndex(0)
+                    .help("Good news, seen  ·  ↑")
+            } else {
+                Button("Not now") { model.stamp(.notNow, on: card.id) }.buttonStyle(PaperTabStyle()).zIndex(0)
+                    .help("Put away; back only if something about it changes  ·  ↑")
+            }
         }
         .frame(width: PaperLook.cardWidth * scale - 14 * scale, alignment: .leading)
         .disabled(model.stamped != nil)
@@ -274,14 +310,14 @@ struct CardView: View {
 
     var body: some View {
         PaperView(headline: card.headline, text: card.text, page: card.page, byline: card.line(now: now), hand: .typed,
-                  colour: card.urgent ? .amber : .yellow, scale: scale, now: now, tilt: PaperLook.tilt(for: card.id))
+                  colour: card.urgent ? .amber : card.good ? .green : .yellow, scale: scale, now: now, tilt: PaperLook.tilt(for: card.id))
             .overlay(alignment: .topTrailing) {
                 if hovering, stamp == nil {
                     Button(action: putAway) {
                         Text("×").font(Font(StickerPaper.font(12 * scale, bold: true))).foregroundStyle(PaperType.inkSoft)
                             .frame(width: 18 * scale, height: 18 * scale).contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain).help("Not now").padding(2 * scale)
+                    .buttonStyle(.plain).help(card.good ? "Thanks" : "Not now").padding(2 * scale)
                 }
             }
             .overlay {
@@ -329,7 +365,32 @@ struct DeckEndView: View {
     }
 }
 
-/// A rubber stamp across the card: DONE in red for Do it, MINE in the pen's ink, NOT NOW in grey.
+/// The minister's question, on blue paper after the cards: "Stop showing these?", with Yes and No under it.
+struct DeckQuestionView: View {
+    let question: LessonQuestion
+    var scale: CGFloat = 1
+    var yes: () -> Void = {}
+    var no: () -> Void = {}
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            PaperView(headline: "Stop showing these?", text: question.text, byline: "A question from the minister", hand: .typed, colour: .blue,
+                      scale: scale, tilt: PaperLook.tilt(for: question.job))
+                .zIndex(1)
+            TabRow(spacing: 6, rowSpacing: -5) {
+                Button("Yes, stop") { yes() }.buttonStyle(PaperTabStyle()).zIndex(1)
+                    .help("Its findings stay quiet unless one can't wait. Forget it on the receipt.")
+                Button("No, keep showing") { no() }.buttonStyle(PaperTabStyle()).zIndex(0)
+                    .help("Not asked again for a week")
+            }
+            .frame(width: PaperLook.cardWidth * scale - 14 * scale, alignment: .leading)
+            .padding(.leading, 14 * scale).padding(.top, -5)
+            .zIndex(0)
+        }
+    }
+}
+
+/// A rubber stamp across the card: DONE in red for Do it, MINE in the pen's ink, NOT NOW in grey, THANKS in green.
 struct StampView: View {
     let verdict: DeckModel.Verdict
     var scale: CGFloat = 1
@@ -339,6 +400,7 @@ struct StampView: View {
         case .doIt: return "DONE"
         case .mine: return "MINE"
         case .notNow: return "NOT NOW"
+        case .thanks: return "THANKS"
         }
     }
     var ink: Color {
@@ -346,6 +408,7 @@ struct StampView: View {
         case .doIt: return Pad.redInk
         case .mine: return Pad.penInk
         case .notNow: return PaperType.inkSoft
+        case .thanks: return PaperColour.green.edge
         }
     }
 
@@ -439,7 +502,7 @@ final class StickersPanel: NSPanel {
         switch code {
         case 123: return card.action == nil ? nil : .doIt(card.id)   // ←
         case 124: return .mine(card.id)                              // →
-        case 126: return .putAway(card.id)                           // ↑
+        case 126: return card.good ? .thanks(card.id) : .putAway(card.id)   // ↑
         case 36, 76: return .open(card.id)                           // ⏎
         case 53: return .close                                       // Esc
         default: return nil
@@ -546,7 +609,9 @@ final class StickersPanel: NSPanel {
         if let card {
             items.append(StickerMenuItem(title: "Open", choice: .open(card.id)))
             if let action = card.action { items.append(StickerMenuItem(title: action.label, choice: .doIt(card.id))) }
-            items += [StickerMenuItem(title: "Mine", choice: .mine(card.id)), StickerMenuItem(title: "Not now", choice: .putAway(card.id)), nil]
+            items.append(StickerMenuItem(title: "Mine", choice: .mine(card.id)))
+            items.append(card.good ? StickerMenuItem(title: "Thanks", choice: .thanks(card.id)) : StickerMenuItem(title: "Not now", choice: .putAway(card.id)))
+            items.append(nil)
         }
         items += [StickerMenuItem(title: "Bigger", enabled: StickersLook.bigger(than: scale) != nil, choice: .bigger),
                   StickerMenuItem(title: "Smaller", enabled: StickersLook.smaller(than: scale) != nil, choice: .smaller), nil]
@@ -608,6 +673,7 @@ final class StickersPanel: NSPanel {
         case .doIt(let id): model.stamp(.doIt, on: id)
         case .mine(let id): model.stamp(.mine, on: id)
         case .putAway(let id): model.stamp(.notNow, on: id)
+        case .thanks(let id): model.stamp(.thanks, on: id)
         case .bigger: if let next = StickersLook.bigger(than: look.scale) { resize(to: next) }
         case .smaller: if let next = StickersLook.smaller(than: look.scale) { resize(to: next) }
         case .attach:

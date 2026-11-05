@@ -13,6 +13,7 @@ extension AppDelegate {
         setupFolderJobs()   // before the window, which shows them
         guard var panel = folderJobs?.panel else { return }
         panel.matters = matters
+        panel.lessons = lessons
         jobsWindow = JobsWindowController(folderJobs: panel, setup: jobsSetup, hideFromScreenShare: config.hideFromScreenShare)
         jobsWindow.onOpen = { [weak self] in self?.linkedTools.checkSoon() }   // a job pushed a moment ago shows without a restart
         assistant.onOpenJobs = { [weak self] in self?.jobsWindow.showJobs() }
@@ -64,6 +65,8 @@ extension AppDelegate {
         matters = Matters(directory: Config.dir.appendingPathComponent(Matters.folder))
         minister = Minister(matters: matters, memory: memory, store: feature.store, config: { [weak self] in self?.effectiveConfig ?? Config() })
         minister.recall = recall
+        lessons = Lessons(file: Config.dir.appendingPathComponent(Matters.folder).appendingPathComponent(Lessons.fileName))
+        minister.lessons = lessons
         minister.onUrgent = { [weak notifier] matter in
             notifier?.post(matter: matter.id, title: matter.jobName, body: matter.view?.text ?? "")
         }
@@ -106,6 +109,7 @@ extension AppDelegate {
         }
         model.open = { [weak self] id in self?.jobsWindow.showMatter(id: id) }
         model.openMore = { [weak self] in self?.jobsWindow.showJobs() }
+        model.lessons = lessons
         var home: NSPoint?
         if let x = config.stickersX, let y = config.stickersY, x.isFinite, y.isFinite { home = NSPoint(x: x, y: y) }
         let stickers = StickersPanel(model: model, look: StickersLook(scale: CGFloat(config.stickerScale)), home: home,
@@ -143,8 +147,8 @@ extension AppDelegate {
     func deckChanged() {
         guard let model = stickersPanel?.model else { return }
         let urgent = model.cards.contains(where: \.urgent)
-        shell.lamp = LampState.of(count: model.count, urgent: urgent)
-        shell.lampWords = LampState.words(count: model.count, urgent: urgent)
+        shell.lamp = LampState.of(count: model.needs, urgent: urgent)
+        shell.lampWords = LampState.words(count: model.needs, urgent: urgent)
         updateStatusItemImage()
         if !model.hasSomethingToShow { deckOpen = false }
         placeRunStickers()
@@ -153,7 +157,7 @@ extension AppDelegate {
     /// The lamp was clicked: the deck opens, or closes if it was open; with nothing on it, the receipt opens instead.
     func lampClicked() {
         guard let model = stickersPanel?.model else { return }
-        if model.count == 0 { jobsWindow.showReceipt(); return }
+        if model.count + model.asks == 0 { jobsWindow.showReceipt(); return }
         deckOpen.toggle()
         if deckOpen { stickersPanel?.hidden = false }
         placeRunStickers()
