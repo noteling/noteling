@@ -6,7 +6,8 @@ import FamiliarContracts
 /// changed (the jobs' findings, new, changed and gone), it sorts the findings into matters and says show or quiet, and
 /// why (triage); then it writes each open matter's sticker and notes (compose). Code keeps every state, checks every
 /// answer, closes a matter whose findings are gone or whose job is off, keeps a put-away matter quiet until a finding
-/// changes, and never runs anything. Changes are batched for about a minute, so one run of several jobs is one turn.
+/// changes, and never runs anything. Changes are batched for about a minute, so one run of several jobs is one turn,
+/// and never for more than two, however they keep coming.
 @MainActor
 final class Minister: ObservableObject {
     @Published private(set) var status = ""
@@ -19,6 +20,8 @@ final class Minister: ObservableObject {
     private let makeClient: (Config) -> (any ConversationClient)?
     /// How long changes gather before a turn; nil takes no turn by itself, for tests that call `flush()`.
     var batchSeconds: TimeInterval? = 60
+    /// The longest they gather, however they keep coming: a steady stream of findings can't put the turn off for ever.
+    var batchLimitSeconds: TimeInterval = 120
     var clock: () -> Date = Date.init
     /// An urgent sticker was written for the first time: the app tells the person.
     var onUrgent: ((Matter) -> Void)?
@@ -30,7 +33,10 @@ final class Minister: ObservableObject {
     static let composeRounds = 8
 
     private var pending: [String: MinisterPrompt.Shown] = [:]
+    /// The batch timer, while one is waiting to take a turn.
     private var timer: Task<Void, Never>?
+    /// When what is waiting now began to wait, for the limit.
+    private var waitingSince: Date?
     private var worker: Task<Void, Never>?
     /// A triage that failed is tried once more with the next batch; after that its findings are logged as unjudged.
     private var retried = false
@@ -85,17 +91,27 @@ final class Minister: ObservableObject {
             if let until = matter.view?.until, until <= now, matters.matter(id: matter.id)?.state == .open { matters.timePassed(matter.id) }
         }
         pending = pending.filter { running($0.value.ref).why == nil }
-        if hasWork { schedule() }
+        if hasWork { schedule(restart: false) }   // the tick comes more often than the batch is long
     }
 
     private var hasWork: Bool { !pending.isEmpty || matters.open.contains(where: \.recompose) }
 
-    private func schedule() {
+    /// A turn in `batchSeconds`, with a limit: however often the timer is restarted, it fires no later than
+    /// `batchLimitSeconds` after the batch began waiting. `notice` restarts it at each report, so a run of several
+    /// jobs ends up in one turn; `reconcile`, at each jobs tick, only arms it when none is waiting, since the tick comes
+    /// more often than the batch is long and restarting there would put the turn off for ever (issue #90).
+    private func schedule(restart: Bool = true) {
         guard let seconds = batchSeconds else { return }
+        let now = clock()
+        let since = waitingSince ?? now
+        waitingSince = since
+        if timer != nil, !restart { return }
         timer?.cancel()
-        timer = Task { [weak self] in
-            if seconds > 0 { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
+        let wait = max(0, min(seconds, since.addingTimeInterval(batchLimitSeconds).timeIntervalSince(now)))
+        timer = Task { @MainActor [weak self] in
+            if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000)) }
             guard !Task.isCancelled, let self else { return }
+            self.timer = nil
             await self.flush()
         }
     }
@@ -104,7 +120,7 @@ final class Minister: ObservableObject {
     /// the batch timer call it.
     func flush() async {
         while let running = worker { await running.value }
-        guard hasWork else { return }
+        guard hasWork else { waitingSince = nil; return }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             isRunning = true
@@ -118,12 +134,15 @@ final class Minister: ObservableObject {
 
     func stop() {
         timer?.cancel()
+        timer = nil
         worker?.cancel()
     }
 
     // MARK: a turn
 
+    /// Takes everything waiting now; what fails here is scheduled again, and begins to wait afresh.
     private func turn() async {
+        waitingSince = nil
         let settings = config()
         guard let client = makeClient(settings) else {
             status = ConversationBackend.setupMessage(config: settings)   // the findings wait for a wake after Settings
