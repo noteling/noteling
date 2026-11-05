@@ -91,6 +91,7 @@ struct Receipt: Equatable {
 struct ReceiptPage: View {
     @ObservedObject var matters: Matters
     var log: MemoryLog?
+    var lessons: Lessons?
     var now: () -> Date = Date.init
     /// Opens a matter's page.
     var open: (String) -> Void = { _ in }
@@ -130,8 +131,7 @@ struct ReceiptPage: View {
                     }
                 }
                 FolderJobSection(title: "Taught", icon: "graduationcap") {
-                    Text("Nothing yet. Stamp Not now twice on the same kind of thing and the minister will ask whether to stop showing it.")
-                        .font(.system(size: 12)).foregroundStyle(Pad.inkSoft).fixedSize(horizontal: false, vertical: true)
+                    if let lessons { TaughtList(lessons: lessons, now: now) } else { TaughtList.nothingYet }
                 }
             }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -144,5 +144,32 @@ struct ReceiptPage: View {
                 Text(line).font(.system(size: 12)).foregroundStyle(Pad.inkSoft).lineLimit(2)
             }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         }.buttonStyle(.plain)
+    }
+}
+
+/// What the person taught, each with Forget; or that nothing was taught yet and how it comes about.
+struct TaughtList: View {
+    @ObservedObject var lessons: Lessons
+    var now: Date
+
+    static let nothingYet = Text("Nothing yet. Put away two cards from one job within a week and the minister asks whether to stop showing its findings.")
+        .font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
+
+    var body: some View {
+        if lessons.all.isEmpty {
+            Self.nothingYet.fixedSize(horizontal: false, vertical: true)
+        } else {
+            ForEach(lessons.all) { lesson in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(lesson.words).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+                        Text("Since " + JobWords.time(lesson.at, now: now)).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
+                    }
+                    Spacer(minLength: 8)
+                    Button("Forget") { lessons.forget(job: lesson.job) }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
+                        .help("The minister shows its findings again as it sees fit")
+                }
+            }
+        }
     }
 }

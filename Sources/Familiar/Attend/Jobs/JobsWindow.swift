@@ -127,7 +127,7 @@ struct JobsWindowView: View {
             } else { Text("Stickers are unavailable.").font(.system(size: 14)).foregroundStyle(Pad.inkSoft).padding(24) }
         case .receipt:
             if let matters = folderJobs.matters {
-                ReceiptPage(matters: matters, log: folderJobs.runner.memory, open: { navigation.open(.matter($0), returningTo: .receipt) })
+                ReceiptPage(matters: matters, log: folderJobs.runner.memory, lessons: folderJobs.lessons, open: { navigation.open(.matter($0), returningTo: .receipt) })
             } else { Text("Stickers are unavailable.").font(.system(size: 14)).foregroundStyle(Pad.inkSoft).padding(24) }
         }
     }

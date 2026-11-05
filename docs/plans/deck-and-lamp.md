@@ -26,7 +26,12 @@ memory log's stamp lines and the matters, nothing kept for it: the tally, Noteli
 Yours, Put away, when each job last looked, and a Taught section that waits for step 5; `ReceiptPage` in the Jobs
 window (route `.receipt`, "What's been handled", a row at the top of Jobs, the dark lamp and the lamp's menu); the
 deck's end, "Nothing needs you." with the tally and the mascot pleased, on green paper for a few seconds before the
-deck closes. The daily scene is the mascot, not a picture, for now. Step 5 is next.
+deck closes. The daily scene is the mascot, not a picture, for now.
+Step 5 built on `feature/teaching` (stacked on step 4): `Lessons` (`matters/taught.json`): two Not now on one job's
+cards within a week and the deck asks, after the cards, on blue paper, "Stop showing these?"; Yes is a lesson the
+triage prompt lists under Taught and the receipt can forget, No holds the question a week; the good tone (compose
+may mark one finding per turn good news): green paper, last, Mine and Thanks, no action, and it never lights the lamp
+alone (`DeckModel.needs`). The phase's build order is done; what's left is the DMG and the UAT.
 
 ## Why
 

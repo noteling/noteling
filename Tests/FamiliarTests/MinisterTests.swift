@@ -491,7 +491,7 @@ struct MinisterTests {
         #expect(composeRefusal(compose("Ok", action: "delete_all"))?.contains("has no action delete_all") == true)
         #expect(composeRefusal(compose("Ok", on: "4390"))?.contains("names a finding this matter doesn't have") == true)
         #expect(composeRefusal(compose("Ok", page: "https://elsewhere.example/")) == "where must be one of the pages listed, or null.")
-        #expect(composeRefusal(compose("Ok", tone: "loud")) == "tone must be calm or urgent.")
+        #expect(composeRefusal(compose("Ok", tone: "loud")) == "tone must be calm, urgent or good.")
         var until = compose("Ok")
         until["until"] = "soon"
         #expect(composeRefusal(until)?.hasPrefix("until must be a date and time") == true)

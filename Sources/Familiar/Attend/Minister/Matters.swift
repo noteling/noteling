@@ -19,7 +19,7 @@ struct FindingRef: Hashable, Codable {
 
 /// A sticker as the app renders it: the minister's words, one button at most, the page it lives on, and its tone.
 struct MatterView: Codable, Equatable {
-    enum Tone: String, Codable { case calm, urgent }
+    enum Tone: String, Codable { case calm, urgent, good }
     struct Action: Codable, Equatable {
         var finding: FindingRef
         var run: String
@@ -81,6 +81,8 @@ struct Matter: Codable, Equatable, Identifiable {
         return view.until.map { $0 > now } ?? true
     }
     var isUrgent: Bool { view?.tone == .urgent }
+    /// Good news: needs nothing of the person, shown last.
+    var isGood: Bool { view?.tone == .good }
     /// The sticker's time: when it was written, or when the matter was made.
     var shownAt: Date { writtenAt ?? createdAt }
 
@@ -107,6 +109,8 @@ struct Sticker: Identifiable, Equatable {
     let byline: String?
     let at: Date
     let urgent: Bool
+    /// Good news: on green paper, last, with a Thanks and no action.
+    var good = false
     /// The page it lives on, and the action the minister picked, when there is one.
     var page: String?
     var action: MatterView.Action?
@@ -149,15 +153,16 @@ final class Matters: ObservableObject {
     /// Open or quiet: what the minister is told about.
     var current: [Matter] { all.filter { $0.state != .closed } }
 
-    /// The stickers as they should be now: urgent first, then the most recently written.
+    /// The stickers as they should be now: urgent first, good news last, the most recently written first between.
     var stickers: [Sticker] {
         let now = clock()
         return all.filter { $0.isShown(at: now) }.sorted { a, b in
             if a.isUrgent != b.isUrgent { return a.isUrgent }
+            if a.isGood != b.isGood { return !a.isGood }
             return a.shownAt > b.shownAt
         }.map { matter in
             Sticker(id: matter.id, title: matter.jobName, headline: matter.view?.headline, text: matter.view?.text ?? "", byline: matter.byline,
-                    at: matter.shownAt, urgent: matter.isUrgent, page: matter.view?.page, action: matter.view?.action)
+                    at: matter.shownAt, urgent: matter.isUrgent, good: matter.isGood, page: matter.view?.page, action: matter.isGood ? nil : matter.view?.action)
         }
     }
 
@@ -220,6 +225,17 @@ final class Matters: ObservableObject {
         save(matter)
         memory?.append(["matter": id, "stamp": "mine", "taken": matter.view?.headline ?? matter.view?.text ?? ""])
         return matter
+    }
+
+    /// The person thanked a good-news card: quiet, like put away, but no lesson is drawn from it.
+    func thank(_ id: String) {
+        guard var matter = matter(id: id), matter.state == .open else { return }
+        matter.state = .quiet
+        matter.why = Matter.putAway
+        matter.putAwayAt = clock()
+        matter.recompose = false
+        save(matter)
+        memory?.append(["matter": id, "stamp": "thanks", "put_away": true])
     }
 
     /// The person had Noteling press the card's action: the matter is quiet, with what was done, until a finding changes.

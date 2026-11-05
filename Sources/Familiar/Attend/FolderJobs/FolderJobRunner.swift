@@ -287,6 +287,8 @@ struct FolderJobsPanel {
     var buttons: FolderJobButtons? = nil
     /// The matters the minister made of the findings, for their pages.
     var matters: Matters? = nil
+    /// What the person taught the minister, for the receipt.
+    var lessons: Lessons? = nil
 }
 
 /// The jobs kept as folders, put together once by the app: where they're kept, what runs them, what their findings'
