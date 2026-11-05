@@ -241,8 +241,9 @@ extension AppDelegate {
 
     // MARK: your own notes
 
-    /// Your notes: files in `memos/`, each a panel pinned where you put it. A new one comes from the hotkey, the menu
-    /// bar, the bubble's menu, or the scribe in chat; the minister and the chat read them through recall.
+    /// Your notes: files in `memos/`, each a panel pinned where you put it. A new one comes from the menu bar, the
+    /// bubble's menu, or the scribe in chat; the same menus bring them all up; the minister and the chat read them
+    /// through recall.
     func setupMemos() {
         let store = MemoStore(directory: Config.dir.appendingPathComponent(MemoStore.folder))
         store.memory = matters?.memory ?? MemoryLog(directory: Config.dir.appendingPathComponent(MemoryLog.folder))
@@ -260,6 +261,8 @@ extension AppDelegate {
         windows.start()
         memoWindows = windows
         shell.onNewNote = { [weak self] in self?.newNote() }
+        shell.onShowMyNotes = { [weak self] in self?.showNotes() }
+        store.$all.receive(on: RunLoop.main).sink { [weak self] all in self?.shell.noteCount = all.count }.store(in: &cancellables)
         // The scribe: "remind me to…" on the pad puts the paper up at once, and the model writes it properly.
         let scribe = MemoScribe(store: store, windows: windows)
         memoScribe = scribe
@@ -272,6 +275,12 @@ extension AppDelegate {
     func newNote() { memoWindows?.newNote() }
 
     @objc func menuNewNote() { newNote() }
+
+    /// Every note of yours comes up for a minute: they live on the desktop, under your windows, and this is how you see
+    /// them when you want to.
+    func showNotes() { memoWindows?.showAll() }
+
+    @objc func menuShowNotes() { showNotes() }
 
     /// The stickers were hidden from their own menu: a callout under the menu bar icon says where they come back from.
     func showStickersHiddenHint() {
