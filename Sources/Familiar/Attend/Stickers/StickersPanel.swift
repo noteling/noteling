@@ -53,11 +53,14 @@ final class DeckModel: ObservableObject {
     @Published var said: String?
     /// The stamp on the card that is leaving, while it leaves.
     @Published var stamped: (id: String, verdict: Verdict)?
+    /// The last card went: "Nothing needs you." shows for a moment, then the deck closes.
+    @Published var ended = false
     var clock: () -> Date = Date.init
     /// How long a Do it can be taken back, and how long the stamp shows before the card goes.
     var undoSeconds: TimeInterval = 5
     var stampSeconds: TimeInterval = 0.5
     var saidSeconds: TimeInterval = 8
+    var endSeconds: TimeInterval = 4
     /// Runs the card's action, as the person; nil when nothing can run it (a render).
     var press: ((Matter, MatterView.Action) async -> FindingPress?)?
     /// Turns the card into one of the person's notes.
@@ -81,6 +84,18 @@ final class DeckModel: ObservableObject {
     var card: Sticker? { cards.first }
     var more: Int { max(0, cards.count - 1) }
     var count: Int { cards.count }
+    /// A card, the end, a press waiting or what it came to: something for the panel to show.
+    var hasSomethingToShow: Bool { count > 0 || ended || pending != nil || said != nil }
+
+    /// Today's tally for the end: "Noteling did 2 · you decided 5".
+    var tally: String { Receipt.today(log: matters.memory, matters: matters, now: clock()).tally }
+
+    /// After a stamp: with no card left, the end shows for a moment.
+    private func cardWent() {
+        guard cards.isEmpty else { return }
+        ended = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + endSeconds) { [weak self] in self?.ended = false }
+    }
 
     /// The person's verdict on the card: the stamp shows, then the card goes and the verdict takes effect.
     func stamp(_ verdict: Verdict, on id: String) {
@@ -99,12 +114,15 @@ final class DeckModel: ObservableObject {
         switch verdict {
         case .notNow:
             matters.putAway(matter.id)
+            cardWent()
         case .mine:
             if matters.take(matter.id) != nil { mine?(matter) }
+            cardWent()
         case .doIt:
             guard let action = matter.view?.action else { return }
             held.insert(matter.id)
             pending = PendingPress(id: matter.id, label: action.label, until: clock().addingTimeInterval(undoSeconds))
+            cardWent()
             matters.memory?.append(["matter": matter.id, "stamp": "do", "waiting": action.label])
             pressTask?.cancel()
             pressTask = Task { [weak self] in
@@ -175,6 +193,10 @@ struct StickersView: View {
                     .help("Open Jobs")
                     .transition(.opacity)
             }
+            if model.card == nil, model.ended {
+                DeckEndView(tally: model.tally, scale: scale)
+                    .transition(.scale(scale: 0.92).combined(with: .opacity))
+            }
             if let card = model.card {
                 CardView(card: card, scale: scale, now: model.clock(), stamp: model.stamped?.id == card.id ? model.stamped?.verdict : nil,
                          open: { model.open(card.id) }, putAway: { model.stamp(.notNow, on: card.id) }, drag: drag, point: { point(card.id, $0) })
@@ -208,6 +230,7 @@ struct StickersView: View {
         .frame(width: StickersPanel.width(look.scale))
         .frame(maxHeight: .infinity, alignment: .bottomLeading)
         .animation(.spring(response: 0.4, dampingFraction: 0.7), value: model.card?.id)
+        .animation(.easeInOut(duration: 0.3), value: model.ended)
         .animation(.easeInOut(duration: 0.25), value: model.pending)
         .animation(.easeInOut(duration: 0.25), value: model.said)
         .environment(\.colorScheme, .light)
@@ -278,6 +301,31 @@ struct CardView: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { open() }
             .accessibilityAction(named: "Not now") { putAway() }
+    }
+}
+
+/// The end of the deck: "Nothing needs you." on its own paper, with today's tally and the mascot pleased, for a moment.
+struct DeckEndView: View {
+    var tally: String
+    var scale: CGFloat = 1
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10 * scale) {
+            VStack(alignment: .leading, spacing: 6 * scale) {
+                Text("Nothing needs you.").font(PaperType.headline(.typed, scale * 1.15)).fixedSize(horizontal: false, vertical: true)
+                Text(tally).font(PaperType.small(.typed, scale)).foregroundStyle(PaperType.inkSoft).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            MascotView(mood: .happy, size: 40 * scale, animated: false, decorations: false)
+        }
+        .foregroundStyle(PaperType.ink)
+        .padding(.horizontal, PaperLook.padding * scale)
+        .padding(.top, (PaperLook.strip + 9) * scale)
+        .padding(.bottom, PaperLook.padding * scale)
+        .frame(width: PaperLook.cardWidth * scale, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(PaperSheet(colour: .green, scale: scale))
+        .accessibilityLabel("Nothing needs you. \(tally)")
     }
 }
 

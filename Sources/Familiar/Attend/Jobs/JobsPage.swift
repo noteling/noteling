@@ -217,6 +217,7 @@ struct JobsPage: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 notices
+                receiptRow
                 ForEach(unreadable) { unreadableRow($0) }
                 list(jobs, team: team)
                 if jobs.isEmpty && unreadable.isEmpty {
@@ -278,6 +279,25 @@ struct JobsPage: View {
     }
 
     // MARK: around the list
+
+    /// What came of the deck today, in one line, which opens the receipt.
+    @ViewBuilder private var receiptRow: some View {
+        if let matters = folderJobs.matters {
+            let receipt = Receipt.today(log: folderJobs.runner.memory, matters: matters, now: now())
+            Button { navigation.open(.receipt, returningTo: .jobs) } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: "checkmark.seal").frame(width: 17).foregroundStyle(Pad.penInk)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("What's been handled").font(.system(size: 13, weight: .semibold))
+                        Text(receipt.tally + (receipt.yours.isEmpty ? "" : " · \(receipt.yours.count) yours")).font(.system(size: 11)).foregroundStyle(Pad.inkSoft).lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(Pad.inkSoft)
+                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            }.buttonStyle(.plain).padding(11).background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 7))
+            .help("Today's tally, what you took, what Noteling did, what you put away")
+        }
+    }
 
     @ViewBuilder private var notices: some View {
         if folderJobs.store.jobs.contains(where: \.on), let off = folderJobs.notifier?.offReason {

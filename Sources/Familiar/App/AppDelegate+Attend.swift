@@ -131,6 +131,7 @@ extension AppDelegate {
         shell.lampHidden = config.lampHidden
         shell.onLamp = { [weak self] in self?.lampClicked() }
         shell.onOpenJobs = { [weak self] in self?.jobsWindow.showJobs() }
+        shell.onReceipt = { [weak self] in self?.jobsWindow.showReceipt() }
         shell.onHideLamp = { [weak self] in self?.hideLamp() }
         deckChanged()
         stickersScreenObserver = NotificationCenter.default.addObserver(
@@ -145,14 +146,14 @@ extension AppDelegate {
         shell.lamp = LampState.of(count: model.count, urgent: urgent)
         shell.lampWords = LampState.words(count: model.count, urgent: urgent)
         updateStatusItemImage()
-        if model.count == 0, model.pending == nil, model.said == nil { deckOpen = false }
+        if !model.hasSomethingToShow { deckOpen = false }
         placeRunStickers()
     }
 
-    /// The lamp was clicked: the deck opens, or closes if it was open; with nothing on it, Jobs opens instead.
+    /// The lamp was clicked: the deck opens, or closes if it was open; with nothing on it, the receipt opens instead.
     func lampClicked() {
         guard let model = stickersPanel?.model else { return }
-        if model.count == 0 { jobsWindow.showJobs(); return }
+        if model.count == 0 { jobsWindow.showReceipt(); return }
         deckOpen.toggle()
         if deckOpen { stickersPanel?.hidden = false }
         placeRunStickers()
@@ -198,7 +199,8 @@ extension AppDelegate {
     /// only while the bubble is collapsed and there, at its own spot whatever the bubble does; away otherwise.
     func placeRunStickers() {
         guard let stickersPanel else { return }
-        let shown = StickersPanel.shows(count: stickersPanel.model.count, opened: deckOpen, hidden: stickersPanel.hidden, controlling: stickersPanel.hiddenForControl,
+        let shown = StickersPanel.shows(count: stickersPanel.model.hasSomethingToShow ? max(stickersPanel.model.count, 1) : 0, opened: deckOpen,
+                                        hidden: stickersPanel.hidden, controlling: stickersPanel.hiddenForControl,
                                         detached: stickersPanel.isDetached, bubbleVisible: panel.isVisible, alpha: panel.alphaValue,
                                         expanded: shell.expanded, flying: origami.isFlying)
         guard shown else { stickersPanel.orderOut(nil); return }

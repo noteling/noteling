@@ -20,7 +20,13 @@ Ask draws it on the bubble's top-left corner, Attend sets it from the deck); off
 or closes the deck, or Jobs when nothing needs you; right-click: the deck, New note, Jobs…, Hide the lamp (config
 `lampHidden`, back from Stickers › Show the Lamp); the pencil in the menu bar carries a dot; the deck shows only while
 opened (`shows(opened:)`), Esc closes it, and it closes by itself when the last card is stamped; Stickers › Open the
-Deck for a hidden bubble. The urgent notification is unchanged. Step 4 is next.
+Deck for a hidden bubble. The urgent notification is unchanged.
+Step 4 built on `feature/receipt` (stacked on step 3): `Receipt` (`Attend/Minister/Receipt.swift`) is read from the
+memory log's stamp lines and the matters, nothing kept for it: the tally, Noteling's presses with what they came to,
+Yours, Put away, when each job last looked, and a Taught section that waits for step 5; `ReceiptPage` in the Jobs
+window (route `.receipt`, "What's been handled", a row at the top of Jobs, the dark lamp and the lamp's menu); the
+deck's end, "Nothing needs you." with the tally and the mascot pleased, on green paper for a few seconds before the
+deck closes. The daily scene is the mascot, not a picture, for now. Step 5 is next.
 
 ## Why
 
