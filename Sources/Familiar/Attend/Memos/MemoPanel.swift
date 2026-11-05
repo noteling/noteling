@@ -68,12 +68,13 @@ struct MemoPanelActions {
     var openPage: () -> Void = {}
     var collapse: () -> Void = {}
     var endEditing: () -> Void = {}
-    var hover: (Bool) -> Void = { _ in }
+    var pin: () -> Void = {}
 }
 
 /// One of your notes on its paper: read, with its checklist to tick and its page to open; or written on, a headline
 /// line and the words. A click on the words starts writing, Esc or a click elsewhere ends it; the glue strip drags it,
-/// a double-click there folds it to its first line; the peel at its corner, on hover, takes it down.
+/// a double-click there folds it to its first line; the pin at its top-right corner holds it over your windows or lays
+/// it on the desktop; the peel at its top-left corner, on hover, takes it down.
 struct MemoPanelView: View {
     @ObservedObject var state: MemoPanelState
     var actions: MemoPanelActions
@@ -90,6 +91,12 @@ struct MemoPanelView: View {
                 if state.editing { editor } else { reading }
             }
             .overlay(alignment: .top) { strip }
+            .overlay(alignment: .topTrailing) {
+                if !peeling {
+                    PinButton(pinned: state.memo.pinned, scale: scale, action: actions.pin)
+                        .padding(.top, -3 * scale).padding(.trailing, 5 * scale)
+                }
+            }
             .overlay {
                 if state.warm {
                     RoundedRectangle(cornerRadius: 1.5 * scale).stroke(PaperColour.amber.edge, lineWidth: 2.5 * scale)
@@ -111,10 +118,7 @@ struct MemoPanelView: View {
             }
         }
         .padding(PaperLook.margin)
-        .onHover { inside in
-            hovering = inside
-            actions.hover(inside)
-        }
+        .onHover { hovering = $0 }
         .animation(.easeInOut(duration: 0.35), value: state.warm)
         .animation(.easeOut(duration: 0.15), value: hovering)
         .environment(\.colorScheme, .light)
@@ -170,28 +174,26 @@ struct MemoPanelView: View {
 
 /// One line of a note's right-click menu; nil in the list is a separator.
 struct MemoMenuItem: Equatable {
-    enum Choice: Equatable { case openPage, colour(PaperColour), collapse, onTop, bigger, smaller, remove }
+    enum Choice: Equatable { case openPage, colour(PaperColour), collapse, pin, bigger, smaller, remove }
     let title: String
     var enabled = true
     var checked = false
     let choice: Choice
 }
 
-/// The panel one of your notes lives in: borderless, pinned where you put it. It lives on the desktop, under your
-/// windows and the same on every Space, like the desktop's widgets; it comes up on top of everything when it is new,
-/// when its when comes and while you write on it, and settles back once you have had it; Keep on top holds one above
-/// the windows of its own Space. It takes the keyboard while you write and gives it back when you click away.
+/// The panel one of your notes lives in: borderless, where you put it. Pinned, it sits over the windows of the Space it
+/// is on and nowhere else; unpinned, it lies on the desktop, under your windows and the same on every Space, like the
+/// desktop's widgets. It comes up on top of everything, wherever you are, when its when comes (until you click it),
+/// while you write on it (until the keyboard leaves) and for a glance at all your notes (until you click elsewhere); no
+/// clock takes it down. It takes the keyboard while you write and gives it back when you click away.
 final class MemoPanel: NSPanel {
     let state: MemoPanelState
     private let host: FirstClickHost<MemoPanelView>
     private var subscriptions = Set<AnyCancellable>()
     private var dragOffset: NSPoint?
-    private var upWork: DispatchWorkItem?
-    /// Clicked since it came up: once it is left again, it settles.
-    private var touched = false
-    /// Up on top of everything, everywhere: new, woken or being written on.
+    /// Up on top of everything, everywhere: woken, being written on, or glanced at.
     private(set) var up = false
-    /// The note changed as typed, moved, folded, recoloured or kept on top: the windows keep it.
+    /// The note changed as typed, moved, folded, recoloured, pinned or unpinned: the windows keep it.
     var onChange: ((Memo) -> Void)?
     var onRemove: (() -> Void)?
     var onResize: ((CGFloat?) -> Void)?
@@ -208,7 +210,7 @@ final class MemoPanel: NSPanel {
         let actions = MemoPanelActions(save: { relay.panel?.changed($0) }, remove: { relay.panel?.onRemove?() },
                                        drag: { relay.panel?.drag($0) }, toggle: { relay.panel?.onToggle?($0) },
                                        openPage: { relay.panel?.openPage() }, collapse: { relay.panel?.collapse() },
-                                       endEditing: { relay.panel?.endEditing() }, hover: { relay.panel?.hovered($0) })
+                                       endEditing: { relay.panel?.endEditing() }, pin: { relay.panel?.togglePin() })
         host = FirstClickHost(rootView: MemoPanelView(state: state, actions: actions))
         super.init(contentRect: NSRect(x: 0, y: 0, width: PaperLook.memoWidth * scale + 2 * PaperLook.margin, height: PaperLook.minHeight * scale + 2 * PaperLook.margin),
                    styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView], backing: .buffered, defer: false)
@@ -234,22 +236,18 @@ final class MemoPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
-    /// A click elsewhere ends the writing, and a note that came up and was clicked settles where it lives.
+    /// A click elsewhere ends the writing, and the note goes back to its place.
     override func resignKey() {
+        let wrote = state.editing
         super.resignKey()
         endEditing()
-        if touched { settle() }
+        if wrote { settle() }
     }
 
-    /// A click on the note counts as having had it: a note that came up settles once the mouse has left it again (a
-    /// tick, a fold, a drag), or once the keyboard goes elsewhere when the click was to write.
+    /// A click on a note that woke is having had it.
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .leftMouseDown || event.type == .rightMouseDown { touched = true }
+        if event.type == .leftMouseDown || event.type == .rightMouseDown, state.warm { had() }
         super.sendEvent(event)
-    }
-
-    func hovered(_ inside: Bool) {
-        if !inside, touched, !state.editing, !isKeyWindow { settle() }
     }
 
     var memo: Memo { state.memo }
@@ -261,45 +259,58 @@ final class MemoPanel: NSPanel {
         applyLevel()
     }
 
-    /// Up is on top of everything on every Space, full-screen apps too; Keep on top is above the windows of the Space
-    /// the note is on; otherwise the note lives on the desktop, over the wallpaper and its icons, under every window,
-    /// the same on every Space.
-    static func level(onTop: Bool, up: Bool) -> (level: NSWindow.Level, behaviour: NSWindow.CollectionBehavior) {
+    /// Up is on top of everything on every Space, full-screen apps too; pinned is above the windows of the Space the
+    /// note is on; unpinned, the note lies on the desktop, over the wallpaper and its icons, under every window, the
+    /// same on every Space.
+    static func level(pinned: Bool, up: Bool) -> (level: NSWindow.Level, behaviour: NSWindow.CollectionBehavior) {
         if up { return (.floating, [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]) }
-        if onTop { return (.floating, [.stationary]) }
+        if pinned { return (.floating, [.stationary]) }
         return (desktopLevel, [.canJoinAllSpaces, .stationary])
     }
 
     func applyLevel() {
-        let place = Self.level(onTop: state.memo.onTop, up: up)
+        let place = Self.level(pinned: state.memo.pinned, up: up)
         level = place.level
         collectionBehavior = place.behaviour
     }
 
-    /// Comes up on top of everything, where the person is: for `seconds`, or until it has been clicked and left.
-    func raise(for seconds: TimeInterval? = nil) {
-        upWork?.cancel()
-        upWork = nil
+    /// Comes up on top of everything, where the person is, until it settles or, woken, until it is had.
+    func raise() {
         up = true
-        touched = false
         applyLevel()
-        if let seconds {
-            let work = DispatchWorkItem { [weak self] in self?.settle() }
-            upWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
-        }
     }
 
-    /// Back where it lives.
+    /// Back to its place: pinned over the windows of its Space, or lying on the desktop.
     func settle() {
-        upWork?.cancel()
-        upWork = nil
-        touched = false
         guard up else { return }
         up = false
         state.warm = false
         applyLevel()
     }
+
+    /// The person clicked a note that woke: it is had. It stops glowing and stays, pinned where they are.
+    func had() {
+        guard state.warm else { return }
+        state.warm = false
+        up = false
+        if !state.memo.pinned {
+            var memo = state.memo
+            memo.pinned = true
+            changed(memo)
+        }
+        applyLevel()
+    }
+
+    /// The pin: the note sits over the windows of its Space, or lies on the desktop under them.
+    func pin(_ pinned: Bool) {
+        guard pinned != state.memo.pinned else { return }
+        var memo = state.memo
+        memo.pinned = pinned
+        changed(memo)
+        applyLevel()
+    }
+
+    func togglePin() { pin(!state.memo.pinned) }
 
     /// Sizes the panel to its paper, keeping the top-left corner where it is, so a note grows downward as it is written.
     func fit() {
@@ -328,7 +339,6 @@ final class MemoPanel: NSPanel {
     func beginEditing() {
         guard !state.editing else { return }
         raise()
-        touched = true
         makeKeyAndOrderFront(nil)
         state.beginEditing()
     }
@@ -384,7 +394,7 @@ final class MemoPanel: NSPanel {
         for colour in PaperColour.yours { items.append(MemoMenuItem(title: colour.name, checked: colour == memo.colour, choice: .colour(colour))) }
         items.append(nil)
         items.append(MemoMenuItem(title: memo.collapsed ? "Unfold" : "Fold", choice: .collapse))
-        items.append(MemoMenuItem(title: "Keep on top", checked: memo.onTop, choice: .onTop))
+        items.append(MemoMenuItem(title: "Pinned", checked: memo.pinned, choice: .pin))
         items.append(MemoMenuItem(title: "Bigger", enabled: PaperLook.bigger(than: scale) != nil, choice: .bigger))
         items.append(MemoMenuItem(title: "Smaller", enabled: PaperLook.smaller(than: scale) != nil, choice: .smaller))
         items.append(nil)
@@ -413,11 +423,7 @@ final class MemoPanel: NSPanel {
             memo.colour = colour
             changed(memo)
         case .collapse: collapse()
-        case .onTop:
-            var memo = state.memo
-            memo.onTop.toggle()
-            changed(memo)
-            applyLevel()
+        case .pin: togglePin()
         case .bigger: onResize?(PaperLook.bigger(than: state.scale))
         case .smaller: onResize?(PaperLook.smaller(than: state.scale))
         case .remove: onRemove?()
