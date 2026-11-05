@@ -70,6 +70,7 @@ struct BubbleView: View {
         .contextMenu {
             Button("Open chat") { shell.expanded = true }
             Button("New note") { shell.onNewNote?() }
+            Button("Show my notes") { shell.onShowMyNotes?() }.disabled(shell.noteCount == 0)
             Button(state.watching ? "Point at what you clicked" : "Point the pen") { state.startWand() }
             Button(state.watching ? "Stop watching" : "Watch me") { state.toggleWatching() }
             Divider()
@@ -92,6 +93,7 @@ struct BubbleView: View {
                         if shell.lamp != .off { Button("Open the deck") { shell.onLamp?() } }
                         Button("What's been handled") { shell.onReceipt?() }
                         Button("New note") { shell.onNewNote?() }
+                        Button("Show my notes") { shell.onShowMyNotes?() }.disabled(shell.noteCount == 0)
                         Button("Jobs…") { shell.onOpenJobs?() }
                         Divider()
                         Button("Hide the lamp") { shell.onHideLamp?() }

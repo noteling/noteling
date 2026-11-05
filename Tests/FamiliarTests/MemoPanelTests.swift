@@ -118,6 +118,32 @@ import Testing
         #expect(MemoWindows.nextMinute(after: twenty) == Date(timeIntervalSinceReferenceDate: 1_001 * 60 + 0.3))
     }
 
+    @Test func showMyNotesBringsEveryNoteUpForAMinuteAsIfNew() {
+        let store = MemoStore(directory: nil)
+        store.clock = { self.at }
+        let windows = MemoWindows(store: store, scale: 1, hideFromScreenShare: false)
+        windows.shows = false
+        windows.start()
+        #expect(!windows.hasNotes)
+        store.save(memo("n-1", text: "Call Marco"))
+        store.save(memo("n-2", text: "Dentist"))
+        windows.sync()
+        for panel in windows.panels.values { panel.settle() }
+        #expect(windows.hasNotes)
+        #expect(windows.panels.values.allSatisfy { !$0.up })
+
+        windows.showAll()
+        #expect(windows.panels.values.allSatisfy { $0.up && $0.level == .floating })
+        #expect(windows.panels.values.allSatisfy { $0.collectionBehavior.contains(.canJoinAllSpaces) })
+        // Clicked and left, a note settles back to the desktop as a new one does.
+        let one = windows.panels["n-1"]!
+        one.sendEvent(NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: one.windowNumber,
+                                         context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+        one.hovered(false)
+        #expect(!one.up && one.level == MemoPanel.desktopLevel)
+        #expect(windows.panels["n-2"]?.up == true)
+    }
+
     @Test func theWindowsKeepAPanelForEveryNoteAndPlaceANewOneAboveTheOrb() {
         let store = MemoStore(directory: nil)
         store.clock = { self.at }

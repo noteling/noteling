@@ -48,6 +48,19 @@ final class MemoWindows {
         for panel in panels.values { panel.state.now = now }
     }
 
+    /// Whether there is a note to show.
+    var hasNotes: Bool { !panels.isEmpty }
+
+    /// Every note comes up on top of everything, for a minute or until it is clicked, as a new one does: the way to
+    /// see them when your windows cover the desktop they live on.
+    func showAll() {
+        tick()
+        for panel in panels.values {
+            panel.raise(for: Self.newSeconds)
+            if shows { panel.orderFrontRegardless() }
+        }
+    }
+
     /// The next whole minute, a hair after it, so the words have moved once the menu bar's clock has.
     nonisolated static func nextMinute(after date: Date) -> Date {
         Date(timeIntervalSinceReferenceDate: (date.timeIntervalSinceReferenceDate / 60).rounded(.down) * 60 + 60.3)

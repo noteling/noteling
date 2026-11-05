@@ -18,7 +18,9 @@ Your notes live on the desktop: over the wallpaper and its icons, under your win
 the desktop's widgets. You see them whenever you see the desktop, and they never follow you into another Space's work
 or over a full-screen app. A note comes up on top of everything when it is new, for a minute or until you click it;
 when its time comes, until you click it; and while you write on it. Click it and move on, and it settles back.
-**Keep on top**, in its right-click menu, holds one note above the windows of the Space it is on.
+**Show My Notes**, in the pencil icon in the menu bar or in Noteling's right-click menu, brings every note up the same
+way, for a minute or until you click it. **Keep on top**, in a note's right-click menu, holds that note above the
+windows of the Space it is on.
 
 ## On the paper
 
