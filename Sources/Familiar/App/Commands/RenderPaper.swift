@@ -86,8 +86,11 @@ func runRenderPaper() {
     // The peel, as it shows when the mouse is on the paper.
     render(onDesk(ZStack(alignment: .topLeading) {
         memoView(dictated, tilt: false)
+            .overlay(alignment: .topTrailing) { PinButton(pinned: true, action: {}).padding(.top, -3).padding(.trailing, 5) }
         PeelButton(help: "Take this note down", action: {}).offset(x: PeelButton.offset, y: PeelButton.offset)
     }), "memo-peel.png")
+    // Unpinned: the note lies on the desktop, its pin lying hollow.
+    render(onDesk(memoView(shopping, tilt: false).overlay(alignment: .topTrailing) { PinButton(pinned: false, action: {}).padding(.top, -3).padding(.trailing, 5) }), "memo-unpinned.png")
     for (card, name) in zip(cards, ["card-urgent", "card-prices", "card-orders", "card-stock", "card-review"]) {
         render(onDesk(cardView(card)), "\(name).png")
     }
