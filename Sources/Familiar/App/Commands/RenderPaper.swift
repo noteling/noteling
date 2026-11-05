@@ -137,6 +137,9 @@ func runRenderPaper() {
     let done = deckModel(1)
     done.said = "Nudge warehouse · 10:13 AM"
     render(deckView(done), "deck-said.png")
+    let over = deckModel(0)
+    over.ended = true
+    render(deckView(over), "deck-end.png")
     render(deckView(deckModel(3), scale: PaperLook.steps[0]), "deck-smallest.png")
     render(deckView(deckModel(3), scale: PaperLook.steps[PaperLook.steps.count - 1]), "deck-biggest.png")
     // The lamp off, warm and hot, at the bubble's size and larger, on a light and a dark desk.

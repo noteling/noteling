@@ -24,6 +24,7 @@ final class ShellState: ObservableObject {
     /// The lamp was clicked: the deck opens, or the receipt when nothing needs you.
     var onLamp: (() -> Void)?
     var onOpenJobs: (() -> Void)?
+    var onReceipt: (() -> Void)?
     var onHideLamp: (() -> Void)?
 
     private var quietExpandPending = false
