@@ -7,6 +7,10 @@ import Foundation
 final class ShellState: ObservableObject {
     @Published var expanded = false
     @Published var cardSize = NSSize(width: 400, height: 540)
+    /// The lamp on the bubble: what the deck comes to, and the words for its hover.
+    @Published var lamp = LampState.off
+    @Published var lampWords = LampState.words(count: 0, urgent: false)
+    @Published var lampHidden = false
 
     enum DragPhase { case moved, ended }
     var onHideBubble: (() -> Void)?
@@ -17,6 +21,10 @@ final class ShellState: ObservableObject {
     var onToggleLarge: (() -> Void)?
     /// A new note of your own, from the bubble's menu.
     var onNewNote: (() -> Void)?
+    /// The lamp was clicked: the deck opens, or the receipt when nothing needs you.
+    var onLamp: (() -> Void)?
+    var onOpenJobs: (() -> Void)?
+    var onHideLamp: (() -> Void)?
 
     private var quietExpandPending = false
 
