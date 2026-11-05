@@ -141,6 +141,39 @@ extension AppDelegate {
         }
     }
 
+    // MARK: your own notes
+
+    /// Your notes: files in `memos/`, each a panel pinned where you put it. A new one comes from the hotkey, the menu
+    /// bar, the bubble's menu, or the scribe in chat; the minister and the chat read them through recall.
+    func setupMemos() {
+        let store = MemoStore(directory: Config.dir.appendingPathComponent(MemoStore.folder))
+        store.memory = matters?.memory ?? MemoryLog(directory: Config.dir.appendingPathComponent(MemoryLog.folder))
+        memos = store
+        let windows = MemoWindows(store: store, scale: CGFloat(config.memoScale), hideFromScreenShare: config.hideFromScreenShare)
+        windows.orbFrame = { [weak self] in
+            guard let self, self.panel.isVisible, !self.shell.expanded else { return nil }
+            return self.panel.frame
+        }
+        windows.onScaleChange = { [weak self] scale in
+            self?.config.memoScale = Double(scale)
+            self?.config.save()
+        }
+        windows.start()
+        memoWindows = windows
+        shell.onNewNote = { [weak self] in self?.newNote() }
+        // The scribe: "remind me to…" on the pad puts the paper up at once, and the model writes it properly.
+        let scribe = MemoScribe(store: store, windows: windows)
+        memoScribe = scribe
+        assistant.extraRoutes = { [weak scribe] in scribe?.routes() ?? [] }
+        assistant.onQuestion = { [weak scribe] question, ctx in scribe?.began(question, page: ctx?.url) }
+        assistant.onTurnEnd = { [weak scribe] in scribe?.turnEnded() }
+    }
+
+    /// A blank note of your own, near the orb, open for writing.
+    func newNote() { memoWindows?.newNote() }
+
+    @objc func menuNewNote() { newNote() }
+
     /// The stickers were hidden from their own menu: a callout under the menu bar icon says where they come back from.
     func showStickersHiddenHint() {
         guard let target = statusItemRect else { return }

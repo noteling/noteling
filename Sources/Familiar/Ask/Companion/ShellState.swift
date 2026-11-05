@@ -15,6 +15,8 @@ final class ShellState: ObservableObject {
     var onPoke: (() -> Void)?
     var onResizeCard: ((NSSize, Bool) -> Void)?  // size, then whether the drag ended and should be persisted
     var onToggleLarge: (() -> Void)?
+    /// A new note of your own, from the bubble's menu.
+    var onNewNote: (() -> Void)?
 
     private var quietExpandPending = false
 

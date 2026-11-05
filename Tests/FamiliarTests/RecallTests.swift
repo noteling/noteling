@@ -28,6 +28,7 @@ import FamiliarRuntime
                 ("jobs/pages/input/pages.csv", "url,expects\nhttps://example.com/,Example\n"),
                 ("job-results/own/pages/output/findings.csv",
                  "order_id,customer,waiting_days,card_number,note\n4417,Acme Ltd,3,4111111111111111,fine\n4390,Beta-TEST,5,,\"has a, comma\"\n4402,Cora,1,,token sk-abcdefghijklmnopqrstuvwxyz\n"),
+                ("memos/n-1a2b3c4d.md", "---\ncolour: yellow\n---\n# Marco\nCall Marco about the lease.\n"),
                 ("tools/shop/docs/mine.md", "Mine: returns take a week.\n"),
                 ("tools/shop/.hidden.md", "Hidden.\n"),
                 ("linked/crm/docs/guide.md", "Approvals take two days.\nAsk Lena about the rest.\n"),
@@ -58,15 +59,15 @@ import FamiliarRuntime
         let roots = fixture.run("list").text
         #expect(roots.hasPrefix("memory/  Noteling's log, one file a day") && roots.contains("\nteam/  The team's tools as linked from GitHub"))
         #expect(roots.hasSuffix("A path starts with one of these names.") && !roots.contains("nothing there yet"))
-        #expect(fixture.recall.roots().map(\.name) == ["memory", "matters", "jobs", "results", "tools", "team"])
-        #expect(MemoryLog.folder == "memory" && Matters.folder == "matters")   // the roots are where Noteling writes
+        #expect(fixture.recall.roots().map(\.name) == ["memory", "matters", "notes", "jobs", "results", "tools", "team"])
+        #expect(MemoryLog.folder == "memory" && Matters.folder == "matters" && MemoStore.folder == "memos")   // the roots are where Noteling writes
 
         for path in ["../outside.md", "memory/../outside.md", "/etc/hosts", "~/outside.md", "jobs/pages/link.md", "tools/../outside.md"] {
-            #expect(fixture.run("read", ["path": path]) == ("That path isn't under a root Noteling can read. Roots: memory, matters, jobs, results, tools, team.", true), "\(path)")
+            #expect(fixture.run("read", ["path": path]) == ("That path isn't under a root Noteling can read. Roots: memory, matters, notes, jobs, results, tools, team.", true), "\(path)")
         }
         #expect(fixture.run("read", ["path": "tools/shop/.hidden.md"]) == ("Hidden files aren't read.", true))
-        #expect(fixture.run("read", ["path": "nowhere/x.md"]).text.hasPrefix("No root called nowhere. Roots: memory, matters, jobs, results, tools, team."))
-        #expect(fixture.run("read", ["path": ""]) == ("Say a path, starting with a root: memory, matters, jobs, results, tools, team.", true))
+        #expect(fixture.run("read", ["path": "nowhere/x.md"]).text.hasPrefix("No root called nowhere. Roots: memory, matters, notes, jobs, results, tools, team."))
+        #expect(fixture.run("read", ["path": ""]) == ("Say a path, starting with a root: memory, matters, notes, jobs, results, tools, team.", true))
         #expect(fixture.run("read", ["path": "matters/m-9/notes.md"]) == ("There is no matters/m-9/notes.md.", true))
         // A pack's docs as the prompt lists them, with no root in front: yours first, then the team's.
         #expect(fixture.run("read", ["path": "shop/docs/mine.md"]) == ("Mine: returns take a week.", false))
