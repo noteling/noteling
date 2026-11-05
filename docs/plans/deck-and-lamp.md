@@ -31,7 +31,9 @@ Step 5 built on `feature/teaching` (stacked on step 4): `Lessons` (`matters/taug
 cards within a week and the deck asks, after the cards, on blue paper, "Stop showing these?"; Yes is a lesson the
 triage prompt lists under Taught and the receipt can forget, No holds the question a week; the good tone (compose
 may mark one finding per turn good news): green paper, last, Mine and Thanks, no action, and it never lights the lamp
-alone (`DeckModel.needs`). The phase's build order is done; what's left is the DMG and the UAT.
+alone (`DeckModel.needs`). The phase's build order is done: PRs #93 to #97, stacked, none merged; `release/0.9.0`
+carries the version bump for a pre-release DMG, cut with `scripts/release.sh` by the user (notarization is an outward
+action this session couldn't take), then `gh release create v0.9.0 --prerelease`. One UAT of the whole phase follows.
 
 ## Why
 
