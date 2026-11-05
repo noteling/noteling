@@ -351,8 +351,10 @@ struct PaperClock: View {
         let hour = Double((parts.hour ?? 0) % 12) + minute / 60
         ZStack {
             Circle().stroke(PaperType.ink.opacity(0.75), lineWidth: 1.2 * scale)
-            PaperHand_(angle: hour / 12 * 360, length: 0.3).stroke(PaperType.ink, style: StrokeStyle(lineWidth: 1.3 * scale, lineCap: .round))
-            PaperHand_(angle: minute / 60 * 360, length: 0.42).stroke(PaperType.ink, style: StrokeStyle(lineWidth: 1.1 * scale, lineCap: .round))
+            // A short, heavy hour hand and a long, light minute hand, so that hands opposite each other (10:20, 12:30) still
+            // read as a clock and not as a slash through a circle.
+            PaperHand_(angle: hour / 12 * 360, length: 0.22).stroke(PaperType.ink, style: StrokeStyle(lineWidth: 1.7 * scale, lineCap: .round))
+            PaperHand_(angle: minute / 60 * 360, length: 0.46).stroke(PaperType.ink, style: StrokeStyle(lineWidth: 0.95 * scale, lineCap: .round))
         }
         .frame(width: size, height: size)
     }

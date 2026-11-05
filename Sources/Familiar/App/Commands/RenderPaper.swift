@@ -28,6 +28,8 @@ func runRenderPaper() {
     let marco = Memo(id: "n-4", text: "Call Marco back about the warehouse lease. He wants an answer by Friday and the second floor is the sticking point; ask whether they'd split the term.",
                      colour: .green, createdAt: now, updatedAt: now)
     let soon = Memo(id: "n-5", headline: "Stand-up", text: "Bring the two open bugs.", when: now.addingTimeInterval(25 * 60), createdAt: now, updatedAt: now)
+    // Hands opposite each other on the little clock: the case that must not read as a slash.
+    let lunch = Memo(id: "n-6", text: "Lunch with Ana", colour: .green, when: today(12, 30), createdAt: now, updatedAt: now)
     let yours = [dictated, shopping, dentist, marco, soon]
 
     // The minister's cards: a headline it wrote, its words, who it came from, and the page.
@@ -80,6 +82,7 @@ func runRenderPaper() {
         render(onDesk(memoView(memo, tilt: false)), "\(name).png")
     }
     render(onDesk(memoView(dictated, collapsed: true, tilt: false)), "memo-collapsed.png")
+    render(onDesk(memoView(lunch, tilt: false)), "memo-lunch.png")
     // The peel, as it shows when the mouse is on the paper.
     render(onDesk(ZStack(alignment: .topLeading) {
         memoView(dictated, tilt: false)
