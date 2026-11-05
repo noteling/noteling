@@ -85,5 +85,6 @@ struct FindingVerdictsTests {
         #expect(JobsNavigation.title(for: .matter("m-1"), jobName: { _ in nil }) == "On your note")
         #expect(JobsNavigation.title(for: .matter("m-1"), jobName: { _ in nil }, matterState: { _ in .quiet }) == "Kept quiet")
         #expect(JobsNavigation.title(for: .matter("m-1"), jobName: { _ in nil }, matterState: { _ in .closed }) == "Over")
+        #expect(JobsNavigation.title(for: .matter("m-1"), jobName: { _ in nil }, matterState: { _ in .yours }) == "Yours")
     }
 }

@@ -2,7 +2,7 @@
 
 Noteling comes with a **Mail** job, under Your jobs in Jobs. Once your mail is connected, it reads your inbox over IMAP
 every ten minutes, with no window and no mouse, and reports the messages that are still unread from the last two days.
-Noteling's minister reads what changed and puts a sticker beside the note only for the sure things: a message from a
+Noteling's minister reads what changed and puts a card beside the note only for the sure things: a message from a
 person who needs something from you, a time that is close. Newsletters and the promotions tab stay quiet in memory,
 where you can ask about them ("anything from Lena?"). A message you read is no longer a finding, so its sticker goes
 away by itself.

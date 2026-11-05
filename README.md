@@ -17,7 +17,7 @@ else stays out of your way.
 - **Your team's jobs, on your Mac.** Someone on your team writes a job once. It runs on the Mac of everyone who turned
   it on, as them, and only takes their attention when it finds something.
 - **Notes of your own.** "Remind me to send Lena the numbers this afternoon" on the pad, or ⌃⌥N anywhere, and a sticky in your hand is pinned where you put it, with the time, the page and a checklist when you named them. Files in a folder; Finder is the folder.
-- **Stickers for what needs you.** What a job finds, and what's unread in your mail, goes to Noteling's minister, which puts a sticker beside the note only for sure things and keeps the rest in memory for when you ask.
+- **Cards for what needs you.** What a job finds, and what's unread in your mail, goes to Noteling's minister, which puts a card beside the note only for sure things, one at a time with three verbs under it: its action, as you, with a few seconds to take it back; Mine, which makes it a note of your own; Not now. The rest stays in memory for when you ask.
   Decide it, discuss it, or hand it to Noteling.
 - **Show it how.** Use **Watch Me** to show Noteling how you do something once. It keeps the steps, and follows them
   when you ask it to do that for you.

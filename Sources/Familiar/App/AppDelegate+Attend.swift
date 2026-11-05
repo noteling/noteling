@@ -79,18 +79,37 @@ extension AppDelegate {
 
     // MARK: stickers
 
-    /// The minister's stickers as sticky notes beside the bubble: they follow the orb and step aside while the pad is
-    /// open or the bubble is away, until the person drags them to a spot of their own, which is remembered, as their
-    /// size is. A click opens the matter, the x puts it away, and the right-click menu and the menu bar's Stickers have the rest.
+    /// The minister's cards as a deck beside the bubble: one at a time, with the verbs under it. The deck follows the
+    /// orb and steps aside while the pad is open or the bubble is away, until the person drags it to a spot of their
+    /// own, which is remembered, as its size is. Do it runs the card's action after a few seconds they can take back;
+    /// Mine makes the card one of their notes; Not now puts it away; a click opens the matter.
     func setupRunStickers() {
-        let model: Matters = matters
+        guard let feature = folderJobs else { return }
+        let model = DeckModel(matters: matters)
+        let store = feature.store, buttons = feature.buttons
+        model.press = { matter, action in
+            guard let job = store.jobs.first(where: { MemoryLog.name(of: $0) == action.finding.job }),
+                  let chosen = job.actions.first(where: { $0.run == action.run }),
+                  let row = FindingsSnapshot.read(store.findingsFile(for: job)).rows[action.finding.id]?.row else {
+                return FindingPress(label: action.label, at: Date(), said: "Its finding or its job isn't here any more.", failed: true)
+            }
+            return await buttons.press(job, chosen, for: row)
+        }
+        model.mine = { [weak self] matter in
+            guard let self, let windows = self.memoWindows, let view = matter.view else { return }
+            var memo = self.memos.blank()
+            memo.headline = view.headline
+            memo.text = view.text
+            memo.page = view.page
+            memo.matter = matter.id
+            windows.newNote(memo)
+        }
+        model.open = { [weak self] id in self?.jobsWindow.showMatter(id: id) }
+        model.openMore = { [weak self] in self?.jobsWindow.showJobs() }
         var home: NSPoint?
         if let x = config.stickersX, let y = config.stickersY, x.isFinite, y.isFinite { home = NSPoint(x: x, y: y) }
         let stickers = StickersPanel(model: model, look: StickersLook(scale: CGFloat(config.stickerScale)), home: home,
-                                     hideFromScreenShare: config.hideFromScreenShare,
-                                     open: { [weak self] id in self?.jobsWindow.showMatter(id: id) },
-                                     more: { [weak self] in self?.jobsWindow.showJobs() },
-                                     putAway: { [weak model] id in model?.putAway(id) })
+                                     hideFromScreenShare: config.hideFromScreenShare)
         stickers.onChange = { [weak self] in
             guard let self, let stickers = self.stickersPanel else { return }
             self.config.stickersX = stickers.home.map { Double($0.x) }
@@ -101,7 +120,7 @@ extension AppDelegate {
         }
         stickers.onHide = { [weak self] in self?.showStickersHiddenHint() }
         stickersPanel = stickers
-        model.$all
+        model.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.placeRunStickers() }
             .store(in: &cancellables)
@@ -113,8 +132,8 @@ extension AppDelegate {
     /// On the screen while a matter has something to show and the person hasn't hidden them: beside the orb only while
     /// the bubble is collapsed and there, at their own spot whatever the bubble does; away otherwise.
     func placeRunStickers() {
-        guard let stickersPanel, let matters else { return }
-        let shown = StickersPanel.shows(count: matters.stickers.count, hidden: stickersPanel.hidden, controlling: stickersPanel.hiddenForControl,
+        guard let stickersPanel else { return }
+        let shown = StickersPanel.shows(count: stickersPanel.model.count, hidden: stickersPanel.hidden, controlling: stickersPanel.hiddenForControl,
                                         detached: stickersPanel.isDetached, bubbleVisible: panel.isVisible, alpha: panel.alphaValue,
                                         expanded: shell.expanded, flying: origami.isFlying)
         guard shown else { stickersPanel.orderOut(nil); return }
@@ -126,16 +145,16 @@ extension AppDelegate {
     /// Stickers, and Put back beside Noteling once the stack was moved; its title carries the count.
     func updateStickersMenu() {
         guard let submenu = stickersMenuItem.submenu else { return }
-        let shown = matters?.shown ?? [], more = matters?.more ?? 0, hidden = stickersPanel?.hidden == true
-        stickersMenuItem.title = StickersPanel.menuBarTitle(count: shown.count + more, hidden: hidden)
+        let shown = stickersPanel?.model.cards ?? [], hidden = stickersPanel?.hidden == true
+        stickersMenuItem.title = StickersPanel.menuBarTitle(count: shown.count, hidden: hidden)
         submenu.autoenablesItems = false
         submenu.removeAllItems()
-        for item in StickersPanel.menuBar(stickers: shown, more: more, hidden: hidden, detached: stickersPanel?.isDetached == true) {
+        for item in StickersPanel.menuBar(stickers: shown, hidden: hidden, detached: stickersPanel?.isDetached == true) {
             guard let item else { submenu.addItem(.separator()); continue }
             let entry = WindowDragHandle.ClosureMenuItem(title: item.title) { [weak self] in self?.stickersPanel?.choose(item.choice) }
             entry.isEnabled = item.enabled
             if case .open(let id) = item.choice, let sticker = shown.first(where: { $0.id == id }) {
-                entry.toolTip = [sticker.title, sticker.byline.map { "shared by " + $0 }, JobWords.time(sticker.at)].compactMap { $0 }.joined(separator: " · ")
+                entry.toolTip = sticker.line(now: Date())
             }
             submenu.addItem(entry)
         }

@@ -3,49 +3,83 @@ import Foundation
 import Testing
 @testable import Familiar
 
-/// The stickers' panel itself: which sticker its right-click menu is about, what choosing from it does, and what it
-/// tells the app to remember. The panel is made but never shown.
+/// The deck's panel itself: which card its right-click menu is about, what choosing from it does, what its keys mean,
+/// and what it tells the app to remember. The panel is made but never shown.
 @Suite @MainActor struct StickersPanelTests {
-    private func matter(_ id: String, _ text: String) -> Matter {
-        let at = Date(timeIntervalSince1970: 1_790_000_000)
-        return Matter(id: id, findings: [FindingRef(job: "team/pages", id: id)], state: .open, view: MatterView(text: text, tone: .calm),
-                      jobName: "Pages up", byline: nil, createdAt: at, updatedAt: at)
+    private let at = Date(timeIntervalSince1970: 1_790_000_000)
+
+    private func matter(_ id: String, _ text: String, action: Bool = false) -> Matter {
+        let ref = FindingRef(job: "team/pages", id: id)
+        let view = MatterView(headline: "Pages", text: text, action: action ? MatterView.Action(finding: ref, run: "nudge", label: "Nudge warehouse") : nil, tone: .calm)
+        var matter = Matter(id: id, findings: [ref], state: .open, view: view, jobName: "Pages up", byline: nil, createdAt: at, updatedAt: at)
+        matter.writtenAt = at
+        return matter
     }
 
-    @Test func theMenuIsAboutTheStickerUnderThePointerWhileItIsStillThere() {
-        let model = Matters(directory: nil)
-        model.save(matter("m-1", "One."))
-        model.save(matter("m-2", "Two."))
-        var opened: [String] = [], putAway: [String] = []
-        let panel = StickersPanel(model: model, look: StickersLook(), home: nil, hideFromScreenShare: false,
-                                  open: { opened.append($0) }, more: {}, putAway: { putAway.append($0) })
-        // Onto one, onto the next, then the first one's leaving arrives late: the menu is about the second.
-        panel.point("m-1", inside: true)
-        panel.point("m-2", inside: true)
-        panel.point("m-1", inside: false)
-        let menu = panel.contextMenu()
-        #expect(menu.items.map(\.title) == ["Open", "Put away", "", "Bigger", "Smaller", "", "Hide stickers"])
-        #expect(menu.items[2].isSeparatorItem && menu.items[5].isSeparatorItem)
-        let allEnabled = menu.items.filter { !$0.isSeparatorItem }.allSatisfy { $0.isEnabled }
-        #expect(allEnabled)
-        panel.choose(.open("m-2"))
-        panel.choose(.putAway("m-2"))
-        #expect(opened == ["m-2"] && putAway == ["m-2"])
+    private func deck(_ matters: Matters) -> DeckModel {
+        let model = DeckModel(matters: matters)
+        model.clock = { self.at }
+        model.stampSeconds = 0
+        return model
+    }
 
-        // Put away for real, the sticker is off the screen: the menu is about the stack, not it.
-        model.putAway("m-2")
+    @Test func theMenuIsAboutTheCardOnTopWhileItIsStillThere() {
+        let matters = Matters(directory: nil)
+        matters.clock = { self.at }
+        matters.save(matter("m-1", "One.", action: true))
+        matters.save(matter("m-2", "Two."))
+        let model = deck(matters)
+        var opened: [String] = []
+        model.open = { opened.append($0) }
+        let panel = StickersPanel(model: model, look: StickersLook(), home: nil, hideFromScreenShare: false)
+        let top = model.card!.id
+        panel.point(top, inside: true)
+        let menu = panel.contextMenu()
+        let titles = menu.items.map(\.title)
+        #expect(titles.count == 9 && titles[0] == "Open" && titles[2] == "Mine" && titles[3] == "Not now" && titles.last == "Hide stickers")
+        #expect(titles[1] == (top == "m-1" ? "Nudge warehouse" : "Mine") || titles[1] == "Mine" || titles[1] == "Nudge warehouse")
+        #expect(menu.items[4].isSeparatorItem && menu.items[7].isSeparatorItem)
+        panel.choose(.open(top))
+        #expect(opened == [top])
+
+        // Put away for real, the card is off the deck: the next card is on top, and the menu is about that one.
+        panel.choose(.putAway(top))
+        #expect(matters.matter(id: top)?.state == .quiet && model.count == 1)
+        panel.point(top, inside: false)
         #expect(panel.contextMenu().items.map(\.title) == ["Bigger", "Smaller", "", "Hide stickers"])
-        panel.point("m-2", inside: false)
-        panel.point("m-1", inside: true)
+        let next = model.card!.id
+        panel.point(next, inside: true)
         #expect(panel.contextMenu().items.first?.title == "Open")
     }
 
+    @Test func theKeysMeanTheVerbsOnTheCardOnTop() {
+        let withAction = Sticker(id: "m-1", title: "Pages up", text: "One.", byline: nil, at: at, urgent: false,
+                                 action: MatterView.Action(finding: FindingRef(job: "team/pages", id: "1"), run: "nudge", label: "Nudge"))
+        let without = Sticker(id: "m-2", title: "Pages up", text: "Two.", byline: nil, at: at, urgent: false)
+        #expect(StickersPanel.key(123, card: withAction) == .doIt("m-1") && StickersPanel.key(123, card: without) == nil)
+        #expect(StickersPanel.key(124, card: withAction) == .mine("m-1") && StickersPanel.key(126, card: withAction) == .putAway("m-1"))
+        #expect(StickersPanel.key(36, card: withAction) == .open("m-1") && StickersPanel.key(76, card: without) == .open("m-2"))
+        #expect(StickersPanel.key(53, card: withAction) == .hide && StickersPanel.key(53, card: nil) == .hide)
+        #expect(StickersPanel.key(49, card: withAction) == nil && StickersPanel.key(123, card: nil) == nil)
+    }
+
+    @Test func theMenuBarListsEveryCardByItsHeadline() {
+        var card = Sticker(id: "m-1", title: "Pages up", headline: "Checkout is down", text: "Two steps are down.", byline: "Yang", at: at, urgent: true)
+        let items = StickersPanel.menuBar(stickers: [card], hidden: false, detached: false)
+        #expect(items.map { $0?.title ?? "" } == ["Checkout is down", "", "Hide Stickers"])
+        card.headline = nil
+        #expect(StickersPanel.menuLine(card) == "Two steps are down.")
+        #expect(StickersPanel.menuBar(stickers: [], hidden: false, detached: true).map { $0?.title ?? "" } == ["No stickers", "", "Hide Stickers", "Put back beside Noteling"])
+        #expect(StickersPanel.menuBar(stickers: [card], hidden: true, detached: false).map { $0?.title ?? "" } == ["Show Stickers (1)"])
+        #expect(StickersPanel.menuBarTitle(count: 2, hidden: true) == "Stickers (2, hidden)" && StickersPanel.menuBarTitle(count: 0, hidden: false) == "Stickers")
+        #expect(card.line(now: at) == "Pages up · shared by Yang · " + JobWords.time(at, now: at))
+    }
+
     @Test func hidingResizingAndReattachingAreRememberedThroughTheApp() async throws {
-        let model = Matters(directory: nil)
-        model.save(matter("m-1", "One."))
+        let matters = Matters(directory: nil)
+        matters.save(matter("m-1", "One."))
         var changes = 0, hides = 0
-        let panel = StickersPanel(model: model, look: StickersLook(scale: 1.4), home: NSPoint(x: 300, y: 100), hideFromScreenShare: false,
-                                  open: { _ in }, more: {}, putAway: { _ in })
+        let panel = StickersPanel(model: deck(matters), look: StickersLook(scale: 1.4), home: NSPoint(x: 300, y: 100), hideFromScreenShare: false)
         panel.onChange = { changes += 1 }
         panel.onHide = { hides += 1 }
         #expect(panel.isDetached && panel.home == NSPoint(x: 300, y: 100) && !panel.hidden)
@@ -58,7 +92,7 @@ import Testing
         #expect(!panel.isDetached && panel.home == nil && changes == 2)
         #expect(panel.contextMenu().items.map(\.title) == ["Bigger", "Smaller", "", "Hide stickers"])
 
-        // The size steps, and the app hears of it once the stickers have redrawn.
+        // The size steps, and the app hears of it once the deck has redrawn.
         panel.choose(.bigger)
         #expect(panel.look.scale == 1.6 && changes == 2)
         try await Task.sleep(for: .milliseconds(50))

@@ -24,13 +24,16 @@ struct MatterPage: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let view = matter.view {
-                    Text(view.text).font(HandFont.font(size: 20)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    if let headline = view.headline {
+                        Text(headline).font(HandFont.font(size: 22)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    }
+                    Text(view.text).font(.system(size: 15)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 } else {
                     Text(Self.noSticker(matter)).font(.system(size: 14)).foregroundStyle(Pad.inkSoft)
                 }
                 Text(Self.byline(matter, now: now())).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
                 if let line = Self.stateLine(matter) {
-                    Label(line, systemImage: matter.state == .closed ? "checkmark.circle" : matter.state == .quiet ? "moon.zzz" : "exclamationmark.circle")
+                    Label(line, systemImage: matter.state == .closed ? "checkmark.circle" : matter.state == .quiet ? "moon.zzz" : matter.state == .yours ? "hand.raised" : "exclamationmark.circle")
                         .font(.system(size: 12)).foregroundStyle(matter.isUrgent && matter.state == .open ? Pad.redInk : Pad.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -76,6 +79,7 @@ struct MatterPage: View {
         switch matter.state {
         case .open: return "The minister hasn't written this one up yet."
         case .quiet: return "Not on a sticker."
+        case .yours: return "On a note of your own."
         case .closed: return "This is over."
         }
     }
@@ -85,6 +89,7 @@ struct MatterPage: View {
         switch matter.state {
         case .open: return matter.isUrgent ? "Urgent" : nil
         case .quiet: return "Kept quiet: " + (matter.why ?? "no reason kept.")
+        case .yours: return "Yours: you took it onto a note of your own."
         case .closed: return "Over: its findings are gone."
         }
     }
