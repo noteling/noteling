@@ -320,6 +320,64 @@ struct MinisterTests {
         #expect(quiet.state == .quiet && quiet.why == Matter.timePassed && place.memory.lines(on: at).last?["quiet"] as? String == Matter.timePassed)
     }
 
+    // MARK: the batch timer
+
+    /// The timer takes the turn by itself, `batchSeconds` after a report, with no one calling `flush()`.
+    @Test func theBatchTimerTakesTheTurnByItself() async throws {
+        let place = try Place(at: at)
+        defer { place.remove() }
+        place.rows = { [self.row(4417, "Acme Ltd", 3)] }
+        place.client.answers = [triage([("4417", "new:acme", true, "Theirs.")]), compose("Acme's order 4417 waits.")]
+        place.minister.batchSeconds = 0.3
+        place.runner.run(place.job.id)
+        await place.runner.finish()
+        #expect(place.client.prompts.isEmpty)   // the batch waits
+        try await Task.sleep(nanoseconds: 1_000_000_000)
+        #expect(place.client.prompts.count == 2 && place.matters.open.first?.view?.text == "Acme's order 4417 waits.")
+    }
+
+    /// Issue #90: the jobs' tick, every 30 s, ends in `reconcile()`, which restarted the 60 s batch timer, so it never
+    /// fired and no finding ever reached the minister. Here 0.6 s stands for the 60 and 0.3 s for the 30.
+    @Test func theJobsTickDoesNotKeepTheBatchTimerFromFiring() async throws {
+        let place = try Place(at: at)
+        defer { place.remove() }
+        place.rows = { [self.row(4417, "Acme Ltd", 3)] }
+        place.client.answers = [triage([("4417", "new:acme", true, "Theirs.")]), compose("Acme's order 4417 waits.")]
+        place.minister.batchSeconds = 0.6
+        place.runner.run(place.job.id)
+        await place.runner.finish()
+        for _ in 0..<7 {
+            try await Task.sleep(nanoseconds: 300_000_000)
+            place.minister.reconcile()   // what each tick does
+        }
+        #expect(place.client.prompts.count == 2 && place.matters.open.count == 1)
+    }
+
+    /// A report restarts the timer, so a run of several jobs is one turn; the limit sees to it that findings which
+    /// keep coming can't put the turn off for ever. Here 1.2 s stands for the two minutes.
+    @Test func findingsThatKeepComingCannotPutTheTurnOffForEver() async throws {
+        let place = try Place(at: at)
+        defer { place.remove() }
+        place.minister.clock = Date.init   // the limit is measured in real time here
+        place.rows = { [self.row(4417, "Acme Ltd", 3)] }
+        place.client.answers = [triage([("4417", "new:acme", true, "Theirs.")]), compose("Acme's order 4417 waits."),
+                                triage([("4417", "new:acme-again", true, "Still theirs.")]), compose("Acme's order 4417 still waits.")]
+        place.minister.batchSeconds = 0.6
+        place.minister.batchLimitSeconds = 1.2
+        place.runner.run(place.job.id)
+        await place.runner.finish()
+        var firstTurnAtTick: Int?
+        for tick in 1...8 {   // every 0.3 s the row changes again, and the jobs tick
+            try await Task.sleep(nanoseconds: 300_000_000)
+            if firstTurnAtTick == nil, !place.client.prompts.isEmpty { firstTurnAtTick = tick }
+            let row = FindingRow(id: "4417", values: row(4417, "Acme Ltd", 3 + tick), columns: ["order_id", "customer", "paid_on", "waiting_days"])
+            place.minister.notice(place.job, change: FindingsChange(changed: [.init(row: row, columns: ["waiting_days"])]))
+            place.minister.reconcile()
+        }
+        #expect(place.client.prompts.count >= 2 && place.client.prompts.first?.contains("team/sales/stuck-orders/4417") == true)
+        #expect(firstTurnAtTick != nil && (firstTurnAtTick ?? 9) <= 5)   // by the limit at 1.2 s, with slack, not never
+    }
+
     // MARK: what it reads with
 
     @Test func theMinisterMayLookThingsUpBeforeItAnswers() async throws {

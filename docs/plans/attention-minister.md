@@ -8,7 +8,9 @@ inbox, the card step, the attention test and the reading jobs of earlier version
 their place. Who's Who went with the folder (the user's call: "we can always add it later"); its people stay in
 `morning/morning.sqlite` for the phase that gives the minister the person's side. Before the UAT, 0.8.1 also got the
 job page's receipt of the minister ("3 findings: 1 on a sticker, 2 kept quiet", each finding with its verdict and why)
-and the menu bar's Stickers submenu.
+and the menu bar's Stickers submenu. The UAT at 0.8.2 found that no finding had ever reached the minister in a running
+app (issue #90): the jobs' 30 s tick restarted its 60 s batch timer each time, so it never fired. Fixed after 0.8.2: the
+tick only arms a timer when none is waiting, and a batch takes its turn no later than two minutes after it began.
 
 ## Why
 

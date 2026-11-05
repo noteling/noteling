@@ -126,7 +126,7 @@ tracks no state and never says "resolved". After a run that works:
   verdict and why, opening its matter. That is where you see what happened to your work when no sticker shows.
 
 **What the minister does with them.** After a batch of changes (about a minute, so one run of several jobs is one
-turn), the minister sorts the new and changed findings into *matters* (one thing worth attention, which may be several
+turn, and two at most, however the findings keep coming), the minister sorts the new and changed findings into *matters* (one thing worth attention, which may be several
 findings across jobs: the same customer seen by two jobs is one matter), and says for each whether it deserves the
 person's attention now, and why. A sure thing is all four at once: it's theirs, it needs them, it's true now, and it's new
 to them. Anything in doubt stays quiet, with the reason written in the log. For each matter that shows, it writes the
