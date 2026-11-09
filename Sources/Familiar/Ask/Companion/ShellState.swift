@@ -23,6 +23,11 @@ final class ShellState: ObservableObject {
     var onNewNote: (() -> Void)?
     /// A click on the orb: every note of yours comes up where you are for a moment, or goes back if they are up.
     var onGlance: (() -> Void)?
+    /// Noteling's menu: every note comes up (and back on the screen, if hidden), or every one goes off the screen until shown.
+    var onShowNotes: (() -> Void)?
+    var onHideNotes: (() -> Void)?
+    @Published var noteCount = 0
+    @Published var notesHidden = false
     /// The lamp was clicked: the deck opens, or the receipt when nothing needs you.
     var onLamp: (() -> Void)?
     var onOpenJobs: (() -> Void)?

@@ -24,6 +24,9 @@ others:
   note you click while they are up stays in front, as any window you touched does. **Show My Notes**, in the pencil
   icon in the menu bar, is the same in words, and so is asking the chat: "show me my todos for this morning" brings
   up the notes that match, due this morning or with a line still to tick, and tells you what came up.
+- **Right-click Noteling** for **Show my notes** and **Hide my notes**. Hide takes every note off the screen, for a
+  clean desk or a shared one, until Show brings them back; so does a click on Noteling, a new note, or the chat
+  showing them. A note with a time still comes up at its time. The pencil's menu has both as well.
 - **When its time is near.** A note with a time comes up for a moment when its countdown starts, an hour before.
 - **At its time**, wherever you are, glowing until you click it; then it stays where you are.
 

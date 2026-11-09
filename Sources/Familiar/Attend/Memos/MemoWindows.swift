@@ -19,6 +19,9 @@ final class MemoWindows {
     private(set) var panels: [String: MemoPanel] = [:]
     /// Whether panels are put on the screen; tests keep them off it.
     var shows = true
+    /// Your notes are off the screen until shown again (Hide my notes in Noteling's menu); one still comes up at its time.
+    private(set) var hidden: Bool
+    var onHiddenChange: ((Bool) -> Void)?
     private var subscriptions = Set<AnyCancellable>()
     private var ticker: Timer?
     private var spaceObserver: NSObjectProtocol?
@@ -32,10 +35,11 @@ final class MemoWindows {
     /// The notes up on their own for a moment, by id: each when its time came near.
     private var moments: [String: DispatchWorkItem] = [:]
 
-    init(store: MemoStore, scale: CGFloat, hideFromScreenShare: Bool) {
+    init(store: MemoStore, scale: CGFloat, hideFromScreenShare: Bool, hidden: Bool = false) {
         self.store = store
         self.scale = PaperLook.clamped(scale)
         self.hideFromScreenShare = hideFromScreenShare
+        self.hidden = hidden
     }
 
     func start() {
@@ -78,6 +82,7 @@ final class MemoWindows {
 
     /// A glance at some of your notes, by id (the chat's "show my todos for this morning"); nil is all of them.
     func show(ids: Set<String>?) {
+        if hidden { unhide() }
         tick(now: clock())
         for (id, panel) in panels where ids?.contains(id) ?? true {
             panel.raise()
@@ -109,6 +114,23 @@ final class MemoWindows {
     /// The person went to another Space: the glance ends, and the notes stay on theirs.
     func spaceChanged() { endGlance() }
 
+    /// Hide my notes: every note goes off the screen until shown again, by the menu, a click on the orb, a new note or the
+    /// chat; a timed note still comes up at its time.
+    func hide() {
+        endGlance()
+        guard !hidden else { return }
+        hidden = true
+        for panel in panels.values { panel.orderOut(nil) }
+        onHiddenChange?(true)
+    }
+
+    func unhide() {
+        guard hidden else { return }
+        hidden = false
+        if shows { for panel in panels.values { panel.orderFrontRegardless() } }
+        onHiddenChange?(false)
+    }
+
     /// One note up on its own for a moment, as when its time comes near, opened if it slept folded; then back to its
     /// place, unless it woke, is being written on, or every note is up for a glance meanwhile.
     private func moment(_ panel: MemoPanel) {
@@ -122,6 +144,7 @@ final class MemoWindows {
             self.moments[id] = nil
             guard let panel, !self.glancing, !panel.state.warm, !panel.state.editing else { return }
             panel.settle()
+            if self.hidden { panel.orderOut(nil) }   // its moment is over: back off the screen with the rest
         }
         moments[id] = end
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.glanceSeconds, execute: end)
@@ -139,6 +162,7 @@ final class MemoWindows {
         if memo.at == nil { memo.at = spot() }
         store.save(memo)
         sync()
+        if hidden { unhide() }   // a new note is for seeing
         if let panel = panels[memo.id], shows {
             panel.orderFrontRegardless()
             if memo.isBlank { panel.beginEditing() }
@@ -190,7 +214,7 @@ final class MemoWindows {
         panels[memo.id] = panel
         panel.place(topLeft: memo.at ?? spot())
         clamp(panel)
-        if shows { panel.orderFrontRegardless() }
+        if shows, !hidden { panel.orderFrontRegardless() }
     }
 
     private func clamp(_ panel: MemoPanel) {
