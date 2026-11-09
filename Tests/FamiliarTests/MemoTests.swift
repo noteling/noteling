@@ -13,21 +13,21 @@ import Testing
         return calendar
     }
 
-    @Test func aNoteIsPinnedUnlessItsFileSaysOtherwise() {
-        #expect(MemoFile.parse("Milk", id: "n-1").pinned)
-        #expect(MemoFile.parse("---\ntop: true\n---\nMilk", id: "n-2").pinned)   // 0.9.1's Keep on top
-        #expect(!MemoFile.parse("---\npinned: false\n---\nMilk", id: "n-3").pinned)
+    @Test func anEarlierVersionsPinLineIsReadPastAndNotKept() {
+        let memo = MemoFile.parse("---\ntop: true\npinned: false\ncolour: pink\n---\nMilk", id: "n-2")   // 0.9.1's Keep on top, 0.9.2's pin
+        #expect(memo.text == "Milk" && memo.colour == .pink)
+        #expect(!MemoFile.text(memo).contains("pinned") && !MemoFile.text(memo).contains("top:"))
     }
 
     @Test func aNoteRoundTripsThroughItsFile() {
         var memo = Memo(id: "n-1", headline: "Lena · Q4 numbers", text: "Send Lena the Q4 numbers.\nBefore the call.",
                         items: [PaperItem(text: "revenue sheet"), PaperItem(text: "notes", done: true)], colour: .blue,
                         when: at.addingTimeInterval(3_600), page: "https://docs.example.com/q4", asked: "remind me to send Lena the Q4 numbers this afternoon",
-                        matter: "m-abc12345", at: CGPoint(x: 412, y: 88.5), collapsed: true, pinned: false, createdAt: at, updatedAt: at.addingTimeInterval(60))
+                        matter: "m-abc12345", at: CGPoint(x: 412, y: 88.5), collapsed: true, createdAt: at, updatedAt: at.addingTimeInterval(60))
         let text = MemoFile.text(memo)
         #expect(text.hasPrefix("---\ncolour: blue\nwhen: "))
         #expect(text.contains("\n# Lena · Q4 numbers\nSend Lena the Q4 numbers.\nBefore the call.\n- [ ] revenue sheet\n- [x] notes\n"))
-        #expect(text.contains("\nat: 412,88.5\n") && text.contains("\ncollapsed: true\n") && text.contains("\npinned: false\n"))
+        #expect(text.contains("\nat: 412,88.5\n") && text.contains("\ncollapsed: true\n"))
         let back = MemoFile.parse(text, id: "n-1")
         // Dates come back to the second.
         memo.updatedAt = Date(timeIntervalSince1970: memo.updatedAt.timeIntervalSince1970.rounded(.down))

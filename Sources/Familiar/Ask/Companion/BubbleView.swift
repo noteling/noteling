@@ -70,7 +70,6 @@ struct BubbleView: View {
         .contextMenu {
             Button("Open chat") { shell.expanded = true }
             Button("New note") { shell.onNewNote?() }
-            Button("Show my notes") { shell.onShowMyNotes?() }.disabled(shell.noteCount == 0)
             Button(state.watching ? "Point at what you clicked" : "Point the pen") { state.startWand() }
             Button(state.watching ? "Stop watching" : "Watch me") { state.toggleWatching() }
             Divider()
@@ -81,7 +80,7 @@ struct BubbleView: View {
             Button("Hide bubble") { shell.onHideBubble?() }
             Button("Quit Noteling") { NSApp.terminate(nil) }
         }
-        .help("Double-click: chat  ·  Hold: pick up the pen  ·  ⌃⌥Space: pen")
+        .help("Click: your notes  ·  Double-click: chat  ·  Hold: pick up the pen  ·  ⌃⌥Space: pen")
         // The lamp: off when nothing needs you, warm when something does, hot when it can't wait. A click opens the deck.
         .overlay(alignment: .topLeading) {
             if !shell.lampHidden {
@@ -93,7 +92,6 @@ struct BubbleView: View {
                         if shell.lamp != .off { Button("Open the deck") { shell.onLamp?() } }
                         Button("What's been handled") { shell.onReceipt?() }
                         Button("New note") { shell.onNewNote?() }
-                        Button("Show my notes") { shell.onShowMyNotes?() }.disabled(shell.noteCount == 0)
                         Button("Jobs…") { shell.onOpenJobs?() }
                         Divider()
                         Button("Hide the lamp") { shell.onHideLamp?() }
@@ -130,7 +128,8 @@ struct BubbleView: View {
         }
     }
 
-    /// Single click can reopen the task screen; double click always opens chat for a new instruction.
+    /// A single click brings your notes up for a moment (or the task screen back, while a task runs); a double click
+    /// opens the chat for a new instruction.
     private func click() {
         let now = Date()
         if let last = lastClick, now.timeIntervalSince(last) < NSEvent.doubleClickInterval {
@@ -142,6 +141,7 @@ struct BubbleView: View {
         lastClick = now
         if state.backgroundTaskRunning { state.showBackgroundTasks(); return }
         react(.happy, for: 0.9)
+        shell.onGlance?()
         shell.onPoke?()
     }
 

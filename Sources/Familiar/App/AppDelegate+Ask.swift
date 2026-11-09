@@ -92,6 +92,7 @@ extension AppDelegate {
                 }
                 self.panel.resize(to: expanded ? self.shell.cardSize : BubblePanel.collapsedSize, animate: false)
                 if expanded {
+                    self.memoWindows?.endGlance()   // the chat is what you want in front now
                     if self.shell.consumeQuietExpand() { self.panel.orderFrontRegardless() } else { self.panel.makeKeyAndOrderFront(nil) }
                 } else { self.panel.orderFrontRegardless(); self.panel.resignKey() }
                 self.placeRunStickers()
@@ -301,6 +302,7 @@ extension AppDelegate {
         guard !assistant.watching else { assistant.startWand(); return }   // no-op with a status line
         guard !assistant.busy else { shell.expanded = true; return }
         shell.expanded = false
+        memoWindows?.endGlance()
         wand.activate()
     }
 

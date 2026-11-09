@@ -308,38 +308,6 @@ struct PeelButton: View {
     }
 }
 
-/// The pin at the paper's top-right corner, always there, so what holds a note up is in plain sight: pushed in and red
-/// when the note is pinned over the windows of its Space; lying hollow and faint when the note is on the desktop,
-/// under them. A click moves the note from the one to the other.
-struct PinButton: View {
-    var pinned: Bool
-    var scale: CGFloat = 1
-    var action: () -> Void
-    @State private var over = false
-
-    nonisolated static let hit: CGFloat = 24
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: pinned ? "pin.fill" : "pin")
-                .font(.system(size: 12 * scale, weight: pinned ? .semibold : .regular))
-                .foregroundStyle(pinned ? Pad.redInk : PaperType.inkSoft.opacity(over ? 0.95 : 0.6))
-                .rotationEffect(.degrees(pinned ? 28 : 60))
-                .shadow(color: .black.opacity(pinned ? 0.25 : 0), radius: 0.8, x: 0.5, y: 1)
-                .scaleEffect(over ? 1.2 : 1)
-                .frame(width: Self.hit * scale, height: Self.hit * scale)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(pinned ? "Pinned over your windows, on this Space. Click to lay it on the desktop, under them."
-                     : "On the desktop, under your windows. Click to pin it over them, on this Space.")
-        .accessibilityLabel(pinned ? "Pinned. Lay it on the desktop" : "On the desktop. Pin it over your windows")
-        .onHover { over = $0 }
-        .animation(.easeOut(duration: 0.15), value: over)
-        .animation(.spring(duration: 0.3), value: pinned)
-    }
-}
-
 /// A checkbox a hand would draw: a square a hair off true, and a two-stroke tick when it is done.
 struct PaperCheckBox: View {
     var done: Bool

@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// One of your own notes: the words you wrote or dictated, on paper of your colour, pinned where you put it. It may
+/// One of your own notes: the words you wrote or dictated, on paper of your colour, on your screen where you put it. It may
 /// carry a when, a page and a checklist, and remembers the words you said when the scribe wrote it and the matter it
 /// came from when it was a card. It is a file (`MemoFile`), so Finder is its folder.
 struct Memo: Identifiable, Equatable {
@@ -16,11 +16,9 @@ struct Memo: Identifiable, Equatable {
     var asked: String?
     /// The matter whose card became this note.
     var matter: String?
-    /// Where it is pinned: the paper's top-left corner on the screen, so it grows downward as it is written; nil until placed.
+    /// Where it sits: the paper's top-left corner on the screen, so it grows downward as it is written; nil until placed.
     var at: CGPoint?
     var collapsed = false
-    /// Pinned over your windows, on the Space it is on, as a new note is; unpinned, it lies on the desktop, under them.
-    var pinned = true
     var createdAt: Date
     var updatedAt: Date
 
@@ -42,7 +40,8 @@ struct Memo: Identifiable, Equatable {
 
 /// A note as a file: a few lines of front matter between `---` lines (its colour, when, page, place, and so on), then
 /// the note itself as markdown: `# ` for the headline, lines of words, `- [ ]` and `- [x]` for a checklist. A file with
-/// no front matter is a note too, with everything at its defaults, so a person can write one in any editor.
+/// no front matter is a note too, with everything at its defaults, so a person can write one in any editor. A line it
+/// doesn't know (`top` and `pinned`, from 0.9.1 and 0.9.2, among them) is read past and not kept.
 enum MemoFile {
     static let ext = "md"
 
@@ -81,7 +80,7 @@ enum MemoFile {
         return Memo(id: id, headline: headline?.isEmpty == false ? headline : nil, text: body, items: items,
                     colour: PaperColour(rawValue: head["colour"] ?? "") ?? .yellow,
                     when: head["when"].flatMap(date), page: value(head["page"]), asked: value(head["asked"]), matter: value(head["matter"]),
-                    at: head["at"].flatMap(point), collapsed: head["collapsed"] == "true", pinned: head["pinned"] != "false",
+                    at: head["at"].flatMap(point), collapsed: head["collapsed"] == "true",
                     createdAt: created, updatedAt: head["updated"].flatMap(date) ?? modified ?? created)
     }
 
@@ -107,7 +106,6 @@ enum MemoFile {
         if let matter = memo.matter, !matter.isEmpty { head.append(("matter", matter)) }
         if let at = memo.at { head.append(("at", "\(Self.number(at.x)),\(Self.number(at.y))")) }
         if memo.collapsed { head.append(("collapsed", "true")) }
-        if !memo.pinned { head.append(("pinned", "false")) }
         head.append(("created", stamp(memo.createdAt)))
         head.append(("updated", stamp(memo.updatedAt)))
         var out = "---\n" + head.map { "\($0.0): \($0.1)" }.joined(separator: "\n") + "\n---\n"
