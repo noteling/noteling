@@ -2,9 +2,9 @@ import AppKit
 import Combine
 import Foundation
 
-/// Your notes on the screen: a panel for every note in the store, placed where the note says, a new one near the orb,
-/// each kept as the note changes here or in its file, brought forward when its when comes, and all drawn at one size
-/// that Bigger and Smaller step through.
+/// Your notes on the screen: a panel for every note in the store, placed where the note says, a new one near the orb
+/// and up on top for a minute, each kept as the note changes here or in its file, brought up when its when comes, and
+/// all drawn at one size that Bigger and Smaller step through.
 @MainActor
 final class MemoWindows {
     let store: MemoStore
@@ -19,6 +19,9 @@ final class MemoWindows {
     var shows = true
     private var subscriptions = Set<AnyCancellable>()
     private var ticker: Timer?
+    private var started = false
+    /// How long a new note stays up on top of everything before it settles where it lives, unless clicked first.
+    static let newSeconds: TimeInterval = 60
 
     init(store: MemoStore, scale: CGFloat, hideFromScreenShare: Bool) {
         self.store = store
@@ -28,12 +31,26 @@ final class MemoWindows {
 
     func start() {
         sync()
+        started = true
         store.$all.receive(on: RunLoop.main).sink { [weak self] _ in self?.sync() }.store(in: &subscriptions)
         store.onWake = { [weak self] memo in self?.panels[memo.id]?.wake() }
-        // The when words ("in 10 min") move with the clock.
-        ticker = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.panels.values.forEach { $0.state.now = Date() } }
+        // The when words ("in 10 min") move with the clock, on the minute, as the menu bar's clock does.
+        let timer = Timer(fire: Self.nextMinute(after: Date()), interval: 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
         }
+        timer.tolerance = 0.2
+        RunLoop.main.add(timer, forMode: .common)
+        ticker = timer
+    }
+
+    /// Every note reads its when against this moment.
+    func tick(now: Date = Date()) {
+        for panel in panels.values { panel.state.now = now }
+    }
+
+    /// The next whole minute, a hair after it, so the words have moved once the menu bar's clock has.
+    nonisolated static func nextMinute(after date: Date) -> Date {
+        Date(timeIntervalSinceReferenceDate: (date.timeIntervalSinceReferenceDate / 60).rounded(.down) * 60 + 60.3)
     }
 
     /// A new note, blank unless given, placed near the orb and shown; a blank one opens for writing at once.
@@ -80,7 +97,7 @@ final class MemoWindows {
         panel.onChange = { [weak self] changed in
             guard let self else { return }
             var kept = changed
-            if kept.isBlank { self.store.remove(kept.id); return }
+            if kept.isBlank { self.store.remove(kept.id, toTrash: false); return }
             if kept.at == nil { kept.at = panel.paperTopLeft }
             self.store.save(kept)
         }
@@ -91,6 +108,8 @@ final class MemoWindows {
         panels[memo.id] = panel
         panel.place(topLeft: memo.at ?? spot())
         clamp(panel)
+        // A note that comes while Noteling runs is new: up on top for a minute, so what the scribe pinned is seen.
+        if started { panel.raise(for: Self.newSeconds) }
         if shows { panel.orderFrontRegardless() }
     }
 

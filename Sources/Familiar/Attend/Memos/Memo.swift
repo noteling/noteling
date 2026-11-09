@@ -19,8 +19,8 @@ struct Memo: Identifiable, Equatable {
     /// Where it is pinned: the paper's top-left corner on the screen, so it grows downward as it is written; nil until placed.
     var at: CGPoint?
     var collapsed = false
-    /// Kept below your windows instead of above them.
-    var below = false
+    /// Kept on top of your windows, in the Space it is on; otherwise it lives on the desktop, under them.
+    var onTop = false
     var createdAt: Date
     var updatedAt: Date
 
@@ -81,7 +81,7 @@ enum MemoFile {
         return Memo(id: id, headline: headline?.isEmpty == false ? headline : nil, text: body, items: items,
                     colour: PaperColour(rawValue: head["colour"] ?? "") ?? .yellow,
                     when: head["when"].flatMap(date), page: value(head["page"]), asked: value(head["asked"]), matter: value(head["matter"]),
-                    at: head["at"].flatMap(point), collapsed: head["collapsed"] == "true", below: head["below"] == "true",
+                    at: head["at"].flatMap(point), collapsed: head["collapsed"] == "true", onTop: head["top"] == "true",
                     createdAt: created, updatedAt: head["updated"].flatMap(date) ?? modified ?? created)
     }
 
@@ -107,7 +107,7 @@ enum MemoFile {
         if let matter = memo.matter, !matter.isEmpty { head.append(("matter", matter)) }
         if let at = memo.at { head.append(("at", "\(Self.number(at.x)),\(Self.number(at.y))")) }
         if memo.collapsed { head.append(("collapsed", "true")) }
-        if memo.below { head.append(("below", "true")) }
+        if memo.onTop { head.append(("top", "true")) }
         head.append(("created", stamp(memo.createdAt)))
         head.append(("updated", stamp(memo.updatedAt)))
         var out = "---\n" + head.map { "\($0.0): \($0.1)" }.joined(separator: "\n") + "\n---\n"

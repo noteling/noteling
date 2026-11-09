@@ -31,7 +31,18 @@ Step 5 built on `feature/teaching` (stacked on step 4): `Lessons` (`matters/taug
 cards within a week and the deck asks, after the cards, on blue paper, "Stop showing these?"; Yes is a lesson the
 triage prompt lists under Taught and the receipt can forget, No holds the question a week; the good tone (compose
 may mark one finding per turn good news): green paper, last, Mine and Thanks, no action, and it never lights the lamp
-alone (`DeckModel.needs`). The phase's build order is done; what's left is the DMG and the UAT.
+alone (`DeckModel.needs`). The phase's build order is done: PRs #93 to #97, stacked, none merged; `release/0.9.0`
+carries the version bump for a pre-release DMG, cut with `scripts/release.sh` by the user (notarization is an outward
+action this session couldn't take), then `gh release create v0.9.0 --prerelease`. One UAT of the whole phase follows.
+
+**UAT, round one (2026-11-05):** chat-to-note "VERY smooth"; the paper "good enough that I would not hate it
+initially". Fixed on `feature/uat-notes` (stacked on the release branch) for a 0.9.1 pre-release: the ⌃⌥N hotkey is
+gone (never found; ⌃⌥Space and "note: …" already cover quick capture) and New note stays in the orb's menu; notes live
+on the desktop (under windows, the same on every Space) instead of floating over everything on every Space, which was
+the one real annoyance; a note comes up on top when new (a minute), when its when comes (until clicked) and while
+written on; Keep on top per note replaces Keep below windows; the when words move on the minute; the × became the
+peel, a 28-point round button over the corner on hover, and removed files go to the Trash. No TTL: an easy peel was
+chosen over a note that leaves on its own. The deck, lamp, receipt and teaching are still to be tried.
 
 ## Why
 

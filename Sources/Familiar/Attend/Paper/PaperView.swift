@@ -273,6 +273,42 @@ struct PaperView: View {
 }
 
 /// A checkbox a hand would draw: a square a hair off true, and a two-stroke tick when it is done.
+/// The peel: a round button over the paper's top-left corner that fades in while the mouse is on the paper, big
+/// enough to hit without aiming, unlike the × of an ad. On a note it takes the note down; on a card it is Not now.
+struct PeelButton: View {
+    var help: String
+    var action: () -> Void
+    @State private var over = false
+
+    /// The circle, the hit area around it, where its centre sits in from the paper's corner, and how long a peel takes.
+    nonisolated static let size: CGFloat = 28
+    nonisolated static let hit: CGFloat = 36
+    nonisolated static let centre: CGFloat = 8
+    nonisolated static let peelSeconds: Double = 0.22
+    /// Where the hit area's top-left corner goes from the paper's corner, for the centre to sit at `centre`.
+    nonisolated static var offset: CGFloat { centre - hit / 2 }
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle().fill(Color(white: 0.2).opacity(over ? 0.96 : 0.84))
+                    .overlay(Circle().strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.28), radius: 2.5, y: 1)
+                Image(systemName: "xmark").font(.system(size: 12.5, weight: .bold)).foregroundStyle(.white)
+            }
+            .frame(width: Self.size, height: Self.size)
+            .scaleEffect(over ? 1.1 : 1)
+            .frame(width: Self.hit, height: Self.hit)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
+        .onHover { over = $0 }
+        .animation(.easeOut(duration: 0.12), value: over)
+    }
+}
+
 struct PaperCheckBox: View {
     var done: Bool
     var scale: CGFloat = 1
@@ -315,8 +351,10 @@ struct PaperClock: View {
         let hour = Double((parts.hour ?? 0) % 12) + minute / 60
         ZStack {
             Circle().stroke(PaperType.ink.opacity(0.75), lineWidth: 1.2 * scale)
-            PaperHand_(angle: hour / 12 * 360, length: 0.3).stroke(PaperType.ink, style: StrokeStyle(lineWidth: 1.3 * scale, lineCap: .round))
-            PaperHand_(angle: minute / 60 * 360, length: 0.42).stroke(PaperType.ink, style: StrokeStyle(lineWidth: 1.1 * scale, lineCap: .round))
+            // A short, heavy hour hand and a long, light minute hand, so that hands opposite each other (10:20, 12:30) still
+            // read as a clock and not as a slash through a circle.
+            PaperHand_(angle: hour / 12 * 360, length: 0.22).stroke(PaperType.ink, style: StrokeStyle(lineWidth: 1.7 * scale, lineCap: .round))
+            PaperHand_(angle: minute / 60 * 360, length: 0.46).stroke(PaperType.ink, style: StrokeStyle(lineWidth: 0.95 * scale, lineCap: .round))
         }
         .frame(width: size, height: size)
     }

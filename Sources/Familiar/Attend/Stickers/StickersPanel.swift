@@ -311,19 +311,18 @@ struct CardView: View {
     var body: some View {
         PaperView(headline: card.headline, text: card.text, page: card.page, byline: card.line(now: now), hand: .typed,
                   colour: card.urgent ? .amber : card.good ? .green : .yellow, scale: scale, now: now, tilt: PaperLook.tilt(for: card.id))
-            .overlay(alignment: .topTrailing) {
+            .overlay(alignment: .topLeading) {
                 if hovering, stamp == nil {
-                    Button(action: putAway) {
-                        Text("×").font(Font(StickerPaper.font(12 * scale, bold: true))).foregroundStyle(PaperType.inkSoft)
-                            .frame(width: 18 * scale, height: 18 * scale).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain).help(card.good ? "Thanks" : "Not now").padding(2 * scale)
+                    PeelButton(help: card.good ? "Thanks" : "Not now", action: putAway)
+                        .offset(x: PeelButton.offset, y: PeelButton.offset)
+                        .transition(.opacity.combined(with: .scale(scale: 0.7)))
                 }
             }
             .overlay {
                 if let stamp { StampView(verdict: stamp, scale: scale).transition(.scale(scale: 1.6).combined(with: .opacity)) }
             }
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: stamp)
+            .animation(.easeOut(duration: 0.15), value: hovering)
             .contentShape(Rectangle())
             .onTapGesture(perform: open)
             .gesture(DragGesture(minimumDistance: Self.dragDistance).onChanged { _ in drag(.moved) }.onEnded { _ in drag(.ended) })
