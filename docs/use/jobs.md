@@ -75,6 +75,10 @@ Acme?", "why did I get that card?", "what did the orders job find yesterday?".
 - **Teaching it.** Put away two cards from one job within a week and, after the cards, the deck asks on blue paper:
   "Stop showing its findings unless one can't wait?" **Yes, stop** is a lesson the minister reads at every turn, listed
   under Taught on the receipt with **Forget**; **No, keep showing** holds the question for a week.
+- **Tell it how you want things.** Say to the chat "for all meetings, make the link the thing to open" or "stop telling
+  me about newsletters", and the minister keeps it as a standing rule in your words, read at every turn as a
+  preference within its rules: it never makes a finding sure that isn't, and never adds a button. The receipt lists
+  what you told it under Taught, with **Forget**; "forget that rule about meetings" in the chat does the same.
 - **Good news** comes last, on green paper: a payment that landed, a five-star review, something you were waiting for.
   It needs nothing of you; **Thanks** puts it away, and it never lights the lamp on its own.
 - Under the card, three verbs on paper tabs. **Its action** (such as **Nudge warehouse**, the button the minister picked

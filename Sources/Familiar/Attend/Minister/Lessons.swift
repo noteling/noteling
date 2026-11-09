@@ -4,6 +4,7 @@ import Foundation
 /// What the person taught the minister by stamping: two Not now on cards of one job within a week, and the deck asks
 /// "Stop showing these?"; Yes is a lesson, kept in `matters/taught.json`, read by the minister at every turn and listed
 /// on the receipt, where it can be forgotten; No is remembered for a week so the question isn't asked again at once.
+/// Beside the lessons, what the person told the minister in their own words (`Instruction`), from the chat.
 struct Lesson: Codable, Equatable, Identifiable {
     var id: String { job }
     /// The job as the log names it: `team/holiday/oct/gm`.
@@ -13,6 +14,15 @@ struct Lesson: Codable, Equatable, Identifiable {
 
     /// What the minister is told: "keep the findings of Holiday Oct · GM quiet unless one can't wait".
     var words: String { "Keep the findings of \(name) quiet unless one can't wait." }
+}
+
+/// A standing rule in the person's own words, told to the minister from the chat ("for all meetings, make the link the
+/// thing to open"): read at every turn as a preference within its rules, listed on the receipt, forgotten from there or
+/// from the chat. It never makes a finding sure that isn't, and never adds a button.
+struct Instruction: Codable, Equatable, Identifiable {
+    let id: String
+    let text: String
+    let at: Date
 }
 
 /// The deck's question, when there is one to ask.
@@ -30,6 +40,8 @@ final class Lessons: ObservableObject {
     @Published private(set) var all: [Lesson] = []
     /// Jobs whose question the person said No to, and when; asked again only after `declineDays`.
     @Published private(set) var declined: [String: Date] = [:]
+    /// What the person told it in words, newest first.
+    @Published private(set) var told: [Instruction] = []
     let file: URL?
     var clock: () -> Date = Date.init
 
@@ -37,10 +49,13 @@ final class Lessons: ObservableObject {
     static let askAfter = 2
     static let lookBackDays = 7
     static let declineDays = 7
+    static let toldLimit = 20
+    static let instructionLimit = 200
 
     private struct Kept: Codable {
         var lessons: [Lesson] = []
         var declined: [String: Date] = [:]
+        var told: [Instruction]? = nil
     }
 
     init(file: URL?) {
@@ -68,6 +83,37 @@ final class Lessons: ObservableObject {
     func forget(job: String) {
         all.removeAll { $0.job == job }
         write()
+    }
+
+    /// The person told the minister something, in their words: kept, one line, up to `instructionLimit` characters and
+    /// `toldLimit` things; the same words again are the one already kept.
+    @discardableResult
+    func tell(_ words: String) throws -> Instruction {
+        let text = words.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+        guard !text.isEmpty else { throw MinisterError("Say what to tell the minister.") }
+        guard text.count <= Self.instructionLimit else { throw MinisterError("That is \(text.count) characters; the minister keeps a rule of \(Self.instructionLimit) at most.") }
+        if let same = told.first(where: { $0.text.caseInsensitiveCompare(text) == .orderedSame }) { return same }
+        guard told.count < Self.toldLimit else { throw MinisterError("The minister keeps \(Self.toldLimit) things you told it at most; forget one first.") }
+        let instruction = Instruction(id: "i-" + String(UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "").prefix(8)), text: text, at: clock())
+        told.insert(instruction, at: 0)
+        write()
+        return instruction
+    }
+
+    /// Forgets something told, by its id or its words (the whole, or a part that fits one thing only).
+    @discardableResult
+    func forget(instruction key: String) -> Instruction? {
+        let wanted = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !wanted.isEmpty else { return nil }
+        var found = told.first { $0.id == wanted || $0.text.caseInsensitiveCompare(wanted) == .orderedSame }
+        if found == nil {
+            let partial = told.filter { $0.text.range(of: wanted, options: .caseInsensitive) != nil }
+            if partial.count == 1 { found = partial[0] }
+        }
+        guard let found else { return nil }
+        told.removeAll { $0.id == found.id }
+        write()
+        return found
     }
 
     /// The question to ask, if any: the job with the most cards put away lately (two at least), with no lesson and
@@ -112,6 +158,7 @@ final class Lessons: ObservableObject {
         }
         all = kept.lessons.sorted { $0.at > $1.at }
         declined = kept.declined
+        told = (kept.told ?? []).sorted { $0.at > $1.at }
     }
 
     private func write() {
@@ -121,7 +168,7 @@ final class Lessons: ObservableObject {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         do {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            try JobFiles.write(try encoder.encode(Kept(lessons: all, declined: declined)), to: file)
+            try JobFiles.write(try encoder.encode(Kept(lessons: all, declined: declined, told: told)), to: file)
         } catch {
             Log.info("lessons: couldn't keep \(file.lastPathComponent): \(error.localizedDescription)")
         }
