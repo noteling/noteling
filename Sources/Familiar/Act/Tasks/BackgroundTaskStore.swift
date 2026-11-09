@@ -39,6 +39,22 @@ struct BackgroundTaskRecord: Identifiable {
         if step > 0 { parts.append("\(step) steps") }
         return parts.joined(separator: " · ")
     }
+
+    /// The line under the result in the chat: how it ended, where it worked, how many steps, how long.
+    var chatLine: String {
+        let how: String
+        switch outcome {
+        case .completed: how = "Done in the background"
+        case .stopped: how = "Stopped in the background"
+        case .failed: how = "Couldn't finish in the background"
+        }
+        let seconds = Int(elapsed.rounded())
+        let took = seconds < 60 ? "\(seconds) s" : "\(seconds / 60) min \(seconds % 60) s"
+        return [how, metaLine, took].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    /// For the chat (`TaskReport`, the door between the task window and the pad).
+    var report: TaskReport { TaskReport(id: id, title: title, text: text.isEmpty ? outcome.label : text, line: chatLine, image: frame) }
 }
 
 /// Presentation and results for execution are independent of the conversation that started the task.
@@ -54,6 +70,9 @@ struct BackgroundTaskRecord: Identifiable {
     private let historyLimit = 20
     private var phaseObservation: AnyCancellable?
     private let explicitOpen = PassthroughSubject<Void, Never>()
+
+    /// Chat about it: the chat opens on this task's result, to follow up there.
+    var onChatAbout: ((TaskReport) -> Void)?
 
     /// A transient user intent, separate from visibility. Automatic progress and approvals never emit it.
     var explicitOpenRequests: AnyPublisher<Void, Never> { explicitOpen.eraseToAnyPublisher() }

@@ -16,6 +16,7 @@ extension AppDelegate {
         registry.notesStore = notesStore
         briefs = PageBriefs(registry: registry)
         assistant = Assistant(config: effectiveConfig, watcher: watcher, registry: registry, shell: shell, learning: learning, execution: execution, desktop: desktop)
+        desktop.tasks.onChatAbout = { [weak self] record in self?.assistant.chatAbout(record) }   // the task window's door into the chat
         assistant.briefs = briefs
         assistant.recall = recall
         assistant.onStartWand = { [weak self] in self?.startWand() }

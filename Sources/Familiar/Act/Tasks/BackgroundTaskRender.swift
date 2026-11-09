@@ -9,6 +9,7 @@ enum BackgroundTaskRender {
 
         let feed = PeekFeed()
         let store = BackgroundTaskStore(feed: feed)
+        store.onChatAbout = { _ in }   // the app wires this to the chat; the fixture shows the button
         let sample = ImageRenderer(content: sampleWindow)
         sample.scale = 1
         let sampleFrame = sample.cgImage

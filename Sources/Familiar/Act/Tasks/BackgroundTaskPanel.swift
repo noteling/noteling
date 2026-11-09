@@ -281,9 +281,16 @@ struct BackgroundTaskPanelView: View {
                 Button("Stop") { feed.onStop?() }
                     .buttonStyle(TaskActionStyle(accent: false))
                     .help("Stop this task")
-            } else if !store.isExpanded {
-                Button("View") { store.toggleExpanded() }
-                    .buttonStyle(TaskActionStyle(accent: false))
+            } else {
+                if let record = store.selectedRecord, store.onChatAbout != nil {
+                    Button("Chat about it") { store.onChatAbout?(record.report) }
+                        .buttonStyle(TaskActionStyle(accent: true))
+                        .help("Opens the chat on this result, to follow up")
+                }
+                if !store.isExpanded {
+                    Button("View") { store.toggleExpanded() }
+                        .buttonStyle(TaskActionStyle(accent: false))
+                }
             }
         }
         .padding(.horizontal, 14).padding(.top, 9)
