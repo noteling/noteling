@@ -18,6 +18,7 @@ struct ChatMessage: Identifiable {
     var asked: String? = nil       // wand: what the person asked about the pick, by a tap or in their own words
     var glance: PageGlance? = nil  // glance: the page brief's own answer, shown on the pick before any model is asked
     var tour: TourProgress? = nil  // tour: the way being shown on screen (`show_me`), its steps ticked off as they're clicked
+    var task: UUID? = nil          // receipt: the background task it reports, so Chat about it finds it here
 }
 
 @MainActor
@@ -112,6 +113,9 @@ final class Assistant: ObservableObject {
     var chatResponding: Bool { chatBusy && !backgroundTaskRunning }
     var chatPresentationBusy: Bool { chatResponding || learning.busy }
     private var requestMessageID: UUID?
+    /// The line in the chat saying a task is working in the background, until its result takes its place.
+    private var taskNoticeID: UUID?
+    static let taskNotice = "Working on it in the background. The result comes here when it's done; the task window shows the progress."
     private var diagnosticTurnID: UUID?
     /// The answer on the pad while it is being written, replaced by the finished one when the turn ends.
     private var writingID: UUID?
@@ -187,14 +191,29 @@ final class Assistant: ObservableObject {
 
     var hasConnection: Bool { client != nil }
 
-    /// Transfer the submitted instruction to the task screen once desktop work starts.
-    /// The request continues in the coordinator; closing or clearing chat does not own its result.
+    /// Desktop work began on the request: the chat keeps the request and says the work is in the background, so the
+    /// result has a place to land and the person knows they can follow up here. The task window shows the progress; the
+    /// request continues in the coordinator, and clearing the chat does not stop it.
     func backgroundTaskDidBegin() {
         guard backgroundTaskRunning else { return }
-        if let requestMessageID { transcript.removeAll { $0.id == requestMessageID } }
+        let notice = ChatMessage(role: .receipt, text: Self.taskNotice)
+        taskNoticeID = notice.id
+        transcript.append(notice)
         status = ""
         suggestions = []
         shell.expanded = false
+    }
+
+    /// Chat about it, on the task window: the chat opens on the task's result, which is put there first when the chat no
+    /// longer has it (cleared meanwhile), so the person sees what they asked and what came of it, and asks on.
+    func chatAbout(_ report: TaskReport) {
+        if !transcript.contains(where: { $0.task == report.id }) {
+            transcript.append(ChatMessage(role: .user, text: report.title))
+            transcript.append(ChatMessage(role: .assistant, text: report.text))
+            transcript.append(ChatMessage(role: .receipt, text: report.line, image: report.image, task: report.id))
+        }
+        status = "Ask about it below."
+        shell.expanded = true
     }
 
     func showBackgroundTasks() { desktop?.tasks.show() }
@@ -1129,11 +1148,10 @@ final class Assistant: ObservableObject {
             writing.cancel()   // the finished answer replaces what was written so far
             completeExecution(result, task: task)
         } catch {
-            let wasTask = task?.isPresented == true
             task?.finish(outcome: .failed, text: error.localizedDescription, elapsed: 0)
-            if !wasTask {
-                transcript.append(ChatMessage(role: .error, text: error.localizedDescription))
-            }
+            if let taskNoticeID { transcript.removeAll { $0.id == taskNoticeID } }
+            taskNoticeID = nil
+            transcript.append(ChatMessage(role: .error, text: error.localizedDescription))   // in the chat as well as the task window
             status = ""
         }
         finishRequest()
@@ -1154,21 +1172,18 @@ final class Assistant: ObservableObject {
             }
             task.finish(outcome: outcome, text: text, elapsed: result.elapsed)
         }
-        presentExecutionResult(result, wasTask: wasTask)
+        presentExecutionResult(result, wasTask: wasTask, report: wasTask ? desktop?.tasks.history.first?.report : nil)
     }
 
-    /// Task output stays outside the chat even if its conversation was cleared mid-run.
-    func presentExecutionResult(_ result: ExecutionResult, wasTask: Bool = false) {
+    /// The result lands in the chat, a task's too: its answer as the assistant's, then a line with the last view of the
+    /// window it worked in and how it went. The task window keeps its own copy, so a chat cleared mid-run loses nothing.
+    func presentExecutionResult(_ result: ExecutionResult, wasTask: Bool = false, report: TaskReport? = nil) {
         diagnoseChat(.presentationStarted)
         defer { diagnoseChat(.transcriptUpdated) }
+        if let taskNoticeID { transcript.removeAll { $0.id == taskNoticeID } }
+        taskNoticeID = nil
         let written = writingID.flatMap { id in transcript.firstIndex { $0.id == id } }
         writingID = nil
-        if wasTask {
-            if let written { transcript.remove(at: written) }   // the task screen has it now
-            status = ""
-            suggestions = []
-            return
-        }
         guard result.accepted else {
             if let written { transcript.remove(at: written) }
             status = ""
@@ -1194,6 +1209,8 @@ final class Assistant: ObservableObject {
             status = ""
             Log.info("error: \(error.localizedDescription)")
         }
+        // A task's answer gets its line: how it went, where, how long, with the last view of the window it worked in.
+        if wasTask, let report { transcript.append(ChatMessage(role: .receipt, text: report.line, image: report.image, task: report.id)) }
     }
 
     // MARK: saved jobs

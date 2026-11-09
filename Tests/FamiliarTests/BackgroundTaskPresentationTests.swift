@@ -6,7 +6,7 @@ import FamiliarContracts
 
 @Suite @MainActor
 struct BackgroundTaskPresentationTests {
-    @Test func taskResultStaysOutsideChatAndDoesNotReopenIt() throws {
+    @Test func taskResultLandsInTheChatWithoutReopeningIt() throws {
         let (assistant, desktop) = fixture()
         let id = UUID()
         let task = try desktop.executor.begin(TaskRequest(id: id, title: "Fill the report"))
@@ -17,14 +17,32 @@ struct BackgroundTaskPresentationTests {
 
         assistant.completeExecution(reply("Filled the report.\nSuggestions: Inspect it | Next task"), task: task)
 
-        #expect(assistant.transcript.isEmpty)
-        #expect(assistant.suggestions.isEmpty)
+        // In the chat as the answer with its line, and in the task window; the pad stays as it was.
+        #expect(assistant.transcript.map(\.role) == [.assistant, .receipt])
+        #expect(assistant.transcript.first?.text == "Filled the report." && assistant.transcript.last?.task == id)
+        #expect(assistant.transcript.last?.text.hasPrefix("Done in the background") == true)
+        #expect(assistant.suggestions == ["Inspect it", "Next task"])
         #expect(desktop.tasks.history.first?.text == "Filled the report.")
         #expect(!assistant.shell.expanded)
         #expect(!desktop.tasks.isExpanded)
     }
 
-    @Test func clearingChatDoesNotEraseTaskOrLoseItsLateResult() throws {
+    @Test func chatAboutItOpensTheChatOnTheTaskPuttingItThereIfItIsGone() throws {
+        let (assistant, desktop) = fixture()
+        let id = UUID()
+        let task = try desktop.executor.begin(TaskRequest(id: id, title: "Fill the report"))
+        assistant.completeExecution(reply("Filled the report."), task: task)
+        assistant.clearConversation()
+        #expect(assistant.transcript.isEmpty)
+        let report = try #require(desktop.tasks.history.first?.report)
+        assistant.chatAbout(report)
+        #expect(assistant.transcript.map(\.role) == [.user, .assistant, .receipt] && assistant.transcript[0].text == "Fill the report")
+        #expect(assistant.transcript[1].text == "Filled the report." && assistant.transcript[2].task == id && assistant.shell.expanded)
+        assistant.chatAbout(report)   // already there: nothing twice
+        #expect(assistant.transcript.count == 3 && assistant.status == "Ask about it below.")
+    }
+
+    @Test func clearingChatDoesNotEraseTaskAndALateResultStaysOutOfTheClearedChat() throws {
         let (assistant, desktop) = fixture()
         let id = UUID()
         let task = try desktop.executor.begin(TaskRequest(id: id, title: "Background report"))
@@ -40,7 +58,7 @@ struct BackgroundTaskPresentationTests {
         #expect(!assistant.shell.expanded)
     }
 
-    @Test func stoppedAndFailedTaskResultsStayOnTheirTask() throws {
+    @Test func stoppedAndFailedTaskResultsReachBothTheTaskAndTheChat() throws {
         let (assistant, desktop) = fixture()
         let stopped = UUID()
         let stoppedTask = try desktop.executor.begin(TaskRequest(id: stopped, title: "Stopped task"))
@@ -52,7 +70,9 @@ struct BackgroundTaskPresentationTests {
                                           accepted: true, elapsed: 2), task: failedTask)
         #expect(desktop.tasks.history.first?.outcome == .failed)
         #expect(desktop.tasks.history.first?.text == "Connection failed")
-        #expect(assistant.transcript.isEmpty)
+        #expect(assistant.transcript.map(\.role) == [.assistant, .receipt, .error, .receipt])
+        #expect(assistant.transcript[0].text == "Stopped." && assistant.transcript[1].text.hasPrefix("Stopped in the background"))
+        #expect(assistant.transcript[2].text == "Connection failed" && assistant.transcript[3].text.hasPrefix("Couldn't finish in the background"))
     }
 
     @Test func ordinaryConversationStillReceivesItsAnswer() throws {

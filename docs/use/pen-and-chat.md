@@ -49,7 +49,10 @@ its tools.
 ## Letting it do things
 
 Mouse and keyboard control is off until you turn it on, in Settings or with the hand button on the chat pad. When it's
-on and you ask Noteling to do something, the task window shows its progress, and **Stop** ends it at any time.
+on and you ask Noteling to do something, the task window shows its progress, and **Stop** ends it at any time. Your
+request stays in the chat with a line saying the work is in the background, and when it is done the result comes to
+the chat too, with the last view of the window it worked in, so you can follow up right there; **Chat about it** on the
+task window takes you to it. The task window keeps its own copy until Noteling quits.
 
 In the background, it works in the window you asked from while you carry on, and it sees the job through without
 stopping to ask: it presses the final Send or Submit when that's part of what you asked, and says what it pressed. When
