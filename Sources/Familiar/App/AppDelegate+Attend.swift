@@ -119,21 +119,86 @@ extension AppDelegate {
             self.placeRunStickers()
         }
         stickers.onHide = { [weak self] in self?.showStickersHiddenHint() }
+        stickers.onClose = { [weak self] in
+            self?.deckOpen = false
+            self?.placeRunStickers()
+        }
         stickersPanel = stickers
         model.objectWillChange
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.placeRunStickers() }
+            .sink { [weak self] _ in self?.deckChanged() }
             .store(in: &cancellables)
+        shell.lampHidden = config.lampHidden
+        shell.onLamp = { [weak self] in self?.lampClicked() }
+        shell.onOpenJobs = { [weak self] in self?.jobsWindow.showJobs() }
+        shell.onHideLamp = { [weak self] in self?.hideLamp() }
+        deckChanged()
         stickersScreenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in MainActor.assumeIsolated { self?.placeRunStickers() } }
     }
 
-    /// On the screen while a matter has something to show and the person hasn't hidden them: beside the orb only while
-    /// the bubble is collapsed and there, at their own spot whatever the bubble does; away otherwise.
+    /// The deck changed: the lamp follows it, the menu bar's dot too, and a deck that ran out closes by itself.
+    func deckChanged() {
+        guard let model = stickersPanel?.model else { return }
+        let urgent = model.cards.contains(where: \.urgent)
+        shell.lamp = LampState.of(count: model.count, urgent: urgent)
+        shell.lampWords = LampState.words(count: model.count, urgent: urgent)
+        updateStatusItemImage()
+        if model.count == 0, model.pending == nil, model.said == nil { deckOpen = false }
+        placeRunStickers()
+    }
+
+    /// The lamp was clicked: the deck opens, or closes if it was open; with nothing on it, Jobs opens instead.
+    func lampClicked() {
+        guard let model = stickersPanel?.model else { return }
+        if model.count == 0 { jobsWindow.showJobs(); return }
+        deckOpen.toggle()
+        if deckOpen { stickersPanel?.hidden = false }
+        placeRunStickers()
+    }
+
+    /// Hidden from its own menu, until Show the Lamp in the menu bar's Stickers.
+    func hideLamp() {
+        shell.lampHidden = true
+        config.lampHidden = true
+        config.save()
+    }
+
+    func showLamp() {
+        shell.lampHidden = false
+        config.lampHidden = false
+        config.save()
+    }
+
+    /// The pencil in the menu bar carries a dot the colour of the lamp while something needs the person.
+    func updateStatusItemImage() {
+        guard let button = statusItem?.button else { return }
+        button.image = Self.statusImage(lamp: shell.lamp)
+    }
+
+    /// The menu bar's pencil, with a dot at its foot when the lamp is warm or hot.
+    nonisolated static func statusImage(lamp: LampState) -> NSImage? {
+        guard let pencil = NSImage(systemSymbolName: "pencil.tip", accessibilityDescription: "Noteling") else { return nil }
+        pencil.isTemplate = true
+        guard lamp != .off else { return pencil }
+        let size = NSSize(width: 20, height: 18)
+        let image = NSImage(size: size, flipped: false) { rect in
+            pencil.draw(in: NSRect(x: 1, y: 1, width: 16, height: 16))
+            let dot = NSBezierPath(ovalIn: NSRect(x: rect.maxX - 7, y: 0, width: 7, height: 7))
+            (lamp == .hot ? NSColor(red: 0.95, green: 0.40, blue: 0.25, alpha: 1) : NSColor(red: 0.98, green: 0.72, blue: 0.25, alpha: 1)).setFill()
+            dot.fill()
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
+
+    /// On the screen while the person opened the deck and a card is on it and they haven't hidden it: beside the orb
+    /// only while the bubble is collapsed and there, at its own spot whatever the bubble does; away otherwise.
     func placeRunStickers() {
         guard let stickersPanel else { return }
-        let shown = StickersPanel.shows(count: stickersPanel.model.count, hidden: stickersPanel.hidden, controlling: stickersPanel.hiddenForControl,
+        let shown = StickersPanel.shows(count: stickersPanel.model.count, opened: deckOpen, hidden: stickersPanel.hidden, controlling: stickersPanel.hiddenForControl,
                                         detached: stickersPanel.isDetached, bubbleVisible: panel.isVisible, alpha: panel.alphaValue,
                                         expanded: shell.expanded, flying: origami.isFlying)
         guard shown else { stickersPanel.orderOut(nil); return }
@@ -151,12 +216,20 @@ extension AppDelegate {
         submenu.removeAllItems()
         for item in StickersPanel.menuBar(stickers: shown, hidden: hidden, detached: stickersPanel?.isDetached == true) {
             guard let item else { submenu.addItem(.separator()); continue }
-            let entry = WindowDragHandle.ClosureMenuItem(title: item.title) { [weak self] in self?.stickersPanel?.choose(item.choice) }
+            let entry = WindowDragHandle.ClosureMenuItem(title: item.title) { [weak self] in
+                guard let self else { return }
+                if case .show = item.choice { self.deckOpen = true }
+                self.stickersPanel?.choose(item.choice)
+            }
             entry.isEnabled = item.enabled
             if case .open(let id) = item.choice, let sticker = shown.first(where: { $0.id == id }) {
                 entry.toolTip = sticker.line(now: Date())
             }
             submenu.addItem(entry)
+        }
+        if shell.lampHidden {
+            submenu.addItem(.separator())
+            submenu.addItem(WindowDragHandle.ClosureMenuItem(title: "Show the Lamp") { [weak self] in self?.showLamp() })
         }
     }
 

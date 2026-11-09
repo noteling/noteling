@@ -27,7 +27,7 @@ enum StickerDrag { case moved, ended }
 
 /// One line of the deck's right-click menu; a nil in the list is a separator.
 struct StickerMenuItem: Equatable {
-    enum Choice: Equatable { case open(String), doIt(String), mine(String), putAway(String), bigger, smaller, attach, hide, show, more }
+    enum Choice: Equatable { case open(String), doIt(String), mine(String), putAway(String), bigger, smaller, attach, hide, show, more, close }
     let title: String
     var enabled = true
     let choice: Choice
@@ -346,6 +346,8 @@ final class StickersPanel: NSPanel {
     var onChange: (() -> Void)?
     /// The person hid the deck from their own menu.
     var onHide: (() -> Void)?
+    /// The person closed the deck (Esc): it waits behind the lamp until the next click.
+    var onClose: (() -> Void)?
 
     init(model: DeckModel, look: StickersLook, home: NSPoint?, hideFromScreenShare: Bool) {
         self.model = model
@@ -377,32 +379,31 @@ final class StickersPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
-    /// The keys, once the deck has been clicked: ← Do it, → Mine, ↑ Not now, ⏎ Open, Esc gives the keys back.
+    /// The keys, once the deck has been clicked: ← Do it, → Mine, ↑ Not now, ⏎ Open, Esc closes the deck.
     override func keyDown(with event: NSEvent) {
         guard let choice = Self.key(event.keyCode, card: model.card) else { return super.keyDown(with: event) }
-        if case .hide = choice { resignKey(); return }
         choose(choice)
     }
 
     /// What a key means on the card on top; nil for a key the deck doesn't take.
     nonisolated static func key(_ code: UInt16, card: Sticker?) -> StickerMenuItem.Choice? {
-        guard let card else { return code == 53 ? .hide : nil }
+        guard let card else { return code == 53 ? .close : nil }
         switch code {
         case 123: return card.action == nil ? nil : .doIt(card.id)   // ←
         case 124: return .mine(card.id)                              // →
         case 126: return .putAway(card.id)                           // ↑
         case 36, 76: return .open(card.id)                           // ⏎
-        case 53: return .hide                                        // Esc: only the keys go
+        case 53: return .close                                       // Esc
         default: return nil
         }
     }
 
-    /// Whether the deck is on the screen. Never without a card to show, while hidden, or while Noteling works in front
-    /// of the person. Beside the orb, also only while the bubble is collapsed and fully there and no crane is flying; at
-    /// the person's own spot, the bubble's state doesn't matter.
-    nonisolated static func shows(count: Int, hidden: Bool, controlling: Bool, detached: Bool,
+    /// Whether the deck is on the screen. Only while the person opened it from the lamp, with a card to show, not
+    /// hidden, and not while Noteling works in front of them. Beside the orb, also only while the bubble is collapsed
+    /// and fully there and no crane is flying; at the person's own spot, the bubble's state doesn't matter.
+    nonisolated static func shows(count: Int, opened: Bool, hidden: Bool, controlling: Bool, detached: Bool,
                                   bubbleVisible: Bool, alpha: CGFloat, expanded: Bool, flying: Bool) -> Bool {
-        guard count > 0, !hidden, !controlling else { return false }
+        guard count > 0, opened, !hidden, !controlling else { return false }
         return detached || (bubbleVisible && alpha == 1 && !expanded && !flying)
     }
 
@@ -513,6 +514,7 @@ final class StickersPanel: NSPanel {
         if hidden {
             items.append(StickerMenuItem(title: stickers.count > 0 ? "Show Stickers (\(stickers.count))" : "Show Stickers", choice: .show))
         } else {
+            if !stickers.isEmpty { items += [StickerMenuItem(title: "Open the Deck (\(stickers.count))", choice: .show), nil] }
             for sticker in stickers { items.append(StickerMenuItem(title: menuLine(sticker), choice: .open(sticker.id))) }
             if stickers.isEmpty { items.append(StickerMenuItem(title: "No stickers", enabled: false, choice: .more)) }
             items.append(nil)
@@ -571,6 +573,9 @@ final class StickersPanel: NSPanel {
             hidden = false
             onChange?()
         case .more: model.openMore()
+        case .close:
+            if isKeyWindow { resignKey() }
+            onClose?()
         }
     }
 

@@ -63,6 +63,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var memos: MemoStore!
     var memoWindows: MemoWindows?
     var memoScribe: MemoScribe?
+    /// The deck is open: the person clicked the lamp, and no card has run out since.
+    var deckOpen = false
     var noteHotKey: HotKey?
 
     var watcherMenuItem: NSMenuItem!

@@ -139,6 +139,17 @@ func runRenderPaper() {
     render(deckView(done), "deck-said.png")
     render(deckView(deckModel(3), scale: PaperLook.steps[0]), "deck-smallest.png")
     render(deckView(deckModel(3), scale: PaperLook.steps[PaperLook.steps.count - 1]), "deck-biggest.png")
+    // The lamp off, warm and hot, at the bubble's size and larger, on a light and a dark desk.
+    let lamps = HStack(spacing: 28) {
+        ForEach([LampState.off, .warm, .hot], id: \.self) { state in
+            VStack(spacing: 14) {
+                LampView(state: state, size: 22)
+                LampView(state: state, size: 66)
+            }
+        }
+    }
+    render(onDesk(lamps), "lamps-light.png")
+    render(onDesk(lamps, dark: true), "lamps-dark.png")
     // The sizes Bigger and Smaller step through, side by side.
     let sizes = HStack(alignment: .top, spacing: 24) {
         memoView(dictated, scale: PaperLook.steps[0], tilt: false)

@@ -81,6 +81,25 @@ struct BubbleView: View {
             Button("Quit Noteling") { NSApp.terminate(nil) }
         }
         .help("Double-click: chat  ·  Hold: pick up the pen  ·  ⌃⌥Space: pen")
+        // The lamp: off when nothing needs you, warm when something does, hot when it can't wait. A click opens the deck.
+        .overlay(alignment: .topLeading) {
+            if !shell.lampHidden {
+                LampView(state: shell.lamp, size: 22)
+                    .contentShape(Rectangle())
+                    .onTapGesture { shell.onLamp?() }
+                    .help(shell.lampWords + "  ·  Click for the deck")
+                    .contextMenu {
+                        Button(shell.lamp == .off ? "What's been handled" : "Open the deck") { shell.onLamp?() }
+                        Button("New note") { shell.onNewNote?() }
+                        Button("Jobs…") { shell.onOpenJobs?() }
+                        Divider()
+                        Button("Hide the lamp") { shell.onHideLamp?() }
+                    }
+                    .padding(.top, 1).padding(.leading, 1)
+                    .transition(.opacity)
+                    .accessibilityAddTraits(.isButton)
+            }
+        }
         // A glance, not a badge: arriving where there are notes, the bubble holds up a sticky for a moment, then puts
         // it away, so nothing stays on screen. ⌥ Option twice shows them.
         .overlay(alignment: .topTrailing) {
