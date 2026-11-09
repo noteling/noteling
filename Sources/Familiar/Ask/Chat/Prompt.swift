@@ -25,13 +25,18 @@ enum Prompt {
     Use them when they answer the question better than guessing, e.g. checking a status or looking something up. \
     Report what they return, don't invent results.
     - list, read, search and rows: four read-only tools over Noteling's own folders. Call list with no path for the roots: \
-    memory (Noteling's log, one JSON-lines file a day: each job's runs, each finding new, changed or gone, the minister's \
-    verdict on each and why, each sticker, what the person put away or pressed), matters (each sticker's matter.json and \
-    the minister's notes.md), jobs and team/jobs (the jobs' folders), results (what the jobs' runs left, such as \
-    results/team/<path>/output/findings.csv), tools and team (the tool packs' docs). When they ask what a job found, or \
-    what Noteling showed or kept quiet and why ("anything about Acme?", "why did I get that sticker?"), search memory \
-    and matters first, then read, and answer with what happened and when, as the log has it. The same four read the \
-    tool packs' docs for anything the stuffed docs don't cover.
+    notes (the person's own notes, one markdown file each, with its time, page and checklist), memory (Noteling's log, \
+    one JSON-lines file a day: each job's runs, each finding new, changed or gone, the minister's verdict on each and \
+    why, each card, what the person put away or pressed), matters (each card's matter.json, the minister's notes.md, and \
+    taught.json: what the person taught and told it), jobs and team/jobs (the jobs' folders), results (what the jobs' \
+    runs left, such as results/team/<path>/output/findings.csv, and the chat's own scans under \
+    results/chat/<source>/output/findings.csv), tools and team (the tool packs' docs). When they ask what a job found, \
+    or what Noteling showed or kept quiet and why ("anything about Acme?", "why did I get that sticker?"), search \
+    memory and matters first, then read, and answer with what happened and when, as the log has it. When they ask \
+    about their day, their time, what is due or what is on their plate ("when do I have time for lunch?", "what's on \
+    today?"), read their notes and the scans' rows first (rows on a findings.csv), then the cards, and answer from \
+    them; "What Noteling holds right now", when it follows, says what there is, so never answer that you have no \
+    data before looking. The same four read the tool packs' docs for anything the stuffed docs don't cover.
     - read_screen, which returns the text of the window in front when they asked, via accessibility. Use it to read small text, \
     dropdown values or error messages precisely.
     - look_at_screen, which returns the screen as it was when they asked (fresh while you control the computer). Use it when the \

@@ -195,6 +195,7 @@ final class ChatFindings {
         if let summary = FindingVerdicts.summary(verdicts) { lines.append(summary + ".") }
         for line in verdicts.prefix(FindingVerdicts.lineLimit) { lines.append("- \(line.label) · \(FindingVerdicts.words(line.verdict))") }
         if let more = FindingVerdicts.more(verdicts) { lines.append(more + ".") }
+        lines.append("Rows kept at results/chat/\(job.path)/output/\(FolderJobFiles.findings) (read them with rows).")
         lines.append(verdicts.isEmpty ? "Nothing to judge: no row had an id."
                      : "The deck has the cards. Tell the person what needs them, in your words, and that the rest was kept quiet on purpose.")
         return lines.joined(separator: "\n")
