@@ -12,6 +12,7 @@ final class MemoScribe {
     let store: MemoStore
     /// Shows the note on the screen; nil keeps notes in the store only (tests).
     let windows: MemoWindows?
+    var clock: () -> Date = Date.init
     /// The page on the screen when the person spoke, for "this page".
     private(set) var pageOnScreen: String?
     /// The note put up with the person's own words when they asked, until the model writes it or the turn ends.
@@ -109,6 +110,8 @@ final class MemoScribe {
             throw MinisterError("Give words: what the note says.")
         }
         try fill(&memo, from: input)
+        // A note for later sleeps folded to its first line, with its time beside it, until its time comes near.
+        if let when = memo.when, PaperWhen.state(when, now: clock()) == .later { memo.collapsed = true }
         pin(memo)
         return "Pinned note \(memo.id): \(memo.firstLine)" + (memo.when.map { " · \(PaperWhen.words($0, now: Date()))" } ?? "")
     }

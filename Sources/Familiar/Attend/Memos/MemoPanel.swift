@@ -350,6 +350,14 @@ final class MemoPanel: NSPanel {
         changed(memo)
     }
 
+    /// A note that slept folded opens when its time comes near, or comes.
+    func unfold() {
+        guard state.memo.collapsed else { return }
+        var memo = state.memo
+        memo.collapsed = false
+        changed(memo)
+    }
+
     func openPage() {
         if let page = state.memo.page { onOpenPage?(page) }
     }
@@ -357,6 +365,7 @@ final class MemoPanel: NSPanel {
     /// Its when came: the note comes up where the person is and glows until they have had it.
     func wake() {
         state.now = Date()
+        unfold()
         raise()
         state.warm = true
         orderFrontRegardless()

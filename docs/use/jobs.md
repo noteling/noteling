@@ -72,7 +72,7 @@ Acme?", "why did I get that card?", "what did the orders job find yesterday?".
   step** in a few words, such as **Reply to Lena**: it hands the card to the chat, with the step written as your
   request and the card under it, and Noteling does what it can with what it has, or says how. You press Return to
   send it, so nothing happens before you have read it. **Mine** turns the card into a note of your own, placed near the deck,
-  with the matter still a click away on it. **Not now** puts it away: it stays away until something about it changes
+  with the matter still a click away on it; a card's page in Jobs has Mine too. **Not now** puts it away: it stays away until something about it changes
   and the minister thinks you should see it again. The round peel button over the card's corner, when you point at it, is Not now too.
 - Click the deck once and the keys do the same: **←** its action or its next step, **→** Mine, **↑** Not now, **⏎** opens it, **Esc**
   closes the deck.

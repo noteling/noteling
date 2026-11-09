@@ -12,7 +12,10 @@ by (`Matter.onYourNote`), "On your note" on the job's page, the receipt's count,
 it: `MatterView.next` (48 characters) from the compose turn when no action fits; the card's first tab and ← take it;
 the matter goes quiet (`Matter.handed`), the stamp is `next`, and the chat opens with the step as the request and the
 card under it (`DeckModel.request`), Do it for me set when the card has a page; the person sends it. The receipt
-lists them under Next steps.
+lists them under Next steps. 3 built on `feature/sleep-and-mine`, stacked on that: a note the scribe writes for more than an
+hour ahead sleeps folded, its time beside its first line, and opens when its time comes near or comes; Mine on a
+matter's page in Jobs (`FolderJobsPanel.mine`). The pad's Pin tab stays out: the scribe and "note: …" cover it, and a
+tab for its own sake is against fewer features that work. The minister holding back a card about a noted thing is 1b.
 
 ## Where things stand (checked 2026-11-09 against 0.9.2)
 

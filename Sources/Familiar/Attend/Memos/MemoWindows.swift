@@ -106,9 +106,10 @@ final class MemoWindows {
     /// The person went to another Space: the glance ends, and the notes stay on theirs.
     func spaceChanged() { endGlance() }
 
-    /// One note up on its own for a moment, as when its time comes near; then back to its place, unless it woke, is
-    /// being written on, or every note is up for a glance meanwhile.
+    /// One note up on its own for a moment, as when its time comes near, opened if it slept folded; then back to its
+    /// place, unless it woke, is being written on, or every note is up for a glance meanwhile.
     private func moment(_ panel: MemoPanel) {
+        panel.unfold()
         panel.raise()
         if shows { panel.orderFrontRegardless() }
         let id = panel.memo.id

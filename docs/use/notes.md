@@ -33,9 +33,9 @@ others:
 - **Drag the strip** along the top edge to move it. It stays there, across restarts.
 - **Double-click the strip** to fold the note to its first line, and again to open it.
 - **A time** shows as the clock far off, a countdown within the hour that moves on the minute, and "now" when it
-  comes. The note comes up for a moment when the countdown starts, and at its time it comes up wherever you are and
-  glows until you click it; then it stays where you are. After, it reads "was 3:00 PM" until you change it or take
-  the note down.
+  comes. A note for later sleeps folded to its first line, with its time beside it. When the countdown starts it opens
+  and comes up for a moment, and at its time it comes up wherever you are and glows until you click it; then it stays
+  where you are. After, it reads "was 3:00 PM" until you change it or take the note down.
 - **A page** shows as its address. Click it to open the page.
 - **The peel.** Point at a note and a round button appears over its top-left corner. Click it and the note peels
   off. Its file goes to the Trash, so a wrong click is undone in Finder, and what it said stays in Noteling's memory,
