@@ -51,6 +51,12 @@ import SwiftUI
         open()
     }
 
+    /// The receipt, from the lamp or Jobs; Back goes to Jobs.
+    func showReceipt() {
+        navigation.open(.receipt, returningTo: .jobs)
+        open()
+    }
+
     /// The screen showing, for the ways in to check where they lead.
     var route: JobsNavigation.Route { navigation.route }
     var isVisible: Bool { panel.isVisible }
@@ -140,7 +146,7 @@ import SwiftUI
     /// A row per job, or a job's or a matter's page with its findings: one height for every screen.
     static func preferredHeight(for route: JobsNavigation.Route) -> CGFloat {
         switch route {
-        case .jobs, .folderJob, .matter: return 680
+        case .jobs, .folderJob, .matter, .receipt: return 680
         }
     }
 }

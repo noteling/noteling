@@ -89,7 +89,8 @@ struct BubbleView: View {
                     .onTapGesture { shell.onLamp?() }
                     .help(shell.lampWords + "  ·  Click for the deck")
                     .contextMenu {
-                        Button(shell.lamp == .off ? "What's been handled" : "Open the deck") { shell.onLamp?() }
+                        if shell.lamp != .off { Button("Open the deck") { shell.onLamp?() } }
+                        Button("What's been handled") { shell.onReceipt?() }
                         Button("New note") { shell.onNewNote?() }
                         Button("Jobs…") { shell.onOpenJobs?() }
                         Divider()

@@ -52,11 +52,15 @@ Acme?", "why did I get that card?", "what did the orders job find yesterday?".
 - **The lamp** at the top-left of Noteling's note is the whole ask. Off when nothing needs you, warm when something
   does, hot when something can't wait; point at it for "3 need you". The pencil in the menu bar carries the same dot.
   Click the lamp and the deck opens beside the note; click it again, or press **Esc** on the deck, and the deck waits
-  behind the lamp. With nothing on it, the lamp opens Jobs. Right-click the lamp for the deck, a new note, Jobs, and
-  **Hide the lamp** (back from **Stickers › Show the Lamp** in the menu bar). **Stickers › Open the Deck** opens it
-  too, for when the note is hidden.
+  behind the lamp. With nothing on it, the lamp opens the receipt. Right-click the lamp for the deck, **What's been
+  handled**, a new note, Jobs, and **Hide the lamp** (back from **Stickers › Show the Lamp** in the menu bar).
+  **Stickers › Open the Deck** opens it too, for when the note is hidden.
 - One card at a time, urgent ones first; **2 more** above it opens Jobs, where every card waits. The deck steps aside
-  while the chat is open, and comes back with it; it closes by itself when the last card is stamped.
+  while the chat is open, and comes back with it. When the last card is stamped it says **Nothing needs you.** with
+  today's tally, and closes by itself.
+- **What's been handled**, at the top of Jobs and behind a dark lamp, is the receipt: today's tally ("Noteling did 2 ·
+  you decided 5"), when each job last looked, the cards you took (**Yours**), what Noteling did and what each press
+  came to, what you put away, and what you've taught it. Nothing is pushed at you; it is there when you look.
 - Under the card, three verbs on paper tabs. **Its action** (such as **Nudge warehouse**, the button the minister picked
   from the job's own) has Noteling do it, as you: a line under the deck counts down a few seconds with **undo**, then
   it runs and the line says what came of it. **Mine** turns the card into a note of your own, pinned near the deck,

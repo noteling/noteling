@@ -9,6 +9,8 @@ import SwiftUI
         case folderJob(UUID)
         /// A matter's page, from its sticker or its notification.
         case matter(String)
+        /// The receipt: what came of the deck today.
+        case receipt
     }
     /// Where Back goes from a screen opened from somewhere other than its usual place.
     struct Return: Equatable {
@@ -41,6 +43,7 @@ import SwiftUI
     static func title(for route: Route, jobName: (UUID) -> String?, matterState: (String) -> Matter.State? = { _ in nil }) -> String {
         switch route {
         case .jobs: return "Jobs"
+        case .receipt: return "What's been handled"
         case .folderJob(let id): return jobName(id) ?? "Job"
         case .matter(let id):
             switch matterState(id) {
@@ -105,6 +108,7 @@ struct JobsWindowView: View {
     static func symbol(_ route: JobsNavigation.Route) -> String {
         switch route {
         case .jobs: return "checklist"
+        case .receipt: return "checkmark.seal"
         case .folderJob: return "folder"
         case .matter: return "note.text"
         }
@@ -120,6 +124,10 @@ struct JobsWindowView: View {
         case .matter(let id):
             if let matters = folderJobs.matters {
                 MatterPage(matters: matters, store: folderJobs.store, buttons: folderJobs.buttons, id: id).id(id)
+            } else { Text("Stickers are unavailable.").font(.system(size: 14)).foregroundStyle(Pad.inkSoft).padding(24) }
+        case .receipt:
+            if let matters = folderJobs.matters {
+                ReceiptPage(matters: matters, log: folderJobs.runner.memory, open: { navigation.open(.matter($0), returningTo: .receipt) })
             } else { Text("Stickers are unavailable.").font(.system(size: 14)).foregroundStyle(Pad.inkSoft).padding(24) }
         }
     }

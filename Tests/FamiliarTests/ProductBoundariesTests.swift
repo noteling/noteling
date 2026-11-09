@@ -18,6 +18,8 @@ import Testing
     static let doors: Set<String> = [
         "TaskExecutor", "TaskRequest", "TaskPlan", "TaskExecution", "DesktopExecutionService", "BackgroundTaskOutcome",
         "ShowMeConversation", "TourProgress",
+        // The character is everyone's: the deck's end shows Noteling pleased.
+        "MascotView",
     ]
 
     /// Crossings that exist today: the file, relative to `Sources/Familiar`, and the foreign types it names. Each line is
