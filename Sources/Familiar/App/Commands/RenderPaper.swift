@@ -140,6 +140,16 @@ func runRenderPaper() {
     let over = deckModel(0)
     over.ended = true
     render(deckView(over), "deck-end.png")
+    let good = deckModel(0)
+    var payment = Matter(id: "m-good", findings: [FindingRef(job: "team/payments", id: "P-1")], state: .open,
+                         view: MatterView(headline: "Acme paid", text: "Acme's invoice 2210 was paid in full this morning, three days early.", page: "https://books.example.com/invoices/2210", tone: .good),
+                         jobName: "Payments", byline: "Ana", createdAt: now, updatedAt: now)
+    payment.writtenAt = now
+    good.matters.save(payment)
+    render(deckView(good), "deck-good.png")
+    let asking = deckModel(0)
+    asking.question = LessonQuestion(job: "team/reviews", name: "Reviews under 3 stars", putAway: 3)
+    render(deckView(asking), "deck-question.png")
     render(deckView(deckModel(3), scale: PaperLook.steps[0]), "deck-smallest.png")
     render(deckView(deckModel(3), scale: PaperLook.steps[PaperLook.steps.count - 1]), "deck-biggest.png")
     // The lamp off, warm and hot, at the bubble's size and larger, on a light and a dark desk.

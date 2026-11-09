@@ -27,6 +27,8 @@ final class Minister: ObservableObject {
     var onUrgent: ((Matter) -> Void)?
     /// What it reads with when something is worth looking up: the memory log, the matters, the jobs and what they found.
     var recall: Recall?
+    /// What the person taught it: jobs whose findings stay quiet unless one can't wait.
+    var lessons: Lessons?
 
     /// Tool rounds a turn may take: lookups, the answer, and one refusal.
     static let triageRounds = 4
@@ -192,7 +194,7 @@ final class Minister: ObservableObject {
     private func triage(_ findings: [MinisterPrompt.Shown], client: any ConversationClient) async throws {
         let shown = findings.sorted { $0.ref.key < $1.ref.key }
         let current = matters.current
-        let prompt = MinisterPrompt.triage(shown, descriptions: descriptions(for: shown), matters: current, now: clock())
+        let prompt = MinisterPrompt.triage(shown, descriptions: descriptions(for: shown), matters: current, now: clock(), lessons: lessons?.all ?? [])
         var result: (verdicts: [MinisterPrompt.Verdict], recompose: Set<String>)?
         let ids = Set(current.map(\.id))
         let refs = shown.map(\.ref)
