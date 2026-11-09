@@ -97,7 +97,10 @@ The standing instruction, from the same UAT ("for all meetings, go through the m
 link as the action"): the person's rules in their own words, told from the chat (`tell_the_minister`), kept with the
 lessons in `matters/taught.json` (`Instruction`, 20 at most, 200 characters each), listed to both of the minister's
 turns under "Told by the person" as preferences within its rules, never a sure finding and never a button, and shown
-on the receipt under Taught with Forget. Built on `feature/standing-instructions`.
+on the receipt under Taught with Forget. Built on `feature/standing-instructions` (PR #111). With it, the first step of
+the "note that watches": the triage turn is handed the person's notes (`Minister.notes`, `MinisterPrompt.noteLines`),
+so a finding about a noted thing is kept quiet, the note named in why; a finding keeping the note's line fresh is still
+ahead. On `feature/minister-sees-notes`.
 
 ## 5. Left inside the deck phase
 

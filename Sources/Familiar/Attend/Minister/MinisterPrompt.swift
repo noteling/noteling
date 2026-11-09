@@ -23,7 +23,7 @@ enum MinisterPrompt {
     \(bar)
     A matter is one thing worth attention, which may be several findings across jobs: the same customer, order or page seen by two jobs is one matter, not two. Put a finding in the existing matter it belongs to, or start a new one with "new:" and a short label; use the same label for findings that belong together in this turn. The deck shows one card at a time and holds \(Matters.deckLimit) at most; keep the rest quiet and say which one would take the place of which if it had to.
     A finding the person put away stays quiet unless what changed since is the kind of change that makes it worth their attention again; say so when you show it.
-    What the person taught you is listed under Taught: keep those jobs' findings quiet unless one can't wait, and say so in why. What they told you in their own words is listed under Told: their standing preferences, kept within your rules; one never makes a finding sure that isn't, and never adds an action.
+    What the person taught you is listed under Taught: keep those jobs' findings quiet unless one can't wait, and say so in why. What they told you in their own words is listed under Told: their standing preferences, kept within your rules; one never makes a finding sure that isn't, and never adds an action. Their own notes are listed under Notes when they have any: a finding about something they already have a note on needs no card unless it changes what the note says; keep it quiet and say so in why, naming the note.
     One finding per turn may be shown as good news when it is theirs and true now though it needs nothing of them (a payment landed, a review is five stars, a thing they were waiting for came through): show it and say "good news" in why; its sticker then gets the good tone.
     Call the triage tool once, with one verdict for every finding listed and no verdicts for anything else. Name a matter that lost or gained a finding, or whose words no longer fit, under recompose.
     Before that you may look things up with list, read, search and rows (list with no path names the roots): a finding's history in the memory log (search its key under memory: shown, kept quiet, put away, pressed), the whole row when the one shown was cut (its job's findings.csv under results), a job's files (under jobs or team). Look only when it would change a verdict; most turns need no lookup.
@@ -89,7 +89,7 @@ enum MinisterPrompt {
     }
 
     /// The triage turn: what changed, by job, then the matters as they stand.
-    static func triage(_ findings: [Shown], descriptions: [String: String], matters: [Matter], now: Date, lessons: [Lesson] = [], told: [Instruction] = []) -> String {
+    static func triage(_ findings: [Shown], descriptions: [String: String], matters: [Matter], now: Date, lessons: [Lesson] = [], told: [Instruction] = [], notes: [Memo] = []) -> String {
         var out = "Changes since your last turn.\n"
         let byJob = Dictionary(grouping: findings, by: \.ref.job)
         for job in byJob.keys.sorted() {
@@ -110,7 +110,26 @@ enum MinisterPrompt {
             for lesson in lessons { out += "- \(lesson.words) (\(lesson.job))\n" }
         }
         out += toldLines(told)
+        out += noteLines(notes, now: now)
         out += "\nGive a verdict for each of the \(findings.count) finding\(findings.count == 1 ? "" : "s") above."
+        return out
+    }
+
+    /// The person's own notes, for the triage turn: a line each, newest first, `noteLimit` at most; nothing with none.
+    static let noteLimit = 40
+    static func noteLines(_ notes: [Memo], now: Date) -> String {
+        guard !notes.isEmpty else { return "" }
+        var out = "\nThe person's notes (their own; on a note already means no card unless something changed):\n"
+        for memo in notes.sorted(by: { $0.updatedAt > $1.updatedAt }).prefix(noteLimit) {
+            var parts = ["\(memo.id): \(JobWords.clip(memo.firstLine, 80))"]
+            if let when = memo.when { parts.append(PaperWhen.words(when, now: now)) }
+            if let page = memo.page { parts.append(page) }
+            let open = memo.items.filter { !$0.done }.count
+            if !memo.items.isEmpty { parts.append(open == 0 ? "all ticked" : "\(open) of \(memo.items.count) to tick") }
+            if let from = memo.from { parts.append("from \(from)") } else if let matter = memo.matter { parts.append("was card \(matter)") }
+            out += "- " + parts.joined(separator: " · ") + "\n"
+        }
+        if notes.count > noteLimit { out += "- and \(notes.count - noteLimit) more\n" }
         return out
     }
 
