@@ -18,10 +18,13 @@ struct FindingsMap: Equatable {
     var what: String?
     /// A column naming files in the job's output.
     var files: String?
+    /// A column whose value marks the row as a note of the person's: a sticky the job makes, with no minister and no
+    /// Mine (`note` in job.json). Empty, "false", "no" or "0" is not.
+    var note: String?
 
     var isEvents: Bool { at != nil }
 
-    static let known: Set<String> = ["id", "about", "where", "since", "due", "at", "what", "files"]
+    static let known: Set<String> = ["id", "about", "where", "since", "due", "at", "what", "files", "note"]
     static let columnLimit = 100
 
     /// Reads `map` as job.json has it, saying what is wrong in plain words.
@@ -56,7 +59,7 @@ struct FindingsMap: Equatable {
             place = text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return FindingsMap(id: id, about: about, page: place, since: try column("since"), due: try column("due"), at: try column("at"),
-                           what: try column("what"), files: try column("files"))
+                           what: try column("what"), files: try column("files"), note: try column("note"))
     }
 
     // MARK: a row's roles
@@ -72,6 +75,12 @@ struct FindingsMap: Equatable {
     /// Who and what a row concerns, as its `about` columns have it, empty values left out.
     func about(of row: FindingRow) -> [String] {
         about.compactMap { row.text($0) }.filter { !$0.isEmpty }
+    }
+
+    /// Whether the job marks this row as a note of the person's (`JobNotes`).
+    func isNote(_ row: FindingRow) -> Bool {
+        guard let note, let text = row.text(note)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else { return false }
+        return !text.isEmpty && !["false", "no", "0"].contains(text)
     }
 }
 
@@ -307,6 +316,8 @@ struct FindingsSnapshot: Equatable {
 struct FindingsChange: Equatable {
     struct Changed: Equatable {
         var row: FindingRow
+        /// The row as the last run had it.
+        var before: FindingRow
         /// The columns whose values differ, in the row's order.
         var columns: [String]
     }
@@ -356,7 +367,7 @@ enum FolderJobFindings {
                     change.unchanged += 1
                     snapshot.rows[row.id] = FindingsSnapshot.Kept(row: row, firstSeen: before.firstSeen, changedAt: before.changedAt)
                 } else {
-                    change.changed.append(FindingsChange.Changed(row: row, columns: columns))
+                    change.changed.append(FindingsChange.Changed(row: row, before: before.row, columns: columns))
                     snapshot.rows[row.id] = FindingsSnapshot.Kept(row: row, firstSeen: before.firstSeen, changedAt: now)
                 }
             } else {

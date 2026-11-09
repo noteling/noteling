@@ -88,6 +88,8 @@ struct Matter: Codable, Equatable, Identifiable {
 
     static let putAway = "You put it away."
     static let timePassed = "Its time passed."
+    /// Why a matter lost a finding the job marks as a note: it is the person's own sticker.
+    static let onYourNote = "It is on one of your notes."
     static let taken = "You took it."
     /// "Noteling did it: Nudge warehouse."
     static func done(_ label: String) -> String { "Noteling did it: \(label)." }

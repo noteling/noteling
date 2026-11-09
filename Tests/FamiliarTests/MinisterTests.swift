@@ -371,7 +371,7 @@ struct MinisterTests {
             try await Task.sleep(nanoseconds: 300_000_000)
             if firstTurnAtTick == nil, !place.client.prompts.isEmpty { firstTurnAtTick = tick }
             let row = FindingRow(id: "4417", values: row(4417, "Acme Ltd", 3 + tick), columns: ["order_id", "customer", "paid_on", "waiting_days"])
-            place.minister.notice(place.job, change: FindingsChange(changed: [.init(row: row, columns: ["waiting_days"])]))
+            place.minister.notice(place.job, change: FindingsChange(changed: [.init(row: row, before: row, columns: ["waiting_days"])]))
             place.minister.reconcile()
         }
         #expect(place.client.prompts.count >= 2 && place.client.prompts.first?.contains("team/sales/stuck-orders/4417") == true)

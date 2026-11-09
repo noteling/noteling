@@ -63,12 +63,18 @@ final class Minister: ObservableObject {
             pending[ref.key] = nil
             matters.remove(ref)
         }
-        for row in change.new {
+        // A row the job marks as a note is the person's own sticker already (`JobNotes`): nothing here to judge.
+        for row in change.new where !(job.map?.isNote(row) ?? false) {
             let ref = FindingRef(job: name, id: row.id)
             pending[ref.key] = MinisterPrompt.Shown(ref: ref, job: job, row: row, changed: nil, putAwayAt: matters.matter(containing: ref)?.putAwayAt)
         }
         for changed in change.changed {
             let ref = FindingRef(job: name, id: changed.row.id)
+            if job.map?.isNote(changed.row) == true {
+                pending[ref.key] = nil
+                if matters.matter(containing: ref) != nil { _ = matters.remove(ref, why: Matter.onYourNote) }
+                continue
+            }
             pending[ref.key] = MinisterPrompt.Shown(ref: ref, job: job, row: changed.row, changed: changed.columns,
                                                     putAwayAt: matters.matter(containing: ref)?.putAwayAt)
         }

@@ -23,11 +23,11 @@ import Testing
         var memo = Memo(id: "n-1", headline: "Lena · Q4 numbers", text: "Send Lena the Q4 numbers.\nBefore the call.",
                         items: [PaperItem(text: "revenue sheet"), PaperItem(text: "notes", done: true)], colour: .blue,
                         when: at.addingTimeInterval(3_600), page: "https://docs.example.com/q4", asked: "remind me to send Lena the Q4 numbers this afternoon",
-                        matter: "m-abc12345", at: CGPoint(x: 412, y: 88.5), collapsed: true, createdAt: at, updatedAt: at.addingTimeInterval(60))
+                        matter: "m-abc12345", finding: "own/orders-stuck/4417", from: "Orders stuck · 4417", at: CGPoint(x: 412, y: 88.5), collapsed: true, createdAt: at, updatedAt: at.addingTimeInterval(60))
         let text = MemoFile.text(memo)
         #expect(text.hasPrefix("---\ncolour: blue\nwhen: "))
         #expect(text.contains("\n# Lena · Q4 numbers\nSend Lena the Q4 numbers.\nBefore the call.\n- [ ] revenue sheet\n- [x] notes\n"))
-        #expect(text.contains("\nat: 412,88.5\n") && text.contains("\ncollapsed: true\n"))
+        #expect(text.contains("\nmatter: m-abc12345\nfinding: own/orders-stuck/4417\nfrom: Orders stuck · 4417\nat: 412,88.5\n") && text.contains("\ncollapsed: true\n"))
         let back = MemoFile.parse(text, id: "n-1")
         // Dates come back to the second.
         memo.updatedAt = Date(timeIntervalSince1970: memo.updatedAt.timeIntervalSince1970.rounded(.down))

@@ -14,6 +14,8 @@ enum FindingVerdicts {
         case quiet(String?)
         /// No matter yet: the minister hasn't seen it, or couldn't judge it.
         case unjudged
+        /// The job marks it as a note of the person's: their own sticker, with no minister (`JobNotes`).
+        case noted
     }
 
     struct Line: Equatable, Identifiable {
@@ -34,7 +36,8 @@ enum FindingVerdicts {
     static func lines(for job: FolderJob, snapshot: FindingsSnapshot, matters: Matters, now: Date) -> [Line] {
         let judged = snapshot.rows.values.map { kept -> (line: Line, seen: Date) in
             let matter = matters.matter(containing: FindingRef(job: job, id: kept.row.id))
-            return (Line(id: kept.row.id, label: label(kept.row, map: job.map), verdict: verdict(matter, now: now), matter: matter?.id), kept.firstSeen)
+            let kind: Verdict = job.map?.isNote(kept.row) == true ? .noted : verdict(matter, now: now)
+            return (Line(id: kept.row.id, label: label(kept.row, map: job.map), verdict: kind, matter: matter?.id), kept.firstSeen)
         }
         return judged.sorted { a, b in
             let ra = rank(a.line.verdict), rb = rank(b.line.verdict)
@@ -47,9 +50,10 @@ enum FindingVerdicts {
     private static func rank(_ verdict: Verdict) -> Int {
         switch verdict {
         case .shown(let urgent): return urgent ? 0 : 1
-        case .waiting: return 2
-        case .unjudged: return 3
-        case .quiet: return 4
+        case .noted: return 2
+        case .waiting: return 3
+        case .unjudged: return 4
+        case .quiet: return 5
         }
     }
 
@@ -81,10 +85,11 @@ enum FindingVerdicts {
     /// "3 findings: 1 on a sticker, 2 kept quiet"; "1 finding: kept quiet"; "4 findings: all kept quiet"; nil with none.
     static func summary(_ lines: [Line]) -> String? {
         guard !lines.isEmpty else { return nil }
-        var shown = 0, waiting = 0, unjudged = 0, quiet = 0
+        var shown = 0, noted = 0, waiting = 0, unjudged = 0, quiet = 0
         for line in lines {
             switch line.verdict {
             case .shown: shown += 1
+            case .noted: noted += 1
             case .waiting: waiting += 1
             case .unjudged: unjudged += 1
             case .quiet: quiet += 1
@@ -98,6 +103,7 @@ enum FindingVerdicts {
             return n == 1 ? "1 " + one : "\(n) " + many
         }
         let parts = [part(shown, one: "on a sticker", many: "on stickers", all: "all on stickers"),
+                     part(noted, one: "on your note", many: "on your notes", all: "all on your notes"),
                      part(waiting, one: "waiting for its sticker", many: "waiting for their stickers", all: "all waiting for their stickers"),
                      part(unjudged, one: "not judged yet", many: "not judged yet", all: "none judged yet"),
                      part(quiet, one: "kept quiet", many: "kept quiet", all: "all kept quiet")].compactMap { $0 }
@@ -117,17 +123,19 @@ enum FindingVerdicts {
         case .waiting: return "Its sticker is being written"
         case .quiet(let why): return "Kept quiet: " + (why ?? "no reason kept.")
         case .unjudged: return "Not judged yet"
+        case .noted: return "On your note"
         }
     }
 
     /// The symbol before each line: a note on a sticker (an exclamation mark when urgent), an hourglass while it waits,
-    /// a dotted circle before judgment, a moon when kept quiet, as the matter's page has it.
+    /// a dotted circle before judgment, a moon when kept quiet, a hand when it is on the person's own note.
     static func symbol(_ verdict: Verdict) -> String {
         switch verdict {
         case .shown(let urgent): return urgent ? "exclamationmark.circle" : "note.text"
         case .waiting: return "hourglass"
         case .quiet: return "moon.zzz"
         case .unjudged: return "circle.dotted"
+        case .noted: return "hand.raised"
         }
     }
 }

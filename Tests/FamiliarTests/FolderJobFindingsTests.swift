@@ -198,7 +198,7 @@ struct FolderJobFindingsTests {
         let row = FindingRow(id: "4417", values: ["order_id": 4417, "customer": "Acme Ltd", "api_key": "abc", "note": "card 4111111111111111", "tags": ["a", "b"]],
                              columns: ["order_id", "customer", "api_key", "note", "tags"])
         memory.ran(job, outcome: FindingsOutcome(said: "3 stuck", source: "Orders API", read: 2113, rows: [row]))
-        memory.record(job, change: FindingsChange(new: [row], changed: [.init(row: row, columns: ["note"])], gone: ["4402"]))
+        memory.record(job, change: FindingsChange(new: [row], changed: [.init(row: row, before: row, columns: ["note"])], gone: ["4402"]))
         now = at.addingTimeInterval(86_400)
         memory.append(["job": "own/x", "gone": "1"])
 
