@@ -142,6 +142,10 @@ import Testing
         #expect(windows.panels.values.allSatisfy { $0.up && $0.level == .floating && $0.collectionBehavior.contains(.canJoinAllSpaces) })
         windows.endGlance()
         #expect(!windows.glancing && windows.panels.values.allSatisfy { !$0.up && $0.level == .normal })
+        // Some of them, by id, as the chat shows them: the rest stay where they are.
+        windows.show(ids: ["n-1"])
+        #expect(windows.glancing && windows.panels["n-1"]!.up && !windows.panels["n-2"]!.up)
+        windows.endGlance()
         // The orb's click: up, and back with the next click; a switch of Space ends it too.
         windows.toggleGlance()
         #expect(windows.glancing && windows.panels.values.allSatisfy(\.up))

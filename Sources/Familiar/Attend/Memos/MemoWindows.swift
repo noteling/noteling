@@ -74,9 +74,12 @@ final class MemoWindows {
     /// A glance at your notes: every one comes up on top of everything where you are and stays a moment; then each goes
     /// back to its place. It ends sooner with a switch of Space, another click on the orb, or the chat or the pen
     /// opening. A note you click meanwhile stays in front, as any window you touched does.
-    func showAll() {
+    func showAll() { show(ids: nil) }
+
+    /// A glance at some of your notes, by id (the chat's "show my todos for this morning"); nil is all of them.
+    func show(ids: Set<String>?) {
         tick(now: clock())
-        for panel in panels.values {
+        for (id, panel) in panels where ids?.contains(id) ?? true {
             panel.raise()
             if shows { panel.orderFrontRegardless() }
         }

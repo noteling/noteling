@@ -6,7 +6,7 @@ import FamiliarRuntime
 /// numbers this afternoon"); the paper goes up at once with your words; the model, given the write_note tool, writes
 /// the note properly onto that same paper: a headline, the words, the when, the page you were looking at. A turn that
 /// writes no note takes the draft down again. After that first draft the note is yours: change_note only does what you
-/// ask on the pad.
+/// ask on the pad. show_notes brings your notes up on the screen for a moment, all or some, when you ask to see them.
 @MainActor
 final class MemoScribe {
     let store: MemoStore
@@ -24,6 +24,7 @@ final class MemoScribe {
     static let itemLimit = 80
     static let writeTool = "write_note"
     static let changeTool = "change_note"
+    static let showTool = "show_notes"
 
     init(store: MemoStore, windows: MemoWindows?) {
         self.store = store
@@ -99,7 +100,22 @@ final class MemoScribe {
                 do { return .text(try self.change(input)) } catch { return .text(error.localizedDescription, isError: true) }
             }
         }
-        return [write, change]
+        let show = ToolRoute(match: .tool(name: Self.showTool), definition: [
+            "name": Self.showTool,
+            "description": "Bring the person's notes up on their screen for a moment, so they see them rather than hear about them: every note, or those due in a window of time, with lines still to tick, or saying something. Use it whenever they ask to see their notes, todos or reminders (\"show me my todos for this morning\", \"what's on my notes?\"), then answer from what it lists. Now is \(MemoFile.stamp(now)); this morning runs to noon today, today to midnight.",
+            "input_schema": ["type": "object", "additionalProperties": false, "properties": [
+                "from": ["type": ["string", "null"], "description": "Only notes due at or after this moment, ISO 8601 with offset; null for no lower bound."],
+                "to": ["type": ["string", "null"], "description": "Only notes due before this moment; null for no upper bound. With from or to, a note with no time is left out."],
+                "to_do": ["type": "boolean", "description": "Only notes with a checklist line still to tick."],
+                "words": ["type": ["string", "null"], "description": "Only notes whose headline, words or checklist say this, in any case."],
+            ]],
+        ]) { [weak self] _, input, _ in
+            await MainActor.run {
+                guard let self else { return .text("unavailable", isError: true) }
+                do { return .text(try self.show(input)) } catch { return .text(error.localizedDescription, isError: true) }
+            }
+        }
+        return [write, change, show]
     }
 
     /// The write tool: onto the draft when there is one, else a new note.
@@ -114,6 +130,46 @@ final class MemoScribe {
         if let when = memo.when, PaperWhen.state(when, now: clock()) == .later { memo.collapsed = true }
         pin(memo)
         return "Pinned note \(memo.id): \(memo.firstLine)" + (memo.when.map { " · \(PaperWhen.words($0, now: Date()))" } ?? "")
+    }
+
+    /// The show tool: the notes that match come up for a moment, and the answer lists them.
+    func show(_ input: [String: Any]) throws -> String {
+        func moment(_ key: String) throws -> Date? {
+            guard let stamp = input[key] as? String, !stamp.isEmpty else { return nil }
+            guard let parsed = JobMoment.parse(stamp) else { throw MinisterError("\(key) must be a date and time, such as 2026-11-05T12:00:00-05:00, or null.") }
+            return parsed.date
+        }
+        let picked = Self.pick(store.all, from: try moment("from"), to: try moment("to"), toDo: input["to_do"] as? Bool ?? false,
+                               words: (input["words"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !picked.isEmpty else { return "No note matches, so none was brought up." }
+        windows?.show(ids: Set(picked.map(\.id)))
+        let now = clock()
+        let lines = picked.map { memo -> String in
+            var parts = ["\(memo.id): \(memo.firstLine)"]
+            if let when = memo.when { parts.append(PaperWhen.words(when, now: now)) }
+            let open = memo.items.filter { !$0.done }.count
+            if !memo.items.isEmpty { parts.append(open == 0 ? "all ticked" : "\(open) of \(memo.items.count) to tick") }
+            return "- " + parts.joined(separator: " · ")
+        }
+        return "Up on the screen for a moment, \(picked.count == 1 ? "1 note" : "\(picked.count) notes"):\n" + lines.joined(separator: "\n")
+    }
+
+    /// The notes the show tool means: due in the window when one is given (a note with no time is then left out), with a
+    /// line still to tick when asked, saying the words when given; every note with no filter at all. In the store's order.
+    nonisolated static func pick(_ memos: [Memo], from: Date?, to: Date?, toDo: Bool, words: String?) -> [Memo] {
+        memos.filter { memo in
+            if from != nil || to != nil {
+                guard let when = memo.when else { return false }
+                if let from, when < from { return false }
+                if let to, when >= to { return false }
+            }
+            if toDo, !memo.items.contains(where: { !$0.done }) { return false }
+            if let words, !words.isEmpty {
+                let haystack = ([memo.headline ?? "", memo.text] + memo.items.map(\.text)).joined(separator: "\n").lowercased()
+                if !haystack.contains(words.lowercased()) { return false }
+            }
+            return true
+        }
     }
 
     /// The change tool: the fields given, on the note named; or its removal.

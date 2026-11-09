@@ -64,6 +64,29 @@ import Testing
         #expect(store.memo(id: later.id)?.collapsed == true)
     }
 
+    @Test func showNotesBringsUpTheNotesThatMatchAndListsThem() throws {
+        let (scribe, store) = scribe()
+        scribe.clock = { self.at }
+        var standup = Memo(id: "n-1", headline: "Stand-up", text: "Bring the two open bugs.", when: at.addingTimeInterval(50 * 60), createdAt: at, updatedAt: at)
+        standup.items = [PaperItem(text: "bug 12"), PaperItem(text: "bug 15", done: true)]
+        let dentist = Memo(id: "n-2", text: "Dentist", when: at.addingTimeInterval(30 * 3_600), createdAt: at, updatedAt: at)
+        var shopping = Memo(id: "n-3", headline: "Shopping", createdAt: at, updatedAt: at)
+        shopping.items = [PaperItem(text: "Milk", done: true), PaperItem(text: "Eggs", done: true)]
+        let marco = Memo(id: "n-4", text: "Call Marco back", createdAt: at, updatedAt: at)
+        for memo in [standup, dentist, shopping, marco] { store.save(memo) }
+        // A window of time keeps the timed notes in it; to_do keeps a line still to tick; words say what; nothing keeps all.
+        #expect(MemoScribe.pick(store.all, from: at, to: at.addingTimeInterval(6 * 3_600), toDo: false, words: nil).map(\.id) == ["n-1"])
+        #expect(MemoScribe.pick(store.all, from: nil, to: nil, toDo: true, words: nil).map(\.id) == ["n-1"])
+        #expect(MemoScribe.pick(store.all, from: nil, to: nil, toDo: false, words: "marco").map(\.id) == ["n-4"])
+        #expect(MemoScribe.pick(store.all, from: nil, to: nil, toDo: false, words: nil).count == 4)
+        #expect(MemoScribe.pick(store.all, from: nil, to: at.addingTimeInterval(48 * 3_600), toDo: true, words: "bug").map(\.id) == ["n-1"])
+        let said = try scribe.show(["from": MemoFile.stamp(at), "to": MemoFile.stamp(at.addingTimeInterval(6 * 3_600))])
+        #expect(said == "Up on the screen for a moment, 1 note:\n- n-1: Stand-up · in 50 min · 1 of 2 to tick")
+        #expect(try scribe.show([:]).hasPrefix("Up on the screen for a moment, 4 notes:"))
+        #expect(try scribe.show(["words": "lease"]) == "No note matches, so none was brought up.")
+        #expect(throws: MinisterError.self) { try scribe.show(["from": "this morning"]) }
+    }
+
     @Test func aTurnThatWritesNothingTakesTheDraftDown() {
         let (scribe, store) = scribe()
         scribe.began("remind me what the GM job does", page: nil)
@@ -107,7 +130,7 @@ import Testing
     @Test func theChatGetsTwoToolsThatReachTheScribe() async throws {
         let (scribe, store) = scribe()
         let routes = scribe.routes()
-        #expect(routes.compactMap { $0.definition["name"] as? String } == ["write_note", "change_note"])
+        #expect(routes.compactMap { $0.definition["name"] as? String } == ["write_note", "change_note", "show_notes"])
         let router = try ToolRouter(routes: routes)
         let written = await router.execute("write_note", ["words": "Call Marco"])
         #expect(!written.isError && (written.content as? String)?.hasPrefix("Pinned note n-") == true)

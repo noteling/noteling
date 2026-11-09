@@ -22,7 +22,8 @@ others:
 - **Click Noteling.** Every note comes up on top of everything where you are, for about twenty seconds; then each goes
   back to its place. They go back sooner if you switch Space, click Noteling again, or open the chat or the pen. A
   note you click while they are up stays in front, as any window you touched does. **Show My Notes**, in the pencil
-  icon in the menu bar, is the same in words.
+  icon in the menu bar, is the same in words, and so is asking the chat: "show me my todos for this morning" brings
+  up the notes that match, due this morning or with a line still to tick, and tells you what came up.
 - **When its time is near.** A note with a time comes up for a moment when its countdown starts, an hour before.
 - **At its time**, wherever you are, glowing until you click it; then it stays where you are.
 
