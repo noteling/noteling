@@ -42,7 +42,15 @@ on the desktop (under windows, the same on every Space) instead of floating over
 the one real annoyance; a note comes up on top when new (a minute), when its when comes (until clicked) and while
 written on; Keep on top per note replaces Keep below windows; the when words move on the minute; the × became the
 peel, a 28-point round button over the corner on hover, and removed files go to the Trash. No TTL: an easy peel was
-chosen over a note that leaves on its own. The deck, lamp, receipt and teaching are still to be tried.
+chosen over a note that leaves on its own. The deck, lamp, receipt and teaching are still to be tried. PR #99, stacked on
+the release branch; live check of the desktop level, the minute tick and the wake on the PR; `release/0.9.1` carries
+the bump for the 0.9.1 pre-release (tag v0.9.1), cut the same day.
+
+**UAT, round two (2026-11-05), first finding:** on 0.9.1 the notes "disappeared". They had sunk to the desktop at
+launch, under the windows, and nothing but showing the desktop brought them back. **Show My Notes**, in the pencil's
+menu and the orb's and lamp's right-click menus, brings every note up for a minute as a new one comes (PR #100, stacked
+on `release/0.9.1`). The pencil missing from other people's menu bars is macOS hiding the icons that don't fit, not
+Noteling; a line in Getting started says so. The rest of the round (deck, lamp, receipt, teaching) is still to come.
 
 ## Why
 

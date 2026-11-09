@@ -64,6 +64,10 @@ something new. You can change this later in **System Settings → Notifications 
   job. A sticker opens its own page there.
 - **Stickers:** beside the note; drag one to move them, right-click one for more, or **Stickers** in the menu bar's
   pencil icon to open or hide them.
+- **Your notes:** on the desktop, under your windows. **Show My Notes**, in the menu bar's pencil icon or in Noteling's
+  right-click menu, brings them all up for a minute.
+- **No pencil in the menu bar?** The bar is full: macOS hides the icons that don't fit, and the ones at the left end
+  go first. Make room, or hold ⌘ and drag the pencil to the right, nearer the clock.
 - **Quit:** **Quit Noteling** in the menu bar's menu, or **⌘Q** while Noteling is in front.
 
 ## Read next

@@ -21,6 +21,9 @@ final class ShellState: ObservableObject {
     var onToggleLarge: (() -> Void)?
     /// A new note of your own, from the bubble's menu.
     var onNewNote: (() -> Void)?
+    /// Every note of yours comes up for a minute, from the bubble's menu; `noteCount` says whether there is one.
+    var onShowMyNotes: (() -> Void)?
+    @Published var noteCount = 0
     /// The lamp was clicked: the deck opens, or the receipt when nothing needs you.
     var onLamp: (() -> Void)?
     var onOpenJobs: (() -> Void)?
