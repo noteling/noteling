@@ -51,6 +51,19 @@ import Testing
         #expect(store.all.count == 2 && marco != nil && marco?.asked == nil)
     }
 
+    @Test func aNoteForLaterSleepsFoldedUntilItsTimeComesNear() throws {
+        let (scribe, store) = scribe()
+        scribe.clock = { self.at }
+        _ = try scribe.write(["headline": "Dentist", "words": "Thursday, the check-up.", "when": MemoFile.stamp(at.addingTimeInterval(3 * 3_600))])
+        let later = try #require(store.all.first)
+        #expect(later.collapsed && later.when == at.addingTimeInterval(3 * 3_600))
+        _ = try scribe.write(["words": "Call Marco", "when": MemoFile.stamp(at.addingTimeInterval(30 * 60))])
+        #expect(store.all.first { $0.text == "Call Marco" }?.collapsed == false)   // within the hour: open, as any note
+        // A change leaves the fold as it is.
+        _ = try scribe.change(["note": later.id, "words": "Thursday, the check-up at 2."])
+        #expect(store.memo(id: later.id)?.collapsed == true)
+    }
+
     @Test func aTurnThatWritesNothingTakesTheDraftDown() {
         let (scribe, store) = scribe()
         scribe.began("remind me what the GM job does", page: nil)

@@ -123,7 +123,7 @@ struct JobsWindowView: View {
                           matters: folderJobs.matters, openMatter: { navigation.open(.matter($0), returningTo: .folderJob(id)) }).id(id)
         case .matter(let id):
             if let matters = folderJobs.matters {
-                MatterPage(matters: matters, store: folderJobs.store, buttons: folderJobs.buttons, id: id).id(id)
+                MatterPage(matters: matters, store: folderJobs.store, buttons: folderJobs.buttons, id: id, mine: folderJobs.mine).id(id)
             } else { Text("Stickers are unavailable.").font(.system(size: 14)).foregroundStyle(Pad.inkSoft).padding(24) }
         case .receipt:
             if let matters = folderJobs.matters {

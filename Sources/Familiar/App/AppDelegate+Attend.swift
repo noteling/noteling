@@ -14,6 +14,10 @@ extension AppDelegate {
         guard var panel = folderJobs?.panel else { return }
         panel.matters = matters
         panel.lessons = lessons
+        panel.mine = { [weak self] id in
+            guard let self, let taken = self.matters.take(id) else { return }
+            self.mine(taken)
+        }
         jobsWindow = JobsWindowController(folderJobs: panel, setup: jobsSetup, hideFromScreenShare: config.hideFromScreenShare)
         jobsWindow.onOpen = { [weak self] in self?.linkedTools.checkSoon() }   // a job pushed a moment ago shows without a restart
         assistant.onOpenJobs = { [weak self] in self?.jobsWindow.showJobs() }
@@ -101,15 +105,7 @@ extension AppDelegate {
             }
             return await buttons.press(job, chosen, for: row)
         }
-        model.mine = { [weak self] matter in
-            guard let self, let windows = self.memoWindows, let view = matter.view else { return }
-            var memo = self.memos.blank()
-            memo.headline = view.headline
-            memo.text = view.text
-            memo.page = view.page
-            memo.matter = matter.id
-            windows.newNote(memo)
-        }
+        model.mine = { [weak self] matter in self?.mine(matter) }
         // The card's next step: the chat opens with the step as your request and the card under it; you send it.
         model.handoff = { [weak self] matter, step in
             guard let self else { return }
@@ -291,6 +287,18 @@ extension AppDelegate {
 
     /// A glance at every note of yours: each comes up on top where you are, until you click somewhere else.
     func showNotes() { memoWindows?.showAll() }
+
+    /// Mine, from the deck or a matter's page: the card's words become a note of yours near the orb, with the matter
+    /// a click away on it.
+    func mine(_ matter: Matter) {
+        guard let windows = memoWindows, let view = matter.view else { return }
+        var memo = memos.blank()
+        memo.headline = view.headline
+        memo.text = view.text
+        memo.page = view.page
+        memo.matter = matter.id
+        windows.newNote(memo)
+    }
 
     @objc func menuShowNotes() { showNotes() }
 

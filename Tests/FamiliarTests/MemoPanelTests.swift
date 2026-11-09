@@ -76,12 +76,17 @@ import Testing
         panel.onChange = { changes.append($0) }
         // New: an ordinary window where it was made; nothing moves it but the person.
         #expect(!panel.up && panel.level == .normal && !panel.collectionBehavior.contains(.canJoinAllSpaces))
-        // Woken: up everywhere and glowing until clicked; then had, and an ordinary window again, where the person is.
+        // Woken: opened if it slept folded, up everywhere and glowing until clicked; then had, and an ordinary window again,
+        // where the person is.
+        var sleepy = memo(when: at.addingTimeInterval(7_200))
+        sleepy.collapsed = true
+        panel.show(sleepy)
         panel.wake()
+        #expect(!panel.memo.collapsed && changes.last?.collapsed == false)
         #expect(panel.up && panel.state.warm && panel.collectionBehavior.contains(.canJoinAllSpaces))
         panel.sendEvent(NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: panel.windowNumber,
                                            context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
-        #expect(!panel.up && !panel.state.warm && panel.level == .normal && changes.isEmpty)   // being had changes nothing in its file
+        #expect(!panel.up && !panel.state.warm && panel.level == .normal && changes.count == 1)   // being had changes nothing more in its file
         // Written on: up while the keyboard is on it, back in its place when the keyboard leaves.
         panel.raise()
         panel.state.beginEditing()
@@ -94,7 +99,9 @@ import Testing
         store.clock = { self.at }
         store.save(memo("n-old", text: "From yesterday"))
         store.save(memo("n-soon", text: "Stand-up", when: at.addingTimeInterval(50 * 60)))
-        store.save(memo("n-later", text: "Dentist", when: at.addingTimeInterval(3 * 3_600)))
+        var asleep = memo("n-later", text: "Dentist", when: at.addingTimeInterval(3 * 3_600))
+        asleep.collapsed = true   // a note for later sleeps folded
+        store.save(asleep)
         let windows = MemoWindows(store: store, scale: 1, hideFromScreenShare: false)
         windows.shows = false
         windows.clock = { self.at }
@@ -111,6 +118,7 @@ import Testing
         windows.tick(now: later)
         #expect(windows.panels.values.allSatisfy { $0.state.now == later })
         #expect(windows.panels["n-later"]!.up && !windows.panels["n-old"]!.up)   // fifty minutes to go: its moment
+        #expect(!windows.panels["n-later"]!.memo.collapsed && store.memo(id: "n-later")?.collapsed == false)   // and it opens
         // 10:13:20 ticks next at 10:14:00.3, in step with the menu bar's clock.
         let twenty = Date(timeIntervalSinceReferenceDate: 1_000 * 60 + 20)
         #expect(MemoWindows.nextMinute(after: twenty) == Date(timeIntervalSinceReferenceDate: 1_001 * 60 + 0.3))

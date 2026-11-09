@@ -190,9 +190,14 @@ struct PaperView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7 * scale) {
             if collapsed {
-                Text(firstLine)
-                    .font(headline?.isEmpty == false ? PaperType.headline(hand, scale) : PaperType.body(hand, scale))
-                    .lineLimit(1).truncationMode(.tail)
+                HStack(alignment: .firstTextBaseline, spacing: 6 * scale) {
+                    Text(firstLine)
+                        .font(headline?.isEmpty == false ? PaperType.headline(hand, scale) : PaperType.body(hand, scale))
+                        .lineLimit(1).truncationMode(.tail)
+                    if let when {   // a sleeping note still says when it wakes
+                        Text(PaperWhen.words(when, now: now)).font(PaperType.small(hand, scale)).foregroundStyle(PaperType.inkSoft).lineLimit(1)
+                    }
+                }
             } else {
                 if let headline, !headline.isEmpty {
                     Text(headline).font(PaperType.headline(hand, scale)).fixedSize(horizontal: false, vertical: true)

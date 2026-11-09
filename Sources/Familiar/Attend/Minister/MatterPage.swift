@@ -10,6 +10,8 @@ struct MatterPage: View {
     var buttons: FolderJobButtons?
     let id: String
     var now: () -> Date = Date.init
+    /// Mine: takes the matter and makes it one of the person's notes, as the deck's Mine does.
+    var mine: ((String) -> Void)?
 
     var body: some View {
         if let matter = matters.matter(id: id) {
@@ -39,9 +41,9 @@ struct MatterPage: View {
                 }
                 if matter.state == .open {
                     if let buttons {
-                        MatterControls(matters: matters, buttons: buttons, matter: matter, findings: findings, now: now)
+                        MatterControls(matters: matters, buttons: buttons, matter: matter, findings: findings, now: now, mine: mine)
                     } else {
-                        MatterControls.plain(matters: matters, matter: matter, findings: findings)
+                        MatterControls.plain(matters: matters, matter: matter, findings: findings, mine: mine)
                     }
                 }
                 if let press = matter.presses.last {
@@ -160,6 +162,7 @@ struct MatterControls: View {
     let matter: Matter
     let findings: [(job: FolderJob, row: FindingRow)]
     var now: () -> Date = Date.init
+    var mine: ((String) -> Void)?
     @State private var confirming: String?
 
     var body: some View {
@@ -176,7 +179,7 @@ struct MatterControls: View {
                              primary: matter.view?.action?.run == action.run && matter.view?.action?.finding.id == finding.row.id)
             }
         }
-        Self.common(matters: matters, matter: matter, findings: findings)
+        Self.common(matters: matters, matter: matter, findings: findings, mine: mine)
     }
 
     @ViewBuilder private func actionButton(job: FolderJob, row: FindingRow, action: FolderJobAction, primary: Bool) -> some View {
@@ -207,22 +210,25 @@ struct MatterControls: View {
         Task { await buttons.press(job, action, for: row) }
     }
 
-    /// The buttons every matter has, with or without a way to press its job's: Open page and Put away.
-    @ViewBuilder static func common(matters: Matters, matter: Matter, findings: [(job: FolderJob, row: FindingRow)]) -> some View {
+    /// The buttons every matter has, with or without a way to press its job's: Open page, Mine and Put away.
+    @ViewBuilder static func common(matters: Matters, matter: Matter, findings: [(job: FolderJob, row: FindingRow)], mine: ((String) -> Void)? = nil) -> some View {
         if let page = MatterPage.page(of: matter, findings: findings), let url = URL(string: page) {
             Button("Open page") { NSWorkspace.shared.open(url) }.buttonStyle(PaperActionButton()).help(page)
+        }
+        if let mine {
+            Button("Mine") { mine(matter.id) }.buttonStyle(PaperActionButton()).help("Becomes a note of your own, as Mine on the deck does")
         }
         Button("Put away") { matters.putAway(matter.id) }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
             .help("Takes the sticker down. It comes back only if something about this changes and the minister thinks you should see it.")
     }
 
     /// Without the buttons (a render): the job's actions shown but not pressable, and the common ones.
-    @ViewBuilder static func plain(matters: Matters, matter: Matter, findings: [(job: FolderJob, row: FindingRow)]) -> some View {
+    @ViewBuilder static func plain(matters: Matters, matter: Matter, findings: [(job: FolderJob, row: FindingRow)], mine: ((String) -> Void)? = nil) -> some View {
         HStack(spacing: 9) {
             ForEach(Array(findings.enumerated()), id: \.offset) { _, finding in
                 ForEach(finding.job.actions) { action in Button(action.label) {}.buttonStyle(PaperActionButton()).disabled(true) }
             }
-            common(matters: matters, matter: matter, findings: findings)
+            common(matters: matters, matter: matter, findings: findings, mine: mine)
         }
     }
 }

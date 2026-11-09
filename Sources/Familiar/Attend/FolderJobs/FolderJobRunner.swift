@@ -289,6 +289,8 @@ struct FolderJobsPanel {
     var matters: Matters? = nil
     /// What the person taught the minister, for the receipt.
     var lessons: Lessons? = nil
+    /// Mine on a matter's page: takes the matter and makes it one of the person's notes, as the deck's Mine does.
+    var mine: ((String) -> Void)? = nil
 }
 
 /// The jobs kept as folders, put together once by the app: where they're kept, what runs them, what their findings'
