@@ -91,7 +91,7 @@ final class NotesStore: ObservableObject {
 
     /// A note's file: its id when that is already a plain lowercase id, as Noteling makes them; any other id gets a
     /// hash of itself added, so two ids never share a file.
-    static func file(for id: String, in directory: URL) -> URL {
+    nonisolated static func file(for id: String, in directory: URL) -> URL {
         let safe = String(id.lowercased().unicodeScalars.filter { CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789-").contains($0) })
         guard safe != id || safe.isEmpty else { return directory.appendingPathComponent(safe + ".json") }
         let hash = SHA256.hash(data: Data(id.utf8)).prefix(6).map { String(format: "%02x", $0) }.joined()

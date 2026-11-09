@@ -281,23 +281,10 @@ private func renderFakeScreen() -> CGImage {
     return ctx.makeImage()!
 }
 
-/// `Noteling --render-pen <dir>`: the pen overlay over a fake window, with two stickers (one open) and the note editor,
-/// drawn into a PNG. For eyeballing the paper without a mouse.
+/// A fake page for the renders: a title, a toolbar of buttons, a form and a table, so stickers have something to
+/// stick to. Returns the controls by label, and the table.
 @MainActor
-func runRenderPen() {
-    let args = CommandLine.arguments
-    guard let i = args.firstIndex(of: "--render-pen"), i + 1 < args.count else { print("usage: --render-pen <dir>"); exit(2) }
-    let dir = URL(fileURLWithPath: args[i + 1])
-    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    let size = NSSize(width: 1100, height: 720)
-    let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
-    window.isOpaque = false
-    window.backgroundColor = .clear
-    let container = NSView(frame: NSRect(origin: .zero, size: size))
-    container.wantsLayer = true
-    container.layer?.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1).cgColor
-
-    // a fake page: a title, a toolbar of buttons, a form and a table, so the stickers have something to stick to
+func fakeExpensePage(in container: NSView) -> (controls: [(String, NSRect)], table: NSView) {
     let controls: [(String, NSRect)] = [("Save page", NSRect(x: 900, y: 640, width: 96, height: 28)), ("Update", NSRect(x: 796, y: 640, width: 92, height: 28)),
                                         ("Cost Center", NSRect(x: 80, y: 500, width: 320, height: 30)), ("Amount", NSRect(x: 80, y: 430, width: 200, height: 30)),
                                         ("Submit report", NSRect(x: 80, y: 360, width: 130, height: 30))]
@@ -315,8 +302,78 @@ func runRenderPen() {
     }
     container.addSubview(table)
     let title = NSTextField(labelWithString: "Expense report · September"); title.font = NSFont.systemFont(ofSize: 22, weight: .semibold); title.sizeToFit(); title.frame.origin = NSPoint(x: 80, y: 640); container.addSubview(title)
+    return (controls, table)
+}
+
+/// `Noteling --render-hints <dir>`: hints shown by themselves over the fake page, the tags on their controls, then one
+/// open under the pointer, drawn into PNGs.
+@MainActor
+func runRenderHints() {
+    let args = CommandLine.arguments
+    guard let i = args.firstIndex(of: "--render-hints"), i + 1 < args.count else { print("usage: --render-hints <dir>"); exit(2) }
+    let dir = URL(fileURLWithPath: args[i + 1])
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let size = NSSize(width: 1100, height: 720)
+    let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+    window.isOpaque = false
+    window.backgroundColor = .clear
+    let container = NSView(frame: NSRect(origin: .zero, size: size))
+    container.wantsLayer = true
+    container.layer?.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1).cgColor
+    let (controls, _) = fakeExpensePage(in: container)
+    let view = HintsView(frame: NSRect(origin: .zero, size: size), scale: 2)
+    container.addSubview(view)
+    window.contentView = container
+
+    var a1 = NoteStore.sceneAnchor(bundleID: "com.google.Chrome", windowTitle: "Concur", url: "https://expenses.internal.example.com/reports/new")
+    a1.role = "AXPopUpButton"; a1.label = "Cost Center"
+    var a2 = a1; a2.role = "AXButton"; a2.label = "Submit report"
+    var a3 = a1; a3.role = "AXButton"; a3.label = "Save page"
+    let n1 = StickyNote(id: "n1", anchor: a1, kind: "warning", text: "Pick the one ending in your department code, not the project one, or Finance bounces it a week later.", by: "Priya", at: "2026-09-18", confirmed: "2026-09-18")
+    let n2 = StickyNote(id: "n2", anchor: a2, kind: "tip", text: "Submitting after 3pm on Friday means it waits until Tuesday's batch.", by: "Tom", at: "2026-08-30", confirmed: "2026-09-12")
+    let n3 = StickyNote(id: "n3", anchor: a3, kind: "tip", text: "This is the total fetched from Workday. Contact abc@example.com if it's wrong.", by: "Yang", at: "2026-11-09", confirmed: "2026-11-09")
+    let marks = [HintsController.Mark(note: n1, frame: controls[2].1), HintsController.Mark(note: n2, frame: controls[4].1), HintsController.Mark(note: n3, frame: controls[0].1)]
+
+    guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2), pixelsHigh: Int(size.height * 2), bitsPerSample: 8,
+                                     samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+    else { print("rep failed"); exit(1) }
+    rep.size = size
+    func shoot(_ name: String) {
+        view.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        container.cacheDisplay(in: container.bounds, to: rep)
+        guard let data = rep.representation(using: .png, properties: [:]) else { print("encode failed"); exit(1) }
+        do { try data.write(to: dir.appendingPathComponent(name)); print("wrote \(name) \(rep.pixelsWide)x\(rep.pixelsHigh)") }
+        catch { print("write failed: \(error)"); exit(1) }
+    }
+    view.show(marks, hovered: nil)
+    shoot("hints-tags.png")
+    view.setHovered("n1")
+    shoot("hints-open-warning.png")
+    view.setHovered("n3")
+    shoot("hints-open-tip.png")
+}
+
+/// `Noteling --render-pen <dir>`: the pen overlay over a fake window, with two stickers (one open) and the note editor,
+/// drawn into a PNG. For eyeballing the paper without a mouse.
+@MainActor
+func runRenderPen() {
+    let args = CommandLine.arguments
+    guard let i = args.firstIndex(of: "--render-pen"), i + 1 < args.count else { print("usage: --render-pen <dir>"); exit(2) }
+    let dir = URL(fileURLWithPath: args[i + 1])
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let size = NSSize(width: 1100, height: 720)
+    let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+    window.isOpaque = false
+    window.backgroundColor = .clear
+    let container = NSView(frame: NSRect(origin: .zero, size: size))
+    container.wantsLayer = true
+    container.layer?.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1).cgColor
+
+    let (controls, table) = fakeExpensePage(in: container)
 
     let controller = WandController()
+    controller.canShare = { true }   // a team's tools linked: the hint's paper offers to share it
     let view = WandView(frame: NSRect(origin: .zero, size: size), controller: controller, screen: NSScreen.main ?? NSScreen.screens[0])
     container.addSubview(view)
     window.contentView = container

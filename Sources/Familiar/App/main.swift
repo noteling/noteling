@@ -69,6 +69,8 @@ if CommandLine.arguments.contains("--record-synthetic") {
     }
     MainActor.assumeIsolated { NSApplication.shared.setActivationPolicy(.accessory) }
     NSApp.run()
+} else if CommandLine.arguments.contains("--render-hints") {
+    MainActor.assumeIsolated { runRenderHints() }
 } else if CommandLine.arguments.contains("--render-pen") {
     MainActor.assumeIsolated { runRenderPen() }
 } else if CommandLine.arguments.contains("--ask") {

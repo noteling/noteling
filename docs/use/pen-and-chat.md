@@ -9,6 +9,9 @@ Two ways to ask Noteling about your work: point at something on your screen with
 3. The pad asks "What about it?", with a few questions to tap. Tap one, type your own, or press **Return** for a short
    explanation. **Esc** puts the pick away.
 
+**Right-click** a control with the pen instead to leave a [hint](hints.md) on it for the next person: a line stuck to
+the control, shown as a small tag to whoever comes to the page, and in full when their mouse comes to it.
+
 Nothing goes to Claude until you ask. On pages your team's tools know, their answer is on the pad the moment you pick,
 before anyone is asked: what's going on, why, and what to do.
 

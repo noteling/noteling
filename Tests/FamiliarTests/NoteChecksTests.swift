@@ -135,7 +135,7 @@ struct NoteChecksTests {
         #expect(zip(tops, tops.dropFirst()).allSatisfy { $0 - $1 >= 40 })
         // A short window holds fewer, and the notice counts the rest.
         #expect(WandController.atEdge(missing, of: NSRect(x: 0, y: 0, width: 800, height: 220)).count == 1)
-        #expect(WandController.notice(unplaced: 2)?.hasPrefix("2 more notes here are for things not on screen") == true)
+        #expect(WandController.notice(unplaced: 2)?.hasPrefix("2 more hints here are for things not on screen") == true)
     }
 
     // MARK: - What the model is told

@@ -16,10 +16,11 @@ your-team-tools/
       job.json              what the job is and when it runs, nothing else
       job.py                run(): the one thing Noteling calls
       input/                the files it reads
-  orders/                   a tool pack: any other top-level folder
+  orders/                   a tool pack: any other top-level folder except hints/
     SKILL.md                which app or pages it's for, and how Noteling should answer there
     docs/                   what Noteling should know about them
     scripts/                tools the chat and the pen can call, and a brief for the page in front
+  hints/                    hints people left on controls, one file each, shared with everyone
   noteling.json             optional: your company's Claude gateway
 ```
 
@@ -28,6 +29,10 @@ your-team-tools/
   and everything the job left is there to download. [Jobs](jobs.md) has it all.
 - **Tool packs** help on your team's apps and pages. When someone points the pen at an order page, the pack's brief has
   already looked it up, and its docs tell Noteling how your systems work. [Tool packs](packs.md).
+- **Hints** are lines people left on controls with the pen, for the next person: "this total comes from Workday, tell
+  Priya if it's wrong". A hint shared from Noteling arrives as a pull request or a commit adding one file to `hints/`;
+  nothing to write by hand. Everyone who links the tools sees it on that control, with no model in between.
+  [Hints on buttons](../use/hints.md).
 
 ## How a person gets it
 

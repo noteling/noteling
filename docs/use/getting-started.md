@@ -75,4 +75,5 @@ something new. You can change this later in **System Settings → Notifications 
 
 - [Your team's jobs](jobs.md)
 - [The pen and chat](pen-and-chat.md)
+- [Hints on buttons](hints.md)
 - [What Noteling stores and sends](../../PRIVACY.md)

@@ -28,6 +28,9 @@ final class ShellState: ObservableObject {
     var onHideNotes: (() -> Void)?
     @Published var noteCount = 0
     @Published var notesHidden = false
+    /// Hints people left on pages show by themselves as you arrive (Settings' "Show hints…"); the menu flips it too.
+    @Published var hintsOn = true
+    var onToggleHints: ((Bool) -> Void)?
     /// The lamp was clicked: the deck opens, or the receipt when nothing needs you.
     var onLamp: (() -> Void)?
     var onOpenJobs: (() -> Void)?

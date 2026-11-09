@@ -35,6 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let notesStore = NotesStore()
     var briefs: PageBriefs!
     let notesShortcut = NotesShortcut()
+    /// Hints people left on pages, marked on the page in front as it comes up.
+    let hints = HintsController()
     let notesUsage = NotesUsageLog()
     let hideHint = HideHint()
     let origami = OrigamiFlightController()
@@ -105,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task {
             runner.networkEnv = await ScriptNetwork.current()   // before the first script: the Mac's proxy and certificates
             await registry.reload()
-            assistant.notesHere = registry.notes(for: watcher.current)
+            hintsChanged()
             linkedTools.start()   // checks the linked repository now, then every 10 minutes
             Secrets.migrateKeychainToFile(keys: (config.connectionMode == "api" ? ["ANTHROPIC_API_KEY"] : []) + registry.packs.flatMap(\.requires))
             if !assistant.hasConnection { assistant.reconfigure(effectiveConfig) }   // pick up a migrated key
@@ -164,7 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task {
             await registry.reload()
             notesStore.reload()
-            assistant.notesHere = registry.notes(for: watcher.current)
+            hintsChanged()
         }
     }
 
@@ -175,7 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         await registry.reload()
         if let linked = registry.linkedRoot { notesStore.moveNotes(fromPacksIn: linked, rename: false) }
         notesStore.reload()
-        assistant.notesHere = registry.notes(for: watcher.current)
+        hintsChanged()
         assistant.reconfigure(effectiveConfig)
         ScriptedSecrets.shared.warm(effectiveConfig)
         folderJobs?.toolsChanged()   // the team's jobs as the new copy has them, now rather than at the next tick
@@ -392,6 +394,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.control.asksFirst = self.config.backgroundAsksFirst
             self.wand.hideFromScreenShare = self.config.hideFromScreenShare
             if self.config.notesShortcut { self.notesShortcut.start() } else { self.notesShortcut.stop() }
+            self.shell.hintsOn = self.config.autoHints
+            self.hints.setEnabled(self.config.autoHints, scene: self.watcher.current, notes: self.registry.notes(for: self.watcher.current))
             Log.info("settings saved (connection: \(self.effectiveConfig.connectionMode), ready: \(self.assistant.hasConnection), hotkey: \(self.config.hotkey))")
         }, onOpenTools: { [weak self] in self?.openTools() }, onReloadTools: { [weak self] in self?.reloadTools() })
     }

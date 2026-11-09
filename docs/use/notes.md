@@ -1,7 +1,8 @@
 # Your own notes
 
 A note of your own is a sticky in your hand, on your screen where you put it. Nothing goes through Noteling's
-minister or a job: you write it, and it stays until you take it down.
+minister or a job: you write it, and it stays until you take it down. A line left on a button for the next person who
+meets it is a different thing, a [hint](hints.md): stuck to the control, shown to whoever comes to it.
 
 ## Writing one
 

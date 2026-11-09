@@ -33,7 +33,8 @@ jobs/                         jobs: one folder each, nested as you like
     job.md                    what the findings mean, in plain words, for Noteling to read
     job.py                    run(): the one thing Noteling calls; it returns the findings
     input/pages.csv           what it reads: the pages, and the text each should show
-example-pages/                a tool pack: any top-level folder except jobs/
+hints/                        hints people left on controls with the pen, one file each; Noteling adds them through GitHub
+example-pages/                a tool pack: any top-level folder except jobs/ and hints/
   SKILL.md                    which pages it's for, and how Noteling should answer about them
   scripts/
     page_status.py            a tool Noteling's chat can call: is this page up?
