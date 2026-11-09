@@ -21,7 +21,8 @@ Also from the 0.9.3 UAT ("show me what are the todos for me for this morning" wa
 a moment and lists them (`MemoWindows.show(ids:)`), on `feature/show-notes-from-chat`. And, also from the UAT:
 Show my notes and Hide my notes in Noteling's right-click menu (and the pencil's), Hide keeping every note off the
 screen until shown again (`MemoWindows.hidden`, config `memosHidden`), on `feature/show-hide-notes`. All of it, and #98's
-fix (#106), merged to `main` on 2026-11-09 for 0.9.4.
+fix (#106), merged to `main` on 2026-11-09 for 0.9.4, with sections 3 and 4 below and the minister seeing the notes
+(#110, #111, #112) the same day.
 
 ## Where things stand (checked 2026-11-09 against 0.9.2)
 

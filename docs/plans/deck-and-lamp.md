@@ -76,8 +76,9 @@ stacked on #102; `release/0.9.3` carries both.
 
 **Merged (2026-11-09):** the whole stack, #93 to #109 with the release branches 0.9.0 to 0.9.3 in their history, went
 into `main` in order, one merge each, and #106 (issue #98, the linked packs) after it; main carries 619 tests.
-`release/0.9.4` is cut from main as the first release of this line marked latest, with everything above and the
-after-the-deck pieces (`after-the-deck.md`) in it.
+`release/0.9.4` is cut from main as the first release of this line marked latest, with everything above, the
+after-the-deck pieces (`after-the-deck.md`) and the three that followed the same day in it: the chat as a source of
+findings (#110), what the person tells the minister (#111), and the minister handed the person's notes (#112).
 
 ## Why
 
