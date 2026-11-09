@@ -115,6 +115,7 @@ struct BubbleView: View {
     }
 
     @State private var lastClick: Date?
+    @State private var singleClick: DispatchWorkItem?
     @State private var glancing = false
     @State private var glanceToken = 0
 
@@ -131,11 +132,14 @@ struct BubbleView: View {
     }
 
     /// A single click brings your notes up for a moment (or the task screen back, while a task runs); a double click
-    /// opens the chat for a new instruction.
+    /// opens the chat for a new instruction. The notes wait out the double-click interval, so opening the chat never
+    /// brings them up on the way; the smile comes at once.
     private func click() {
         let now = Date()
         if let last = lastClick, now.timeIntervalSince(last) < NSEvent.doubleClickInterval {
             lastClick = nil
+            singleClick?.cancel()
+            singleClick = nil
             reaction = nil
             shell.expanded = true
             return
@@ -143,8 +147,9 @@ struct BubbleView: View {
         lastClick = now
         if state.backgroundTaskRunning { state.showBackgroundTasks(); return }
         react(.happy, for: 0.9)
-        shell.onGlance?()
-        shell.onPoke?()
+        let work = DispatchWorkItem { shell.onGlance?(); shell.onPoke?() }
+        singleClick = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: work)
     }
 
     private func beginPress(at p: CGPoint) {

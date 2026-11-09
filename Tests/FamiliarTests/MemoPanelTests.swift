@@ -94,6 +94,24 @@ import Testing
         #expect(!panel.up && !panel.state.editing && panel.level == .normal)
     }
 
+    @Test func aNoteGoesBackUnderTheWindowThatWasInFrontOfIt() {
+        // The window server lists windows front to back: a floating one, another app's window, one of our own notes, this
+        // note, another app's window behind it. The one directly in front, of another app at the ordinary level, is 8.
+        func window(_ id: Int, layer: Int, pid: Int32) -> [String: Any] {
+            [kCGWindowNumber as String: NSNumber(value: id), kCGWindowLayer as String: NSNumber(value: layer), kCGWindowOwnerPID as String: NSNumber(value: pid)]
+        }
+        let list = [window(9, layer: 3, pid: 7), window(8, layer: 0, pid: 7), window(6, layer: 0, pid: 42), window(5, layer: 0, pid: 42), window(4, layer: 0, pid: 7)]
+        #expect(MemoPanel.above(5, in: list, ownPID: 42) == 8)
+        #expect(MemoPanel.above(8, in: list, ownPID: 42) == nil)   // nothing of another app in front of it
+        #expect(MemoPanel.above(4, in: list, ownPID: 42) == 8)
+        #expect(MemoPanel.above(99, in: list, ownPID: 42) == nil)   // not on the screen
+        // A note never on the screen has nothing to go back under, and settling it is harmless.
+        let panel = MemoPanel(memo: memo(), scale: 1, hideFromScreenShare: false)
+        panel.raise()
+        panel.settle()
+        #expect(!panel.up && panel.level == .normal)
+    }
+
     @Test func theWindowsTickOnTheMinuteAndANoteComesUpForAMomentWhenItsTimeComesNear() {
         let store = MemoStore(directory: nil)
         store.clock = { self.at }
