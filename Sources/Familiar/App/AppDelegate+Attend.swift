@@ -282,6 +282,7 @@ extension AppDelegate {
         memoWindows = windows
         shell.onNewNote = { [weak self] in self?.newNote() }
         shell.onGlance = { [weak self] in self?.memoWindows?.toggleGlance() }
+        assistant.holdings = { Holdings.digest(home: Config.dir) }   // the chat's map of the shared state, every turn
         shell.onShowNotes = { [weak self] in self?.memoWindows?.showAll() }
         shell.onHideNotes = { [weak self] in self?.memoWindows?.hide() }
         store.$all.receive(on: RunLoop.main).sink { [weak self] all in self?.shell.noteCount = all.count }.store(in: &cancellables)

@@ -142,14 +142,14 @@ func runHeadlessAsk() async {
             let prepared: PreparedExecution
             if controlOn {
                 prepared = try await desktop.prepare(id: id, registry: registry, context: ctx, background: backgroundOn,
-                                                     target: backgroundTarget, systemExtra: Prompt.intents(config.intentWords, pinned: nil),
+                                                     target: backgroundTarget, systemExtra: Prompt.intents(config.intentWords, pinned: nil) + Holdings.digest(home: Config.dir),
                                                      lookAtScreen: capture)
             } else {
                 let router = try ExecutionTools.make(registry: registry, context: ctx, control: nil,
                                                      background: false, additionalRoutes: showMe?.routes(context: ctx, words: config.intentWords) ?? [],
                                                      recall: Recall.standard(home: Config.dir, tools: registry.root, team: { LinkedTools.root(for: config) }),
                                                      lookAtScreen: capture)
-                prepared = PreparedExecution(system: Prompt.system + Prompt.intents(config.intentWords, pinned: nil), router: router)
+                prepared = PreparedExecution(system: Prompt.system + Prompt.intents(config.intentWords, pinned: nil) + Holdings.digest(home: Config.dir), router: router)
             }
             print("context: \(ctx.summaryLine)\nactive packs: \(packContext.active.map(\.dirName)) tools: \(prepared.router.definitions.count) notes on scene: \(packContext.sceneNotes.count)\n")
             return prepared

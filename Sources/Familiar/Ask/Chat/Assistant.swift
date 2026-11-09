@@ -113,6 +113,9 @@ final class Assistant: ObservableObject {
     var chatResponding: Bool { chatBusy && !backgroundTaskRunning }
     var chatPresentationBusy: Bool { chatResponding || learning.busy }
     private var requestMessageID: UUID?
+    /// What Noteling holds right now, for every turn's prompt: the person's notes, the deck, the chat's scans, what the
+    /// minister was told, today's tally. The app sets it; empty where there is nothing to hold.
+    var holdings: () -> String = { "" }
     /// The line in the chat saying a task is working in the background, until its result takes its place.
     private var taskNoticeID: UUID?
     static let taskNotice = "Working on it in the background. The result comes here when it's done; the task window shows the progress."
@@ -1111,7 +1114,7 @@ final class Assistant: ObservableObject {
                     return await self.readScreen(held: holding, seenOn: chip, ctx: ctx)
                 }
                 let words = intentWords
-                let wanted = Prompt.intents(words, pinned: intent)
+                let wanted = Prompt.intents(words, pinned: intent) + holdings()
                 let teaching = intent == .explain || intent == .act ? [] : (showMe?.routes(context: ctx, words: words) ?? [])
                 let sourceRoutes = (folderJobs?.routes() ?? []) + teaching + extraRoutes()
                 if controlAllowed, let desktop {
