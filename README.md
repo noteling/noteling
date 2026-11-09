@@ -17,6 +17,7 @@ else stays out of your way.
 - **Your team's jobs, on your Mac.** Someone on your team writes a job once. It runs on the Mac of everyone who turned
   it on, as them, and only takes their attention when it finds something.
 - **Notes of your own.** "Remind me to send Lena the numbers this afternoon" on the pad, and a sticky in your hand is on your screen where you put it, with the time, the page and a checklist when you named them. Files in a folder; Finder is the folder.
+- **Hints on buttons.** Right-click a control with the pen and leave a line for the next person: "this total comes from Workday, tell Priya if it's wrong". Whoever comes to that page sees a small tag on the control and the hint when their mouse comes to it, with no model in between. Share it, and everyone who links your team's tools has it.
 - **Cards for what needs you.** What a job finds, and what's unread in your mail, goes to Noteling's minister, which puts a card beside the note only for sure things, one at a time with three verbs under it: its action, as you, with a few seconds to take it back; Mine, which makes it a note of your own; Not now. The rest stays in memory for when you ask.
   Decide it, discuss it, or hand it to Noteling.
 - **Show it how.** Use **Watch Me** to show Noteling how you do something once. It keeps the steps, and follows them
@@ -41,6 +42,7 @@ You'll need a Mac with Apple silicon (M1 or later), macOS 14 Sonoma or later, an
 - [Your team's jobs](docs/use/jobs.md): turning on yours, and reading what they found
 - [Your mail, as stickers](docs/use/reading-jobs.md): the Mail job
 - [Your own notes](docs/use/notes.md): a sticky in your hand, from the pad
+- [Hints on buttons](docs/use/hints.md): a line left on a control for the next person
 - [The pen and chat](docs/use/pen-and-chat.md)
 
 **Keeping a team's tools**

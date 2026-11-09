@@ -192,7 +192,7 @@ struct NotesStoreTests {
                                            note("below", label: "Archive", domID: "archive")], page: page, primaryMaxY: 1_000)
         // A made-up id and an id two controls share place nothing; a control below the fold is "further down".
         #expect(result.placed.isEmpty && result.missing.map(\.id) == ["generated", "twice"] && result.below.map(\.id) == ["below"])
-        #expect(WandController.notice(unplaced: 3)?.hasPrefix("3 more notes here are for things not on screen") == true)
+        #expect(WandController.notice(unplaced: 3)?.hasPrefix("3 more hints here are for things not on screen") == true)
         #expect(WandController.notice(unplaced: 0) == nil)
     }
 
@@ -201,7 +201,7 @@ struct NotesStoreTests {
             StickyNote(id: "t", anchor: NoteAnchor(), kind: "tip", text: "Approval takes 2 days", by: "A", at: "", confirmed: ""),
             StickyNote(id: "w", anchor: NoteAnchor(), kind: "warning", text: "Don't pick Premium", by: "B", at: "", confirmed: ""),
         ]
-        #expect(NotesBadge.summary(notes) == "2 notes here:\n⚠︎ Don't pick Premium\n• Approval takes 2 days\nPress ⌥ Option twice, or click here, to show them on the page.")
+        #expect(NotesBadge.summary(notes) == "2 hints here:\n⚠︎ Don't pick Premium\n• Approval takes 2 days\nPress ⌥ Option twice, or click here, to show them on the page.")
     }
 
     @Test func optionPressedTwiceIsTheShortcut() {
@@ -226,7 +226,7 @@ struct NotesStoreTests {
         #expect(fired([("d", 0), ("c", 0.05), ("u", 0.1), ("d", 0.2), ("u", 0.25)]).isEmpty)  // ⌥⌘, not Option alone
         // A third quick tap starts over rather than firing again.
         #expect(fired([("d", 0), ("u", 0.05), ("d", 0.1), ("u", 0.15), ("d", 0.2), ("u", 0.25)]) == [0.15])
-        #expect(WandController.noNotes.hasPrefix("No notes here yet"))
+        #expect(WandController.noNotes.hasPrefix("No hints on this page yet"))
     }
 
     // MARK: - Fixtures

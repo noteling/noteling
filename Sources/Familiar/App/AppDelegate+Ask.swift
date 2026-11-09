@@ -244,6 +244,7 @@ extension AppDelegate {
             if !here.isEmpty {
                 self.notesUsage.record("arrive", counts: ["notes": here.count, "warnings": here.filter(\.isWarning).count], notes: here.map(\.id))
             }
+            self.hints.arrive(ctx, notes: here)   // marked on the page as it comes up; none, and the marks go
             self.assistant.inFront = ctx
             guard !self.assistant.watching else { return }   // the line reads "Watching…" while recording
             self.assistant.contextLine = ctx.summaryLine
@@ -275,10 +276,7 @@ extension AppDelegate {
         wand.author = { [weak self] in self.map { NoteStore.author($0.config) } ?? NSFullUserName() }
         wand.onNoteSave = { [weak self] note in self?.assistant.saveNote(note) }
         wand.onNoteDelete = { [weak self] id in self?.assistant.deleteNote(id) }
-        assistant.onNotesChanged = { [weak self] in
-            guard let self else { return }
-            self.assistant.notesHere = self.registry.notes(for: self.watcher.current)
-        }
+        assistant.onNotesChanged = { [weak self] in self?.hintsChanged() }
         assistant.notesUsage = notesUsage
         assistant.onShowNotes = { [weak self] in self?.toggleNotes(via: "badge") }
         wand.checksProvider = { [weak self] ctx in
@@ -296,6 +294,58 @@ extension AppDelegate {
         wand.hideFromScreenShare = config.hideFromScreenShare
         notesShortcut.onPress = { [weak self] in self?.toggleNotes(via: "shortcut") }
         if config.notesShortcut { notesShortcut.start() }
+
+        // Hints shown by themselves: off while the pen or ⌥⌥ shows them, back when those go.
+        wand.onDeactivate = { [weak self] in self?.hints.resume() }
+        wand.onNotesHidden = { [weak self] in self?.hints.resume() }
+        wand.canShare = { [weak self] in !(self?.config.toolsRepo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) }
+        wand.onShare = { [weak self] note in self?.shareHint(note) }
+        hints.enabled = config.autoHints
+        hints.suppressed = { [weak self] in (self?.wand.isActive ?? false) || (self?.wand.isShowingNotes ?? false) }
+        hints.onPlaced = { [weak self] placed, of in self?.notesUsage.record("hints", counts: ["placed": placed, "of": of]) }
+        shell.hintsOn = config.autoHints
+        shell.onToggleHints = { [weak self] on in self?.setHints(on) }
+    }
+
+    /// The hints on the scene in front, after anything changed them: counted for the bubble's badge, marked on the page.
+    func hintsChanged() {
+        let here = registry.notes(for: watcher.current)
+        assistant.notesHere = here
+        hints.sync(watcher.current, notes: here)
+    }
+
+    /// Hints on pages, on or off, from Noteling's menu.
+    func setHints(_ on: Bool) {
+        config.autoHints = on
+        config.save()
+        shell.hintsOn = on
+        hints.setEnabled(on, scene: watcher.current, notes: registry.notes(for: watcher.current))
+        Log.info("hints: \(on ? "on" : "off") from Noteling's menu")
+    }
+
+    /// A hint to the team's tools, through GitHub: the page for a new file, the hint already in it; for a hint the
+    /// team already has, its page to edit, with the new file on the pasteboard to paste in.
+    func shareHint(_ note: StickyNote) {
+        do {
+            let repo = try RepoAddress.parse(config.toolsRepo)
+            let branch = config.toolsRepoBranch.trimmingCharacters(in: .whitespaces).isEmpty ? "main" : config.toolsRepoBranch
+            let existing = registry.teamHas(note.id)
+            let url: URL
+            if existing {
+                url = try TeamHints.editURL(repo: repo, branch: branch, note: note)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(try TeamHints.file(for: note).json, forType: .string)
+            } else {
+                url = try TeamHints.newFileURL(repo: repo, branch: branch, note: note)
+            }
+            NSWorkspace.shared.open(url)
+            notesUsage.record("hint_shared", tags: ["existing": existing ? "yes" : "no"], notes: [note.id])
+            Log.info("hints: opened GitHub to share \(note.id) with the team (\(repo.name)\(existing ? ", their copy, the new one on the pasteboard" : ""))")
+        } catch {
+            Log.info("hints: could not share \(note.id): \(error.localizedDescription)")
+            shell.expanded = true
+            assistant.transcript.append(ChatMessage(role: .error, text: "Could not share the hint: \(error.localizedDescription)"))
+        }
     }
 
     func startWand() {
@@ -304,6 +354,7 @@ extension AppDelegate {
         guard !assistant.busy else { shell.expanded = true; return }
         shell.expanded = false
         memoWindows?.endGlance()
+        hints.withdraw()   // the pen shows the hints itself while it is up
         wand.activate()
     }
 
@@ -317,6 +368,7 @@ extension AppDelegate {
             notesUsage.record("hide", tags: ["via": via])
         } else {
             notesUsage.record("show", counts: ["notes": assistant.notesHere.count], tags: ["via": via])
+            hints.withdraw()
             wand.showNotes()
         }
     }

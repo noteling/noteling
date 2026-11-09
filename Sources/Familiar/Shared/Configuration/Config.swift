@@ -20,7 +20,8 @@ struct Config: Codable {
     var screenshotMode: String = "auto"      // "auto": attach when the question sounds screen-related, else the model may look; "always"; "never"
     var screenshotReuseSeconds: Double = 0   // >0: reuse the last screenshot for follow-ups on the same screen within this window
     var hideFromScreenShare: Bool = false    // true = bubble invisible in screenshots, screen shares and recordings
-    var notesShortcut: Bool = true           // press Option twice to show or hide the notes on the screen in front
+    var notesShortcut: Bool = true           // press Option twice to show or hide the hints on the page in front
+    var autoHints: Bool = true               // hints people left on a page show on it as you arrive, and follow it
     var toolsDir: String = ""                // empty = ~/.noteling/tools
     var toolsRepo: String = ""               // the team's tools repository on GitHub; empty = not linked (its token is kept with the secrets)
     var toolsRepoBranch: String = "main"     // the branch of it Noteling keeps a copy of
@@ -139,6 +140,7 @@ struct Config: Codable {
         screenshotReuseSeconds = try c.decodeIfPresent(Double.self, forKey: .screenshotReuseSeconds) ?? d.screenshotReuseSeconds
         hideFromScreenShare = try c.decodeIfPresent(Bool.self, forKey: .hideFromScreenShare) ?? d.hideFromScreenShare
         notesShortcut = try c.decodeIfPresent(Bool.self, forKey: .notesShortcut) ?? d.notesShortcut
+        autoHints = try c.decodeIfPresent(Bool.self, forKey: .autoHints) ?? d.autoHints
         toolsDir = try c.decodeIfPresent(String.self, forKey: .toolsDir) ?? d.toolsDir
         toolsRepo = try c.decodeIfPresent(String.self, forKey: .toolsRepo) ?? d.toolsRepo
         toolsRepoBranch = try c.decodeIfPresent(String.self, forKey: .toolsRepoBranch) ?? d.toolsRepoBranch

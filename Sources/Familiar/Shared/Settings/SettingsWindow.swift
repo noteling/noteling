@@ -26,6 +26,7 @@ final class SettingsModel: ObservableObject {
     @Published var screenshotMode = "auto"
     @Published var hideFromScreenShare = false
     @Published var notesShortcut = true
+    @Published var autoHints = true
     /// Opens a team's setup file (`.notelingsetup`); set by the app.
     var importSetup: (() -> Void)?
     @Published var startAtLogin = false
@@ -191,6 +192,7 @@ final class SettingsModel: ObservableObject {
         screenshotMode = config.screenshotMode
         hideFromScreenShare = config.hideFromScreenShare
         notesShortcut = config.notesShortcut
+        autoHints = config.autoHints
         startAtLogin = SMAppService.mainApp.status == .enabled
         allowControl = config.allowControl
         controlInBackground = config.controlInBackground
@@ -259,6 +261,7 @@ final class SettingsModel: ObservableObject {
         c.screenshotMode = screenshotMode
         c.hideFromScreenShare = hideFromScreenShare
         c.notesShortcut = notesShortcut
+        c.autoHints = autoHints
         c.allowControl = allowControl
         c.controlInBackground = controlInBackground
         c.backgroundDirectClicks = backgroundDirectClicks
@@ -411,7 +414,10 @@ struct SettingsView: View {
                     Text("Never").tag("never")
                 }
                 Toggle("Hide the bubble from screenshots and screen shares", isOn: $model.hideFromScreenShare)
-                Toggle("Press ⌥ Option twice to show or hide your notes on the screen", isOn: $model.notesShortcut)
+                Toggle("Show hints where people left them, as you arrive on a page", isOn: $model.autoHints)
+                Text("A small tag on each control someone left a hint on, and the hint itself when your mouse comes to it. Off, hints show only with the pen, or with ⌥ Option twice.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("Press ⌥ Option twice to show or hide the hints on the page in front", isOn: $model.notesShortcut)
                 Toggle("Start Noteling at login", isOn: $model.startAtLogin)
                 Toggle("Allow Noteling to control the mouse and keyboard when asked", isOn: $model.allowControl)
                 Toggle("Do things in the window you asked from, keeping your mouse and keyboard", isOn: $model.controlInBackground)

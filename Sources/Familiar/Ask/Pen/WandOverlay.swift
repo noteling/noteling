@@ -50,6 +50,12 @@ final class WandController {
     /// Told how many of the scene's notes were placed and how many have nothing on screen, and whether they are shown
     /// without the pen, for the usage log.
     var onPlaced: ((_ placed: Int, _ notOnScreen: Int, _ shown: Bool) -> Void)?
+    /// The pen was put down, or the hints shown by hand went: the hints shown by themselves can come back.
+    var onDeactivate: (() -> Void)?
+    var onNotesHidden: (() -> Void)?
+    /// Whether a hint can go to the team (a repository is linked), and what sharing one does.
+    var canShare: () -> Bool = { false }
+    var onShare: ((StickyNote) -> Void)?
 
     struct PlacedNote { let note: StickyNote; let frame: NSRect }
 
@@ -131,6 +137,7 @@ final class WandController {
         NSCursor.pop()
         for p in panels { p.orderOut(nil) }
         panels.removeAll()
+        onDeactivate?()
     }
 
     /// The notes on the page in front, shown where they are stuck without the pen: open, over the page, letting every
@@ -176,6 +183,7 @@ final class WandController {
         localDismissal = nil
         for p in shown { p.orderOut(nil) }
         shown.removeAll()
+        onNotesHidden?()
     }
 
     /// Puts the scene's notes on their controls: on a web page from the page reader, off the main thread, by the
@@ -215,7 +223,7 @@ final class WandController {
         }
     }
 
-    static let noNotes = "No notes here yet. Pick up the pen and right-click a button to leave one."
+    static let noNotes = "No hints on this page yet. Pick up the pen and right-click a button to leave one."
 
     /// Notes for controls that aren't on screen (a button this person doesn't have, a field further down), shown down
     /// the window's right edge instead of nowhere, at most three, each saying what it is for.
@@ -242,8 +250,8 @@ final class WandController {
     /// What the overlay says when some notes have nothing on screen to stick to.
     static func notice(unplaced count: Int) -> String? {
         guard count > 0 else { return nil }
-        return count == 1 ? "1 more note here is for something not on screen. Point the pen at the page to hear it."
-            : "\(count) more notes here are for things not on screen. Point the pen at the page to hear them."
+        return count == 1 ? "1 more hint here is for something not on screen. Point the pen at the page to hear it."
+            : "\(count) more hints here are for things not on screen. Point the pen at the page to hear them."
     }
 
     /// Notes placed on a page's controls: by the page's own id, then by role and label, then by the spot kept for
@@ -526,25 +534,15 @@ final class WandView: NSView {
     private let ink = CAShapeLayer()
     private var captionText: CATextLayer?
     private var captionRestore: DispatchWorkItem?
-    private var stickers: [Sticker] = []
+    private var stickers: [StickerLayer] = []
     private var editor: NoteEditor?
     private var editing: (anchor: NoteAnchor, frame: NSRect, existing: StickyNote?)?
     private var stroke: [NSPoint] = []        // the stroke in progress, global points
     private var strokeIsNote = false          // drawn with the right button: it ends in a note, not a question
 
     static let dragThreshold: CGFloat = 6
-    static let caption = "Click to ask  ·  drag to circle  ·  right-click to leave a note  ·  Esc to cancel"
+    static let caption = "Click to ask  ·  drag to circle  ·  right-click to leave a hint  ·  Esc to cancel"
 
-    /// One note already on the scene, stuck to its control.
-    final class Sticker {
-        let note: StickyNote
-        let frame: NSRect          // the control, global coordinates
-        let layer = CALayer()
-        let text = CATextLayer()
-        let byline = CATextLayer()
-        var expanded = false
-        init(note: StickyNote, frame: NSRect) { self.note = note; self.frame = frame }
-    }
 
     /// Showing notes only: no border, no caption, every sticker open, and the mouse goes to the apps underneath.
     let passive: Bool
@@ -677,59 +675,26 @@ final class WandView: NSView {
 
     func showStickers(_ placed: [WandController.PlacedNote]) {
         stickers.forEach { $0.layer.removeFromSuperlayer() }
-        stickers = placed.map { makeSticker($0.note, at: $0.frame) }
-        if passive { for s in stickers { s.expanded = true; layout(s) } }
+        stickers = placed.map { p in
+            let s = StickerLayer(note: p.note, frame: p.frame, scale: screen.backingScaleFactor)
+            s.mode = passive ? .open : .brief
+            layer?.addSublayer(s.layer)
+            layout(s)
+            return s
+        }
     }
 
-    private func makeSticker(_ note: StickyNote, at frame: NSRect) -> Sticker {
-        let s = Sticker(note: note, frame: frame)
-        let scale = screen.backingScaleFactor
-        s.layer.backgroundColor = note.isWarning ? StickerPaper.warning : StickerPaper.tip
-        s.layer.cornerRadius = 2
-        s.layer.borderWidth = 0.5
-        s.layer.borderColor = StickerPaper.edge
-        s.layer.shadowOpacity = 0.3; s.layer.shadowRadius = 3; s.layer.shadowOffset = CGSize(width: 0, height: -2)
-        for t in [s.text, s.byline] { t.contentsScale = scale; t.isWrapped = true; t.truncationMode = .end }
-        s.text.foregroundColor = StickerPaper.ink.cgColor      // the truncation token takes the layer's colour, not the string's
-        s.byline.foregroundColor = StickerPaper.inkSoft.cgColor
-        s.byline.font = NSFont.systemFont(ofSize: 10); s.byline.fontSize = 10
-        s.layer.addSublayer(s.text); s.layer.addSublayer(s.byline)
-        layer?.addSublayer(s.layer)
-        layout(s)
-        return s
-    }
+    /// Drawn for its mode where its control is on this screen.
+    private func layout(_ s: StickerLayer) { s.layout(control: local(s.frame), in: bounds) }
 
-    /// Stuck to the control's top-right corner, overlapping it a little, kept on screen. Collapsed: two lines. Expanded: the whole note and who left it.
-    private func layout(_ s: Sticker) {
-        let control = local(s.frame)
-        let width: CGFloat = s.expanded ? 280 : 190
-        let body = (s.note.isWarning ? "⚠︎ " : "") + (s.expanded ? s.note.text : String(s.note.text.prefix(100)))
-        let font = StickerPaper.font(s.expanded ? 13.5 : 12.5, bold: true)
-        let (attr, textH) = StickerPaper.measure(body, font: font, color: StickerPaper.ink, width: width - 20, maxLines: s.expanded ? 14 : 2)
-        let height = textH + (s.expanded ? 34 : 14)
-        let o = StickerPaper.origin(for: NSSize(width: width, height: height), control: control, in: bounds)
-        let seed = CGFloat(abs(s.note.id.hashValue % 100)) / 100
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        s.layer.transform = CATransform3DIdentity
-        s.layer.bounds = CGRect(x: 0, y: 0, width: width, height: height)
-        s.layer.position = CGPoint(x: o.x + width / 2, y: o.y + height / 2)
-        s.layer.transform = s.expanded ? CATransform3DIdentity : CATransform3DMakeRotation((seed - 0.5) * 0.06, 0, 0, 1)
-        s.layer.zPosition = s.expanded ? 10 : 1
-        s.text.string = attr
-        s.text.frame = CGRect(x: 10, y: s.expanded ? 24 : 7, width: width - 20, height: textH)
-        s.byline.string = "— " + s.note.byline
-        s.byline.frame = CGRect(x: 10, y: 7, width: width - 20, height: 13)
-        s.byline.isHidden = !s.expanded
-        CATransaction.commit()
-    }
 
     private func expandStickers(for target: WandTarget, at p: NSPoint) {
         for s in stickers {
             let onControl = target.element.map { s.note.anchor.matchesElement(role: $0.role, label: $0.anchorLabel) } ?? false
             let onRegion = s.note.anchor.isRegion && (s.frame.contains(target.screenPoint) || (target.element?.frame.map { s.frame.intersects($0) } ?? false))
             let overSticker = s.layer.frame.contains(p)
-            let want = onControl || onRegion || overSticker
-            if want != s.expanded { s.expanded = want; layout(s) }
+            let mode: StickerLayer.Mode = onControl || onRegion || overSticker ? .open : .brief
+            if mode != s.mode { s.mode = mode; layout(s) }
         }
     }
 
@@ -739,7 +704,7 @@ final class WandView: NSView {
         clearInk()
         let target = controller.hitTest(at: point)
         guard let anchor = controller.anchor(for: target) else {
-            flash(target.element?.isSecure == true ? "No notes on password fields" : "Nothing here to stick a note on"); return
+            flash(target.element?.isSecure == true ? "No hints on password fields" : "Nothing here to stick a hint on"); return
         }
         let existing = controller.ownNote(on: target)
         let frame = target.element?.frame ?? NSRect(x: point.x - 8, y: point.y - 8, width: 16, height: 16)
@@ -749,27 +714,29 @@ final class WandView: NSView {
 
     private func openEditor(region pts: [NSPoint]) {
         guard let target = controller.regionTarget(pts), let region = target.region else { clearInk(); return }
-        guard let anchor = controller.anchor(for: target) else { clearInk(); flash("Nothing here to stick a note on"); return }
+        guard let anchor = controller.anchor(for: target) else { clearInk(); flash("Nothing here to stick a hint on"); return }
         present(anchor: anchor, at: region, existing: nil)
     }
 
     /// Render mode: open or close a sticker by note id.
     func setExpanded(_ id: String, _ on: Bool) {
-        for s in stickers where s.note.id == id && s.expanded != on { s.expanded = on; layout(s) }
+        let mode: StickerLayer.Mode = on ? .open : .brief
+        for s in stickers where s.note.id == id && s.mode != mode { s.mode = mode; layout(s) }
     }
 
     func present(anchor: NoteAnchor, at frame: NSRect, existing: StickyNote?) {
         editor?.removeFromSuperview()
-        let ed = NoteEditor(existing: existing, place: anchor.controlSummary, checks: controller.checksProvider(controller.scene))
+        let ed = NoteEditor(existing: existing, place: anchor.controlSummary, checks: controller.checksProvider(controller.scene), canShare: controller.canShare())
         let o = StickerPaper.origin(for: ed.frame.size, control: local(frame), in: bounds)
         ed.frame = NSRect(origin: o, size: ed.frame.size)
         ed.onCommit = { [weak self] text, kind, check in self?.finishEditor(text: text, kind: kind, check: check) }
+        ed.onShare = { [weak self] text, kind, check in self?.finishEditor(text: text, kind: kind, check: check, share: true) }
         ed.onCancel = { [weak self] in self?.closeEditor() }
         ed.onDelete = { [weak self] in
             guard let self, let ex = self.editing?.existing else { return }
             self.controller.delete(ex.id)
             self.closeEditor()
-            self.flash("Note removed")
+            self.flash("Hint removed")
         }
         addSubview(ed)
         editor = ed
@@ -779,7 +746,7 @@ final class WandView: NSView {
         window?.makeFirstResponder(ed.textView)
     }
 
-    private func finishEditor(text: String, kind: String, check: NoteCheck?) {
+    private func finishEditor(text: String, kind: String, check: NoteCheck?, share: Bool = false) {
         guard let e = editing else { closeEditor(); return }
         var anchor = e.anchor
         if let existing = e.existing?.anchor {
@@ -790,7 +757,12 @@ final class WandView: NSView {
         let draft = NoteDraft(existingID: e.existing?.id, anchor: anchor, kind: kind, text: text, frame: e.frame, check: check)
         let note = controller.save(draft)
         closeEditor()
-        flash("Note kept on \(note.anchor.summary)")
+        if share {
+            controller.onShare?(note)
+            flash("Hint kept, and GitHub opened with it ready to add to the team's tools", seconds: 3.5)
+        } else {
+            flash("Hint kept on \(note.anchor.summary)")
+        }
     }
 
     private func closeEditor() {
@@ -904,6 +876,8 @@ final class NoteEditor: NSView, NSTextViewDelegate {
     private var checks: [CheckChoice] = []
     private var kept: NoteCheck?
     var onCommit: ((String, String, NoteCheck?) -> Void)?
+    /// Keep it, and send it to the team's tools as well.
+    var onShare: ((String, String, NoteCheck?) -> Void)?
 
     /// A script that can check a note: its tool id and how the menu names it.
     struct CheckChoice: Equatable {
@@ -928,7 +902,7 @@ final class NoteEditor: NSView, NSTextViewDelegate {
     var onCancel: (() -> Void)?
     var onDelete: (() -> Void)?
 
-    init(existing: StickyNote?, place: String, checks: [CheckChoice] = []) {
+    init(existing: StickyNote?, place: String, checks: [CheckChoice] = [], canShare: Bool = false) {
         // A note linked to a script that isn't offered here keeps it as a choice, so editing the text never drops it.
         var choices = checks
         if let current = existing?.check, !choices.contains(where: { $0.script == current.script }) {
@@ -945,19 +919,29 @@ final class NoteEditor: NSView, NSTextViewDelegate {
         layer?.shadowOpacity = 0.35; layer?.shadowRadius = 5; layer?.shadowOffset = CGSize(width: 0, height: -3)
         let w = Self.size.width, h = frame.height, bottom: CGFloat = self.checks.isEmpty ? 0 : 26
 
-        placeLabel.stringValue = (existing == nil ? "Note on " : "Your note on ") + place
+        placeLabel.stringValue = (existing == nil ? "Hint on " : "Your hint on ") + place
         placeLabel.font = NSFont.systemFont(ofSize: 10.5, weight: .medium)
         placeLabel.textColor = StickerPaper.inkSoft
         placeLabel.lineBreakMode = .byTruncatingTail
-        placeLabel.frame = NSRect(x: 10, y: h - 22, width: w - (existing == nil ? 20 : 44), height: 14)
+        placeLabel.frame = NSRect(x: 10, y: h - 22, width: w - (existing == nil ? 20 : 44) - (canShare ? 26 : 0), height: 14)
         addSubview(placeLabel)
 
+        if canShare {
+            // To the team's tools through GitHub, the file ready to add; everyone who links them has it at their next update.
+            let b = NSButton(image: NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "Share with the team") ?? NSImage(), target: self, action: #selector(shareTapped))
+            b.isBordered = false
+            b.contentTintColor = StickerPaper.inkSoft
+            b.frame = NSRect(x: w - (existing == nil ? 30 : 56), y: h - 26, width: 22, height: 22)
+            b.toolTip = "Keep it, and share it with the team: opens GitHub with the hint ready to add to the team's tools"
+            addSubview(b)
+        }
+
         if existing != nil {
-            let b = NSButton(image: NSImage(systemSymbolName: "trash", accessibilityDescription: "Remove note") ?? NSImage(), target: self, action: #selector(deleteTapped))
+            let b = NSButton(image: NSImage(systemSymbolName: "trash", accessibilityDescription: "Remove hint") ?? NSImage(), target: self, action: #selector(deleteTapped))
             b.isBordered = false
             b.contentTintColor = StickerPaper.inkSoft
             b.frame = NSRect(x: w - 30, y: h - 26, width: 22, height: 22)
-            b.toolTip = "Remove this note"
+            b.toolTip = "Remove this hint"
             addSubview(b)
         }
 
@@ -1040,6 +1024,12 @@ final class NoteEditor: NSView, NSTextViewDelegate {
     }
 
     @objc private func deleteTapped() { onDelete?() }
+
+    @objc private func shareTapped() {
+        let t = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { window?.makeFirstResponder(textView); return }   // nothing written yet: nothing to share
+        onShare?(String(t.prefix(600)), warning.state == .on ? "warning" : "tip", chosenCheck)
+    }
 
     func textDidChange(_ notification: Notification) { placeholder.isHidden = !textView.string.isEmpty }
 }

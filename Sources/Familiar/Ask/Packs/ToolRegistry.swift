@@ -291,11 +291,13 @@ final class ToolRegistry {
             }
         }
         packs = result
+        linkedHints = linkedRoot.map { TeamHints.load(root: $0) } ?? []
         let scriptCount = packs.reduce(0) { $0 + $1.scripts.count }
         let noteCount = packs.reduce(0) { $0 + $1.notes.count }
         let linkedCount = packs.filter(\.linked).count
         let place = root.path + (linkedCount > 0 ? " and \(linkedCount) linked in \(linkedRoot?.path ?? "")" : "")
-        Log.info("tools: \(packs.count) pack(s), \(scriptCount) script(s), \(noteCount) note(s) in \(place); runtime: \(runner.summary)")
+        let hintWords = linkedHints.isEmpty ? "" : ", \(linkedHints.count) of the team's hint(s)"
+        Log.info("tools: \(packs.count) pack(s), \(scriptCount) script(s), \(noteCount) note(s)\(hintWords) in \(place); runtime: \(runner.summary)")
         let libraries = packs.filter(\.isLibrary).map(\.dirName)
         if !libraries.isEmpty {
             Log.info("tools: libraries (no match, so used only through a pack that uses them): \(libraries.joined(separator: ", "))")
@@ -355,13 +357,26 @@ final class ToolRegistry {
 
     /// Where notes are kept now; tool packs only hold notes from before it, until they are moved.
     var notesStore: NotesStore?
+    /// The team's hints (`hints/` at the root of the linked tools), shown on their pages like your own.
+    private(set) var linkedHints: [StickyNote] = []
 
     /// Every note whose anchor is on the current scene: the store's, then any still kept in a pack that the store
     /// has no copy of and didn't remove (a linked pack's copy is never changed, so the store's word counts).
     func notes(for ctx: ScreenContext?) -> [StickyNote] {
         let stored = notesStore?.notes(for: ctx) ?? []
-        return stored + packNotes(for: ctx).filter { notesStore?.supersedes($0.id) != true }
+        var seen = Set(stored.map(\.id))
+        let shared = (packNotes(for: ctx) + teamHints(for: ctx)).filter { notesStore?.supersedes($0.id) != true && seen.insert($0.id).inserted }
+        return stored + shared
     }
+
+    /// The team's hints on this scene.
+    private func teamHints(for ctx: ScreenContext?) -> [StickyNote] {
+        guard let ctx else { return [] }
+        return linkedHints.filter { $0.anchor.matchesScene(ctx) }
+    }
+
+    /// Whether the team's tools already hold this hint, so sharing it again changes their copy rather than adding one.
+    func teamHas(_ id: String) -> Bool { linkedHints.contains { $0.id == id } }
 
     /// Each note once: your own packs come first, so your copy of a team note wins.
     private func packNotes(for ctx: ScreenContext?) -> [StickyNote] {

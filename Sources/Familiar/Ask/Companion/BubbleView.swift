@@ -73,6 +73,7 @@ struct BubbleView: View {
             Button("Show my notes") { shell.onShowNotes?() }.disabled(shell.noteCount == 0)
             Button("Hide my notes") { shell.onHideNotes?() }.disabled(shell.noteCount == 0 || shell.notesHidden)
             Button(state.watching ? "Point at what you clicked" : "Point the pen") { state.startWand() }
+            Toggle("Hints on pages", isOn: Binding(get: { shell.hintsOn }, set: { shell.onToggleHints?($0) }))
             Button(state.watching ? "Stop watching" : "Watch me") { state.toggleWatching() }
             Divider()
             Button("Fold into a crane") { onOrigami?() }
@@ -535,7 +536,7 @@ struct NotesBadge: View {
             .onTapGesture(perform: show)
             .help(Self.summary(notes))
             .accessibilityElement()
-            .accessibilityLabel("\(notes.count) \(notes.count == 1 ? "note" : "notes") on this page")
+            .accessibilityLabel("\(notes.count) \(notes.count == 1 ? "hint" : "hints") on this page")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { show() }
     }
@@ -543,7 +544,7 @@ struct NotesBadge: View {
     /// What hovering says: the first few notes, warnings first, and what a click does.
     static func summary(_ notes: [StickyNote]) -> String {
         let shown = notes.sorted { $0.isWarning && !$1.isWarning }.prefix(4).map { ($0.isWarning ? "⚠︎ " : "• ") + String($0.text.prefix(90)) }
-        return (["\(notes.count) \(notes.count == 1 ? "note" : "notes") here:"] + shown + (notes.count > 4 ? ["…"] : [])
+        return (["\(notes.count) \(notes.count == 1 ? "hint" : "hints") here:"] + shown + (notes.count > 4 ? ["…"] : [])
             + ["Press ⌥ Option twice, or click here, to show them on the page."]).joined(separator: "\n")
     }
 }
