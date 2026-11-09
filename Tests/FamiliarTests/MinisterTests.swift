@@ -498,6 +498,15 @@ struct MinisterTests {
         until["until"] = "2026-11-27T18:00:00-05:00"
         #expect(try MinisterPrompt.parseCompose(until, findings: shown).view.until == JobMoment.parse("2026-11-27T18:00:00-05:00")?.date)
         #expect(composeRefusal(compose("Ok", notes: String(repeating: "n", count: 6_001)))?.hasPrefix("The notes are 6,001 characters") == true)
+        // The next step: a few words when no action fits, dropped when one was chosen, refused when too long.
+        var stepping = compose("Ok", action: nil)
+        stepping["next"] = " Reply to Lena \n"
+        #expect(try MinisterPrompt.parseCompose(stepping, findings: shown).view.next == "Reply to Lena")
+        stepping["next"] = String(repeating: "s", count: 49)
+        #expect(composeRefusal(stepping)?.hasPrefix("The next step is 49 characters") == true)
+        var both = compose("Ok")
+        both["next"] = "Reply to Lena"
+        #expect(try MinisterPrompt.parseCompose(both, findings: shown).view.next == nil)
     }
 
     // MARK: matters on disk

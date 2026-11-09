@@ -21,10 +21,10 @@ import Testing
         return (model, matters, log, dir)
     }
 
-    private func matter(_ id: String, _ headline: String, urgent: Bool = false, action: Bool = true, minutesAgo: Double = 0) -> Matter {
+    private func matter(_ id: String, _ headline: String, urgent: Bool = false, action: Bool = true, next: String? = nil, minutesAgo: Double = 0) -> Matter {
         let ref = FindingRef(job: "team/pages", id: id)
         let view = MatterView(headline: headline, text: "Words about \(headline).", action: action ? MatterView.Action(finding: ref, run: "nudge", label: "Nudge warehouse") : nil,
-                              page: "https://shop.example.com/\(id)", tone: urgent ? .urgent : .calm)
+                              next: next, page: "https://shop.example.com/\(id)", tone: urgent ? .urgent : .calm)
         var matter = Matter(id: id, findings: [ref], state: .open, view: view, jobName: "Pages up", byline: "Yang", createdAt: at, updatedAt: at)
         matter.writtenAt = at.addingTimeInterval(-minutesAgo * 60)
         return matter
@@ -42,6 +42,25 @@ import Testing
         matters.save(matter("m-new", "New", minutesAgo: 1))
         matters.save(matter("m-urgent", "Urgent", urgent: true, minutesAgo: 30))
         #expect(model.cards.map(\.id) == ["m-urgent", "m-new", "m-old"] && model.card?.headline == "Urgent" && model.more == 2 && model.count == 3)
+    }
+
+    @Test func aNextStepHandsTheCardToTheChatAndPutsTheMatterAway() throws {
+        let (model, matters, _, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        matters.save(matter("m-1", "Lena wants the deck", action: false, next: "Reply to Lena"))
+        matters.save(matter("m-2", "Two", minutesAgo: 5))
+        var handed: [(String, String)] = []
+        model.handoff = { handed.append(($0.id, $1)) }
+        #expect(model.card?.next == "Reply to Lena" && model.card?.action == nil)
+        model.stamp(.next, on: "m-2")   // a card with an action has no next step to take
+        #expect(matters.matter(id: "m-2")?.state == .open && handed.isEmpty)
+        model.stamp(.next, on: "m-1")
+        let quiet = try #require(matters.matter(id: "m-1"))
+        #expect(quiet.state == .quiet && quiet.why == "Handed to the chat: Reply to Lena." && handed.map(\.0) == ["m-1"] && handed.first?.1 == "Reply to Lena")
+        #expect(model.card?.id == "m-2")
+        #expect(try lines(dir).contains { $0["stamp"] as? String == "next" && $0["step"] as? String == "Reply to Lena" && $0["matter"] as? String == "m-1" })
+        // What the chat is asked: the step, then the card, then the matter to look up.
+        #expect(DeckModel.request(quiet, step: "Reply to Lena") == "Reply to Lena\nAbout Lena wants the deck: Words about Lena wants the deck. https://shop.example.com/m-1\n(matter m-1, in Noteling's matters)")
     }
 
     @Test func notNowPutsTheMatterAwayAndMineMakesItANote() throws {

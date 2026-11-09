@@ -16,6 +16,15 @@ struct Receipt: Equatable {
         var failed = false
     }
     /// When a job last looked.
+    /// A card whose next step the person took into the chat.
+    struct Handed: Equatable, Identifiable {
+        var id: String { matter + "·" + step }
+        var matter: String
+        var headline: String
+        var step: String
+        var at: Date
+    }
+
     struct Looked: Equatable, Identifiable {
         var id: String { job }
         let job: String
@@ -33,6 +42,8 @@ struct Receipt: Equatable {
     var yours: [Matter] = []
     /// The matters the person put away, newest first.
     var putAway: [Matter] = []
+    /// The next steps taken into the chat today, newest first.
+    var handed: [Handed] = []
     var looked: [Looked] = []
     /// Notes made today by jobs, for the rows they mark as notes (`JobNotes`).
     var noted = 0
@@ -57,6 +68,12 @@ struct Receipt: Equatable {
                         receipt.decided += 1
                     }
                 case "mine", "not now": receipt.decided += 1
+                case "next":
+                    if let step = line["step"] as? String, let id = line["matter"] as? String {
+                        let matter = matters.matter(id: id)
+                        receipt.handed.append(Handed(matter: id, headline: matter?.view?.headline ?? matter?.view?.text ?? matter?.jobName ?? id, step: step, at: at))
+                        receipt.decided += 1
+                    }
                 case "undo": receipt.undone += 1
                 default: break
                 }
@@ -67,13 +84,14 @@ struct Receipt: Equatable {
             if line["note"] != nil, line["made"] != nil { receipt.noted += 1 }
         }
         receipt.did.reverse()
+        receipt.handed.reverse()
         receipt.yours = matters.all.filter { $0.state == .yours }.sorted { $0.updatedAt > $1.updatedAt }
         receipt.putAway = Array(matters.all.filter { $0.state == .quiet && $0.why == Matter.putAway }.sorted { $0.updatedAt > $1.updatedAt }.prefix(listLimit))
         receipt.looked = lastLooked.values.sorted { $0.at > $1.at }
         return receipt
     }
 
-    var isEmpty: Bool { did.isEmpty && decided == 0 && yours.isEmpty && putAway.isEmpty && noted == 0 }
+    var isEmpty: Bool { did.isEmpty && decided == 0 && yours.isEmpty && putAway.isEmpty && handed.isEmpty && noted == 0 }
 
     /// "Noteling did 2 · you decided 5", "Nothing came through the deck today."
     var tally: String {
@@ -114,6 +132,18 @@ struct ReceiptPage: View {
                 if !receipt.yours.isEmpty {
                     FolderJobSection(title: "Yours", icon: "hand.raised") {
                         ForEach(receipt.yours) { matter in row(matter, line: "On a note of your own · " + JobWords.time(matter.updatedAt, now: now)) }
+                    }
+                }
+                if !receipt.handed.isEmpty {
+                    FolderJobSection(title: "Next steps", icon: "arrow.turn.down.right") {
+                        ForEach(receipt.handed) { handed in
+                            Button { open(handed.matter) } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(handed.headline).font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                                    Text(handed.step + " · handed to the chat · " + JobWords.time(handed.at, now: now)).font(.system(size: 12)).foregroundStyle(Pad.inkSoft).lineLimit(2)
+                                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                            }.buttonStyle(.plain)
+                        }
                     }
                 }
                 if !receipt.did.isEmpty {

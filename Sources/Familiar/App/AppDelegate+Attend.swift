@@ -110,6 +110,13 @@ extension AppDelegate {
             memo.matter = matter.id
             windows.newNote(memo)
         }
+        // The card's next step: the chat opens with the step as your request and the card under it; you send it.
+        model.handoff = { [weak self] matter, step in
+            guard let self else { return }
+            self.assistant.question = DeckModel.request(matter, step: step)
+            self.assistant.intentOverride = matter.view?.page == nil ? nil : .act
+            self.shell.expanded = true
+        }
         model.open = { [weak self] id in self?.jobsWindow.showMatter(id: id) }
         model.openMore = { [weak self] in self?.jobsWindow.showJobs() }
         model.lessons = lessons

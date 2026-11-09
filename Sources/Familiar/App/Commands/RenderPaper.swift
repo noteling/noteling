@@ -155,6 +155,15 @@ func runRenderPaper() {
     payment.writtenAt = now
     good.matters.save(payment)
     render(deckView(good), "deck-good.png")
+    // No button fits: the minister's next step is the first tab, into the chat.
+    let stepping = deckModel(0)
+    var lena = Matter(id: "m-next", findings: [FindingRef(job: "own/mail", id: "M-1")], state: .open,
+                      view: MatterView(headline: "Lena wants the deck by 3", text: "Lena asked for the Q4 deck before her 3 o'clock, and nothing has gone back to her yet.",
+                                       next: "Reply to Lena", page: "https://mail.example.com/inbox/M-1", tone: .calm),
+                      jobName: "Mail", byline: nil, createdAt: now, updatedAt: now)
+    lena.writtenAt = now
+    stepping.matters.save(lena)
+    render(deckView(stepping), "deck-next.png")
     let asking = deckModel(0)
     asking.question = LessonQuestion(job: "team/reviews", name: "Reviews under 3 stars", putAway: 3)
     render(deckView(asking), "deck-question.png")

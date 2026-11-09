@@ -36,6 +36,7 @@ enum MinisterPrompt {
     headline: the thing in a few words, at most \(MatterView.headlineLimit) characters, as a person would head a sticky: "Checkout is down", "Acme's order 4417", "Two-star review". Not the job's name, not a sentence.
     text: one or two sentences, at most \(MatterView.textLimit) characters, in plain words a colleague would use: name the thing and what needs the person; no job names, no column names, no ids except the one the person knows the thing by (an order number is fine). Say what is so, not what you did.
     action: one of the actions listed for the matter's findings, the one that fits best, or none. Never invent one.
+    next: when no listed action does what the finding needs, the one step the person would take about it, in a few imperative words ("Ping the warehouse on Slack", "Reply to Lena", "Check the refund in Stripe"), at most \(MatterView.nextLimit) characters: only when it is plain from the finding and the job's description, never a guess, and no ids except the one the person knows the thing by; else null. With an action, null. The person presses it to hand the matter to the chat, which does what it can or says how.
     where: one of the pages listed, or none.
     tone: urgent only when it can't wait for the person to look at their note; good for good news that needs nothing of them (it shows last, on green paper, with a Thanks and no action); calm otherwise.
     until: when the sticker should leave even if the finding stays, as a date and time, or null. A finding that is an event (it has an at) never goes away by itself, so always give its sticker an until.
@@ -66,6 +67,7 @@ enum MinisterPrompt {
             "text": ["type": "string", "maxLength": MatterView.textLimit],
             "action": ["type": ["object", "null"], "additionalProperties": false, "required": ["finding", "run"],
                        "properties": ["finding": ["type": "string"], "run": ["type": "string"]]],
+            "next": ["type": ["string", "null"], "maxLength": MatterView.nextLimit],
             "where": ["type": ["string", "null"]],
             "tone": ["type": "string", "enum": ["calm", "urgent", "good"]],
             "until": ["type": ["string", "null"]],
@@ -132,7 +134,7 @@ enum MinisterPrompt {
         let pages = findings.compactMap { $0.job.map?.place(of: $0.row) }
         out += "\nPages: " + (pages.isEmpty ? "(none)" : pages.joined(separator: ", ")) + "\n"
         if let view = matter.view {
-            out += "\nThe sticker as it is: " + (view.headline.map { "“\($0)” · " } ?? "") + "“\(view.text)” · \(view.tone.rawValue)" + (view.action.map { " · action \($0.run) on \($0.finding.key)" } ?? "") + "\n"
+            out += "\nThe sticker as it is: " + (view.headline.map { "“\($0)” · " } ?? "") + "“\(view.text)” · \(view.tone.rawValue)" + (view.action.map { " · action \($0.run) on \($0.finding.key)" } ?? "") + (view.next.map { " · next “\($0)”" } ?? "") + "\n"
         }
         if let notes, !notes.isEmpty { out += "\nThe notes as they are:\n\(notes)\n" }
         if !matter.presses.isEmpty {
@@ -239,6 +241,14 @@ enum MinisterPrompt {
             }
             action = MatterView.Action(finding: shown.ref, run: chosen.run, label: chosen.label)
         }
+        var next: String?
+        if action == nil, let raw = input["next"] as? String {
+            let step = raw.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+            if !step.isEmpty {
+                guard step.count <= MatterView.nextLimit else { throw MinisterError("The next step is \(step.count) characters; the most is \(MatterView.nextLimit).") }
+                next = step
+            }
+        }
         var page: String?
         if let chosen = input["where"] as? String, !chosen.isEmpty {
             let pages = findings.compactMap { $0.job.map?.place(of: $0.row) }
@@ -257,7 +267,7 @@ enum MinisterPrompt {
         guard notes.count <= Matters.notesLimit else {
             throw MinisterError("The notes are \(notes.count.formatted()) characters; the most is \(Matters.notesLimit.formatted()).")
         }
-        return (MatterView(headline: headline, text: text, action: action, page: page, tone: tone, until: until), notes.isEmpty ? nil : notes)
+        return (MatterView(headline: headline, text: text, action: action, next: next, page: page, tone: tone, until: until), notes.isEmpty ? nil : notes)
     }
 }
 

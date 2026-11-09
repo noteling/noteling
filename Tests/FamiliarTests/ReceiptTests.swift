@@ -25,6 +25,18 @@ import Testing
         return matter
     }
 
+    @Test func aNextStepTakenIntoTheChatIsOnTheReceipt() throws {
+        let (matters, log, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var lena = matter("m-1", "Lena wants the deck", action: false)
+        lena.view?.next = "Reply to Lena"
+        matters.save(lena)
+        matters.handed("m-1", step: "Reply to Lena")
+        let receipt = Receipt.today(log: log, matters: matters, now: at)
+        #expect(receipt.handed.map(\.step) == ["Reply to Lena"] && receipt.handed.first?.headline == "Lena wants the deck" && receipt.decided == 1 && !receipt.isEmpty)
+        #expect(receipt.tally == "Noteling did 0 · you decided 1")
+    }
+
     @Test func anEmptyDayReadsAsOne() {
         let (matters, log, dir) = fixture()
         defer { try? FileManager.default.removeItem(at: dir) }
