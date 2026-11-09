@@ -6,7 +6,8 @@ import Foundation
 /// them on. A job.json changed by hand or by an update is read again at the next look. What their runs leave is kept
 /// apart from them, in `job-results/` in Noteling's folder: `<team|own>/<path>/output/` and `run.json` for each, which
 /// of your team's you turned on in `on.json`, since every update replaces the team's copy, and the last search over
-/// them in `search.json`.
+/// them in `search.json`. The chat's sources (`ChatFindings`) stand among the jobs too, each kept as `chat/<slug>/source.json`
+/// in the results, with no folder of their own and no schedule.
 @MainActor
 final class FolderJobStore: ObservableObject {
     @Published private(set) var jobs: [FolderJob] = []
@@ -51,14 +52,24 @@ final class FolderJobStore: ObservableObject {
 
     func job(id: UUID) -> FolderJob? { jobs.first { $0.id == id } }
 
-    /// The job's folder: yours, or the team's in the linked tools (which is only ever read).
+    /// The job's folder: yours, or the team's in the linked tools (which is only ever read); the chat's sources have none.
     func folder(for job: FolderJob) -> URL? {
-        (job.isTeam ? teamDirectory() : directory)?.appendingPathComponent(job.path)
+        switch job.source {
+        case .own: return directory.appendingPathComponent(job.path)
+        case .team: return teamDirectory()?.appendingPathComponent(job.path)
+        case .chat: return nil
+        }
     }
 
-    /// Where its runs leave what they leave: `job-results/<team|own>/<path>/`.
+    /// Where its runs leave what they leave: `job-results/<team|own|chat>/<path>/`.
     func resultFolder(for job: FolderJob) -> URL {
-        results.appendingPathComponent(job.isTeam ? "team" : "own").appendingPathComponent(job.path)
+        results.appendingPathComponent(job.source.key).appendingPathComponent(job.path)
+    }
+
+    /// Keeps a source the chat read, new or scanned again, among the jobs.
+    func addChatSource(_ source: ChatSource) throws {
+        try source.write(to: results.appendingPathComponent(JobSource.chat.key).appendingPathComponent(source.slug))
+        refresh()
     }
 
     /// Its latest output, from the last run that worked.
@@ -122,6 +133,11 @@ final class FolderJobStore: ObservableObject {
             else if teamUnreadable != problems { teamUnreadable = problems }
         }
         read = read.filter { seen.contains($0.key) }
+        for source in ChatSource.all(in: results.appendingPathComponent(JobSource.chat.key)).prefix(Self.ownLimit) {
+            var job = source.job
+            job.state = state(for: job)
+            found.append(job)
+        }
         let removed = jobs.map(\.id).filter { id in !found.contains { $0.id == id } }
         for job in found where !jobs.contains(where: { $0.id == job.id }) { Log.info("jobs: found \(job.isTeam ? "the team's " : "")\(job.path)") }
         if found != jobs { jobs = found }

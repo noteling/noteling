@@ -7,10 +7,20 @@ enum JobPhase: Equatable {
     case upcoming, live, ended
 }
 
-/// Whose a job is: yours, in `jobs/` in Noteling's folder, or your team's, in the linked tools' `jobs/`, which Noteling
-/// only reads and runs once you turn it on.
+/// Whose a job is: yours, in `jobs/` in Noteling's folder; your team's, in the linked tools' `jobs/`, which Noteling
+/// only reads and runs once you turn it on; or the chat's, a source it read for you ("scan my calendar"), kept with
+/// what it found under `job-results/chat/` and scanned again only when you ask (`ChatFindings`).
 enum JobSource: Hashable {
-    case own, team
+    case own, team, chat
+
+    /// The folder under `job-results/`, and the first part of a job's name in the memory log.
+    var key: String {
+        switch self {
+        case .own: return "own"
+        case .team: return "team"
+        case .chat: return "chat"
+        }
+    }
 }
 
 /// A moment as job.json gives it (`starts`, `ends`): ISO 8601, with an offset or in the Mac's own time, kept as written.

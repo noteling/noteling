@@ -6,6 +6,17 @@ takes your attention when it finds something.
 
 Open **Jobs…** from the pencil icon in the menu bar, or **Open Jobs** under a chat reply that turned on or ran a job.
 
+## Ask the chat to look
+
+Not every source has a job. Ask the chat: "scan my calendar and Slack and give me my to-dos", "anything I need to
+deal with in #ops?". The chat reads what it can, your screen or a tool pack's script, and hands what it found to the
+minister as findings, the way a job reports them: rows, with a column that makes a row the same row next time. The
+minister takes its turn at once, since you are waiting, sorts them with the other jobs' findings, keeps quiet what
+fails its tests, and puts a card on the deck for what needs you; the chat then tells you what needs you and what it
+kept quiet. The source stands in Jobs as the chat's, with no schedule: ask again and the minister sees what is new,
+changed or gone since. A reminder you dictate ("remind me to call Marco") is not this: that is a note of yours, and
+nothing judges it. [Your own notes](notes.md).
+
 ## Turn on the ones that are yours
 
 Your team's jobs are listed under "From your team's tools", each with a switch. Turn on the ones that are yours: only
