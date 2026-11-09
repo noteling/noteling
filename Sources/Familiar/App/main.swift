@@ -42,8 +42,6 @@ if CommandLine.arguments.contains("--record-synthetic") {
     MainActor.assumeIsolated { runRenderOrigami() }
 } else if CommandLine.arguments.contains("--render-card") {
     MainActor.assumeIsolated { runRenderCard() }
-} else if CommandLine.arguments.contains("--render-stickers") {
-    MainActor.assumeIsolated { runRenderStickers() }
 } else if CommandLine.arguments.contains("--render-paper") {
     MainActor.assumeIsolated { runRenderPaper() }
 } else if let index = CommandLine.arguments.firstIndex(of: "--render-background-task"), index + 1 < CommandLine.arguments.count {

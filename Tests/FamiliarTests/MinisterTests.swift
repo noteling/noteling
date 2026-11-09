@@ -67,7 +67,7 @@ struct MinisterTests {
 
     private func compose(_ text: String, action: String? = "nudge", on id: String = "4417", page: String? = Self.page + "4417",
                          tone: String = "calm", notes: String = "## Acme order 4417\n- stuck 3 days") -> [String: Any] {
-        var out: [String: Any] = ["text": text, "tone": tone, "notes": notes, "until": NSNull()]
+        var out: [String: Any] = ["headline": "Acme's order 4417", "text": text, "tone": tone, "notes": notes, "until": NSNull()]
         out["action"] = action.map { ["finding": Self.key + "/" + id, "run": $0] } ?? NSNull()
         out["where"] = page ?? NSNull()
         return out

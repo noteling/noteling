@@ -25,6 +25,8 @@ struct MatterView: Codable, Equatable {
         var run: String
         var label: String
     }
+    /// The thing, in a few words, as a person would head a sticky: "Checkout is down". Older matters have none.
+    var headline: String?
     var text: String
     var action: Action?
     /// The page it lives on, when a finding has one.
@@ -34,6 +36,7 @@ struct MatterView: Codable, Equatable {
     var until: Date?
 
     static let textLimit = 240
+    static let headlineLimit = 40
 }
 
 /// One thing worth the person's attention, as the minister sees it: findings across jobs that are one thing, its sticker
@@ -44,6 +47,8 @@ struct Matter: Codable, Equatable, Identifiable {
         case open
         /// Kept in memory: the minister said why, or the person put it away.
         case quiet
+        /// The person took it: its card became one of their notes. Shown again only if a finding changes and the minister says so.
+        case yours
         /// Its findings are all gone.
         case closed
     }
@@ -81,6 +86,9 @@ struct Matter: Codable, Equatable, Identifiable {
 
     static let putAway = "You put it away."
     static let timePassed = "Its time passed."
+    static let taken = "You took it."
+    /// "Noteling did it: Nudge warehouse."
+    static func done(_ label: String) -> String { "Noteling did it: \(label)." }
 
     /// A new id: short, so the minister can name it back.
     static func newID() -> String { "m-" + String(UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "").prefix(8)) }
@@ -92,11 +100,21 @@ struct Sticker: Identifiable, Equatable {
     let id: String
     /// The lead job's name.
     let title: String
+    /// The thing in a few words, when the minister wrote one.
+    var headline: String?
     let text: String
     /// Who shared the job, "Yang" or "Yang and Ana"; nil for your own.
     let byline: String?
     let at: Date
     let urgent: Bool
+    /// The page it lives on, and the action the minister picked, when there is one.
+    var page: String?
+    var action: MatterView.Action?
+
+    /// "Stuck orders · shared by Lena Park · 9:02 AM", the card's byline.
+    func line(now: Date) -> String {
+        [title, byline.map { "shared by " + $0 }, JobWords.time(at, now: now)].compactMap { $0 }.joined(separator: " · ")
+    }
 }
 
 /// The matters on this Mac: one folder each in `matters/`, with `matter.json` (what code keeps and the minister's
@@ -138,8 +156,8 @@ final class Matters: ObservableObject {
             if a.isUrgent != b.isUrgent { return a.isUrgent }
             return a.shownAt > b.shownAt
         }.map { matter in
-            Sticker(id: matter.id, title: matter.jobName, text: matter.view?.text ?? "", byline: matter.byline, at: matter.shownAt,
-                    urgent: matter.isUrgent)
+            Sticker(id: matter.id, title: matter.jobName, headline: matter.view?.headline, text: matter.view?.text ?? "", byline: matter.byline,
+                    at: matter.shownAt, urgent: matter.isUrgent, page: matter.view?.page, action: matter.view?.action)
         }
     }
 
@@ -187,7 +205,32 @@ final class Matters: ObservableObject {
         matter.putAwayAt = clock()
         matter.recompose = false   // nothing to write for a sticker that is down
         save(matter)
-        memory?.append(["matter": id, "put_away": true])
+        memory?.append(["matter": id, "stamp": "not now", "put_away": true])
+    }
+
+    /// The person took the matter: its card became one of their notes. Yours until a finding changes and the minister
+    /// says it should be seen again; the note stays theirs whatever happens here.
+    @discardableResult
+    func take(_ id: String) -> Matter? {
+        guard var matter = matter(id: id), matter.state == .open else { return nil }
+        matter.state = .yours
+        matter.why = Matter.taken
+        matter.putAwayAt = clock()
+        matter.recompose = false
+        save(matter)
+        memory?.append(["matter": id, "stamp": "mine", "taken": matter.view?.headline ?? matter.view?.text ?? ""])
+        return matter
+    }
+
+    /// The person had Noteling press the card's action: the matter is quiet, with what was done, until a finding changes.
+    func did(_ id: String, _ label: String) {
+        guard var matter = matter(id: id), matter.state == .open else { return }
+        matter.state = .quiet
+        matter.why = Matter.done(label)
+        matter.putAwayAt = clock()
+        matter.recompose = false
+        save(matter)
+        memory?.append(["matter": id, "stamp": "do", "did": label])
     }
 
     /// A sticker's time passed: the matter is quiet, in memory, until a finding changes and the minister says otherwise.

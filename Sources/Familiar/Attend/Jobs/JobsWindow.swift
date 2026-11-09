@@ -45,6 +45,7 @@ import SwiftUI
         case .matter(let id):
             switch matterState(id) {
             case .quiet: return "Kept quiet"
+            case .yours: return "Yours"
             case .closed: return "Over"
             case .open, nil: return "On your note"
             }

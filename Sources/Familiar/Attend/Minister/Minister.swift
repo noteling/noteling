@@ -262,8 +262,9 @@ final class Minister: ObservableObject {
             }
             if let show = shows[id] {
                 let wasOpen = matter.state == .open
-                matter.state = show ? .open : .quiet
-                matter.why = show ? nil : (whys[id] ?? matter.why)
+                // Not shown: quiet, or still the person's if they took it; its note is theirs either way.
+                matter.state = show ? .open : matter.state == .yours ? .yours : .quiet
+                matter.why = show ? nil : matter.state == .yours ? matter.why : (whys[id] ?? matter.why)
                 if show { matter.putAwayAt = nil }
                 if matter.state == .open, joined.contains(id) || !wasOpen || recompose.contains(id) || matter.view == nil { matter.recompose = true }
             }

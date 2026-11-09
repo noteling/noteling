@@ -60,7 +60,7 @@ enum FindingVerdicts {
         case .open:
             if matter.isShown(at: now) { return .shown(urgent: matter.isUrgent) }
             return matter.view == nil ? .waiting : .quiet(Matter.timePassed)
-        case .quiet: return .quiet(matter.why)
+        case .quiet, .yours: return .quiet(matter.why)
         case .closed: return .unjudged   // a closed matter has no findings left, so this isn't reached
         }
     }
