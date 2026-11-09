@@ -50,7 +50,16 @@ the bump for the 0.9.1 pre-release (tag v0.9.1), cut the same day.
 launch, under the windows, and nothing but showing the desktop brought them back. **Show My Notes**, in the pencil's
 menu and the orb's and lamp's right-click menus, brings every note up for a minute as a new one comes (PR #100, stacked
 on `release/0.9.1`). The pencil missing from other people's menu bars is macOS hiding the icons that don't fit, not
-Noteling; a line in Getting started says so. The rest of the round (deck, lamp, receipt, teaching) is still to come.
+Noteling; a line in Getting started says so.
+
+**Round two, findings two and three (2026-11-05):** a new note hid itself before the person could keep it ("I haven't
+even got the time to click Keep on top and the rest all already disappeared": a QTE), and Keep on top, a line in a
+right-click menu, is not explicit. The clock is gone from where a note sits: a new note is **pinned** over the windows
+of the Space it was made on and nowhere else, and nothing takes it down but the person; the **pin** at its top-right
+corner, red when pinned, hollow when the note lies on the desktop, is the switch in plain sight (`Memo.pinned` replaces
+`onTop`; old files read as pinned). Show My Notes became a glance that ends with a click anywhere else, with Unpin All
+Notes beside it; a woken note stays pinned where it was clicked. PR #101, stacked on #100; `release/0.9.2` carries it
+by a merge. The rest of the round (deck, lamp, receipt, teaching) is still to come.
 
 ## Why
 

@@ -276,11 +276,13 @@ extension AppDelegate {
 
     @objc func menuNewNote() { newNote() }
 
-    /// Every note of yours comes up for a minute: they live on the desktop, under your windows, and this is how you see
-    /// them when you want to.
+    /// A glance at every note of yours: each comes up on top where you are, until you click somewhere else.
     func showNotes() { memoWindows?.showAll() }
 
     @objc func menuShowNotes() { showNotes() }
+
+    /// Every note lies down on the desktop, under your windows.
+    @objc func menuUnpinNotes() { memoWindows?.unpinAll() }
 
     /// The stickers were hidden from their own menu: a callout under the menu bar icon says where they come back from.
     func showStickersHiddenHint() {

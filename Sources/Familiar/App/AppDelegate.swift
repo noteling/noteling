@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var hideMenuItem: NSMenuItem!
     var stickersMenuItem: NSMenuItem!
     var showNotesMenuItem: NSMenuItem!
+    var unpinNotesMenuItem: NSMenuItem!
     var screenPermItem: NSMenuItem!
     var axPermItem: NSMenuItem!
     var toolsMenuItem: NSMenuItem!
@@ -239,6 +240,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(stickersMenuItem)
         showNotesMenuItem = NSMenuItem(title: "Show My Notes", action: #selector(menuShowNotes), keyEquivalent: "")
         menu.addItem(showNotesMenuItem)
+        unpinNotesMenuItem = NSMenuItem(title: "Unpin All Notes", action: #selector(menuUnpinNotes), keyEquivalent: "")
+        menu.addItem(unpinNotesMenuItem)
         menu.addItem(NSMenuItem(title: "New Note", action: #selector(menuNewNote), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Point the Pen   ⌃⌥Space", action: #selector(menuWand), keyEquivalent: ""))
@@ -284,6 +287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         tasksMenuItem.isEnabled = desktop.tasks.hasTasks
         hideMenuItem.isEnabled = panel.isVisible || origami.isFlying
         showNotesMenuItem.isEnabled = memoWindows?.hasNotes ?? false
+        unpinNotesMenuItem.isEnabled = memoWindows?.hasPinned ?? false
         updateStickersMenu()
         origamiMenuItem.title = origami.isFlying ? "Land Noteling   Esc" : "Fold into a Crane"
         origamiMenuItem.isEnabled = origami.isFlying || canTakeOrigamiFlight
