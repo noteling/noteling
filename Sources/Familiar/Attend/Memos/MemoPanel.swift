@@ -187,6 +187,9 @@ final class MemoPanel: NSPanel {
     private(set) var up = false
     /// Its time came within the hour and it came up for a moment to say so: once, until its time changes.
     var headsUpGiven = false
+    /// The window directly in front of this note when it came up, as the window server numbers it, so it can go back
+    /// under the same one; nil when nothing was, or the note was up already.
+    private var wasBelow: CGWindowID?
     /// The note changed as typed, moved, folded or recoloured: the windows keep it.
     var onChange: ((Memo) -> Void)?
     var onRemove: (() -> Void)?
@@ -267,16 +270,44 @@ final class MemoPanel: NSPanel {
 
     /// Comes up on top of everything, where the person is, until it settles or, woken, until it is had.
     func raise() {
+        if !up { wasBelow = Self.windowAbove(windowNumber) }
         up = true
         applyLevel()
     }
 
-    /// Back to its place among your windows.
+    /// Back to its place among your windows: under the window that was in front of it when it came up, so a note that
+    /// was covered is covered again and one in the open stays in the open. A window since gone leaves it where it is.
     func settle() {
         guard up else { return }
         up = false
         state.warm = false
         applyLevel()
+        if let above = wasBelow, Self.isOnScreen(above) { order(.below, relativeTo: Int(above)) }
+        wasBelow = nil
+    }
+
+    /// The on-screen window of another app at the ordinary level directly in front of the window numbered `number`, by
+    /// the window server's front-to-back list; nil when none is, or that window isn't on the screen.
+    nonisolated static func windowAbove(_ number: Int) -> CGWindowID? {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return nil }
+        return above(number, in: list, ownPID: getpid())
+    }
+
+    nonisolated static func above(_ number: Int, in list: [[String: Any]], ownPID: pid_t) -> CGWindowID? {
+        var candidate: CGWindowID?
+        for window in list {
+            guard let id = (window[kCGWindowNumber as String] as? NSNumber)?.intValue else { continue }
+            if id == number { return candidate }
+            let layer = (window[kCGWindowLayer as String] as? NSNumber)?.intValue ?? -1
+            let pid = (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value ?? -1
+            if layer == 0, pid != ownPID { candidate = CGWindowID(id) }
+        }
+        return nil
+    }
+
+    nonisolated static func isOnScreen(_ id: CGWindowID) -> Bool {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return false }
+        return list.contains { ($0[kCGWindowNumber as String] as? NSNumber)?.intValue == Int(id) }
     }
 
     /// The person clicked a note that woke: it is had. It stops glowing and stays where they are, an ordinary window
