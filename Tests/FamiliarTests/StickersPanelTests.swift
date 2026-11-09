@@ -57,6 +57,10 @@ import Testing
                                  action: MatterView.Action(finding: FindingRef(job: "team/pages", id: "1"), run: "nudge", label: "Nudge"))
         let without = Sticker(id: "m-2", title: "Pages up", text: "Two.", byline: nil, at: at, urgent: false)
         #expect(StickersPanel.key(123, card: withAction) == .doIt("m-1") && StickersPanel.key(123, card: without) == nil)
+        // No action but a next step: ← takes it, and the menu offers it where the action would be.
+        let withNext = Sticker(id: "m-3", title: "Mail", text: "Three.", byline: nil, at: at, urgent: false, next: "Reply to Lena")
+        #expect(StickersPanel.key(123, card: withNext) == .next("m-3"))
+        #expect(StickersPanel.menu(pointing: withNext, detached: false, scale: 1).compactMap { $0?.title }.prefix(3) == ["Open", "Reply to Lena", "Mine"])
         #expect(StickersPanel.key(124, card: withAction) == .mine("m-1") && StickersPanel.key(126, card: withAction) == .putAway("m-1"))
         #expect(StickersPanel.key(36, card: withAction) == .open("m-1") && StickersPanel.key(76, card: without) == .open("m-2"))
         #expect(StickersPanel.key(53, card: withAction) == .close && StickersPanel.key(53, card: nil) == .close)

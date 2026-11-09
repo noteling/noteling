@@ -29,6 +29,9 @@ struct MatterView: Codable, Equatable {
     var headline: String?
     var text: String
     var action: Action?
+    /// The one step the person would take about it, in a few imperative words, when no listed action does it
+    /// ("Ping the warehouse on Slack"); pressed, it hands the matter to the chat.
+    var next: String?
     /// The page it lives on, when a finding has one.
     var page: String?
     var tone: Tone = .calm
@@ -37,6 +40,7 @@ struct MatterView: Codable, Equatable {
 
     static let textLimit = 240
     static let headlineLimit = 40
+    static let nextLimit = 48
 }
 
 /// One thing worth the person's attention, as the minister sees it: findings across jobs that are one thing, its sticker
@@ -93,6 +97,8 @@ struct Matter: Codable, Equatable, Identifiable {
     static let taken = "You took it."
     /// "Noteling did it: Nudge warehouse."
     static func done(_ label: String) -> String { "Noteling did it: \(label)." }
+    /// "Handed to the chat: Reply to Lena."
+    static func handed(_ step: String) -> String { "Handed to the chat: \(step)." }
 
     /// A new id: short, so the minister can name it back.
     static func newID() -> String { "m-" + String(UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "").prefix(8)) }
@@ -116,6 +122,8 @@ struct Sticker: Identifiable, Equatable {
     /// The page it lives on, and the action the minister picked, when there is one.
     var page: String?
     var action: MatterView.Action?
+    /// The minister's next step, when there is no action: the card's first tab, into the chat.
+    var next: String?
 
     /// "Stuck orders · shared by Lena Park · 9:02 AM", the card's byline.
     func line(now: Date) -> String {
@@ -165,7 +173,8 @@ final class Matters: ObservableObject {
             return a.shownAt > b.shownAt
         }.map { matter in
             Sticker(id: matter.id, title: matter.jobName, headline: matter.view?.headline, text: matter.view?.text ?? "", byline: matter.byline,
-                    at: matter.shownAt, urgent: matter.isUrgent, good: matter.isGood, page: matter.view?.page, action: matter.isGood ? nil : matter.view?.action)
+                    at: matter.shownAt, urgent: matter.isUrgent, good: matter.isGood, page: matter.view?.page, action: matter.isGood ? nil : matter.view?.action,
+                    next: matter.isGood ? nil : matter.view?.next)
         }
     }
 
@@ -237,6 +246,17 @@ final class Matters: ObservableObject {
         matter.recompose = false
         save(matter)
         memory?.append(["matter": id, "stamp": "thanks", "put_away": true])
+    }
+
+    /// The person took the card's next step into the chat: the matter is quiet, with the step, until a finding changes.
+    func handed(_ id: String, step: String) {
+        guard var matter = matter(id: id), matter.state == .open else { return }
+        matter.state = .quiet
+        matter.why = Matter.handed(step)
+        matter.putAwayAt = clock()
+        matter.recompose = false
+        save(matter)
+        memory?.append(["matter": id, "stamp": "next", "step": step])
     }
 
     /// The person had Noteling press the card's action: the matter is quiet, with what was done, until a finding changes.

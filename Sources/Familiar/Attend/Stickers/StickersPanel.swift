@@ -27,7 +27,7 @@ enum StickerDrag { case moved, ended }
 
 /// One line of the deck's right-click menu; a nil in the list is a separator.
 struct StickerMenuItem: Equatable {
-    enum Choice: Equatable { case open(String), doIt(String), mine(String), putAway(String), thanks(String), bigger, smaller, attach, hide, show, more, close }
+    enum Choice: Equatable { case open(String), doIt(String), next(String), mine(String), putAway(String), thanks(String), bigger, smaller, attach, hide, show, more, close }
     let title: String
     var enabled = true
     let choice: Choice
@@ -44,7 +44,7 @@ struct PendingPress: Equatable {
 /// state; this keeps only the moments between a stamp and its effect.
 @MainActor
 final class DeckModel: ObservableObject {
-    enum Verdict: String { case doIt = "do", mine, notNow = "not now", thanks }
+    enum Verdict: String { case doIt = "do", mine, notNow = "not now", thanks, next }
 
     let matters: Matters
     /// A Do it waiting for its few seconds to pass.
@@ -69,6 +69,8 @@ final class DeckModel: ObservableObject {
     var press: ((Matter, MatterView.Action) async -> FindingPress?)?
     /// Turns the card into one of the person's notes.
     var mine: ((Matter) -> Void)?
+    /// Hands the card's next step to the chat, with the matter.
+    var handoff: ((Matter, String) -> Void)?
     var open: (String) -> Void = { _ in }
     /// Opens Jobs, where every card waits.
     var openMore: () -> Void = {}
@@ -125,6 +127,7 @@ final class DeckModel: ObservableObject {
     func stamp(_ verdict: Verdict, on id: String) {
         guard let matter = matters.matter(id: id), matter.state == .open, stamped == nil else { return }
         if verdict == .doIt, matter.view?.action == nil || matter.isGood { return }
+        if verdict == .next, matter.view?.next == nil || matter.isGood { return }
         if stampSeconds <= 0 { apply(verdict, to: matter); return }
         stamped = (id, verdict)
         DispatchQueue.main.asyncAfter(deadline: .now() + stampSeconds) { [weak self] in
@@ -144,6 +147,11 @@ final class DeckModel: ObservableObject {
             cardWent()
         case .mine:
             if matters.take(matter.id) != nil { mine?(matter) }
+            cardWent()
+        case .next:
+            guard let step = matter.view?.next else { return }
+            matters.handed(matter.id, step: step)
+            handoff?(matter, step)
             cardWent()
         case .doIt:
             guard let action = matter.view?.action else { return }
@@ -184,6 +192,19 @@ final class DeckModel: ObservableObject {
         }
         let shown = said
         DispatchQueue.main.asyncAfter(deadline: .now() + saidSeconds) { [weak self] in if self?.said == shown { self?.said = nil } }
+    }
+
+    /// What the chat is asked when the person takes a card's next step: the step, then the card, so the chat knows what
+    /// it is about and where, and the matter to look up. The person sees it on the pad and sends it themselves.
+    nonisolated static func request(_ matter: Matter, step: String) -> String {
+        var lines = [step]
+        if let view = matter.view {
+            var about = "About " + (view.headline.map { "\($0): " } ?? "") + view.text
+            if let page = view.page { about += " " + page }
+            lines.append(about)
+        }
+        lines.append("(matter \(matter.id), in Noteling's matters)")
+        return lines.joined(separator: "\n")
     }
 
     /// Runs a waiting press now, without waiting the seconds out (tests, quitting).
@@ -273,6 +294,9 @@ struct StickersView: View {
             if let action = card.action {
                 Button(action.label) { model.stamp(.doIt, on: card.id) }.buttonStyle(PaperTabStyle()).zIndex(2)
                     .help("Noteling does it, as you, in a few seconds you can take back  ·  ←")
+            } else if let next = card.next {
+                Button(next) { model.stamp(.next, on: card.id) }.buttonStyle(PaperTabStyle()).zIndex(2)
+                    .help("Hands it to the chat, with the card: Noteling does what it can, or says how  ·  ←")
             }
             Button("Mine") { model.stamp(.mine, on: card.id) }.buttonStyle(PaperTabStyle()).zIndex(1)
                 .help("Becomes a note of your own  ·  →")
@@ -389,7 +413,7 @@ struct DeckQuestionView: View {
     }
 }
 
-/// A rubber stamp across the card: DONE in red for Do it, MINE in the pen's ink, NOT NOW in grey, THANKS in green.
+/// A rubber stamp across the card: DONE in red for Do it, MINE and NEXT in the pen's ink, NOT NOW in grey, THANKS in green.
 struct StampView: View {
     let verdict: DeckModel.Verdict
     var scale: CGFloat = 1
@@ -400,12 +424,13 @@ struct StampView: View {
         case .mine: return "MINE"
         case .notNow: return "NOT NOW"
         case .thanks: return "THANKS"
+        case .next: return "NEXT"
         }
     }
     var ink: Color {
         switch verdict {
         case .doIt: return Pad.redInk
-        case .mine: return Pad.penInk
+        case .mine, .next: return Pad.penInk
         case .notNow: return PaperType.inkSoft
         case .thanks: return PaperColour.green.edge
         }
@@ -499,7 +524,7 @@ final class StickersPanel: NSPanel {
     nonisolated static func key(_ code: UInt16, card: Sticker?) -> StickerMenuItem.Choice? {
         guard let card else { return code == 53 ? .close : nil }
         switch code {
-        case 123: return card.action == nil ? nil : .doIt(card.id)   // ←
+        case 123: return card.action != nil ? .doIt(card.id) : card.next != nil ? .next(card.id) : nil   // ←
         case 124: return .mine(card.id)                              // →
         case 126: return card.good ? .thanks(card.id) : .putAway(card.id)   // ↑
         case 36, 76: return .open(card.id)                           // ⏎
@@ -608,6 +633,7 @@ final class StickersPanel: NSPanel {
         if let card {
             items.append(StickerMenuItem(title: "Open", choice: .open(card.id)))
             if let action = card.action { items.append(StickerMenuItem(title: action.label, choice: .doIt(card.id))) }
+            else if let next = card.next { items.append(StickerMenuItem(title: next, choice: .next(card.id))) }
             items.append(StickerMenuItem(title: "Mine", choice: .mine(card.id)))
             items.append(card.good ? StickerMenuItem(title: "Thanks", choice: .thanks(card.id)) : StickerMenuItem(title: "Not now", choice: .putAway(card.id)))
             items.append(nil)
@@ -670,6 +696,7 @@ final class StickersPanel: NSPanel {
         switch choice {
         case .open(let id): model.open(id)
         case .doIt(let id): model.stamp(.doIt, on: id)
+        case .next(let id): model.stamp(.next, on: id)
         case .mine(let id): model.stamp(.mine, on: id)
         case .putAway(let id): model.stamp(.notNow, on: id)
         case .thanks(let id): model.stamp(.thanks, on: id)

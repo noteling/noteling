@@ -8,7 +8,11 @@ a next step under a card. Nothing here is built. It comes after the round closes
 **Status (2026-11-09):** 1a and 1b built on `feature/row-notes`, stacked on `release/0.9.3`: the `note` role in a
 job's `map`, `JobNotes` (Attend/Memos) as the keeper, `Memo.finding` and `Memo.from`, the minister passing such rows
 by (`Matter.onYourNote`), "On your note" on the job's page, the receipt's count, and the two new sections of
-`docs/use/notes.md`. Allowed for any job the person turned on, as the lean said.
+`docs/use/notes.md`. Allowed for any job the person turned on, as the lean said. 2 built on `feature/next-step`, stacked on
+it: `MatterView.next` (48 characters) from the compose turn when no action fits; the card's first tab and ← take it;
+the matter goes quiet (`Matter.handed`), the stamp is `next`, and the chat opens with the step as the request and the
+card under it (`DeckModel.request`), Do it for me set when the card has a page; the person sends it. The receipt
+lists them under Next steps.
 
 ## Where things stand (checked 2026-11-09 against 0.9.2)
 

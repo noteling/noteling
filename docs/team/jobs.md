@@ -181,7 +181,10 @@ Normally this serves account managers and the warehouse lead.
 ```
 
 Describe; don't instruct. Whom to show a finding to, when, how urgent and in what words are Noteling's to decide, from
-the finding, this description, and what it knows of the person.
+the finding, this description, and what it knows of the person. What usually comes next for a kind of row belongs
+here too ("a stuck order usually needs a nudge to the warehouse; the account manager tells the customer when it is
+large"): when none of your buttons fits a card, the minister writes the card's next step from it, in a few words, and
+the person hands the card to the chat with one press.
 
 ## What it leaves
 
