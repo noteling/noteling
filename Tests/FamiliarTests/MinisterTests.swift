@@ -97,7 +97,7 @@ struct MinisterTests {
         #expect(place.matters.notes(for: open.id) == "## Acme order 4417\n- stuck 3 days")
         let quiet = try #require(place.matters.current.first { $0.state == .quiet })
         #expect(quiet.why == "Test account, per job.md." && quiet.view == nil && quiet.findings.map(\.key) == [Self.key + "/4390"])
-        #expect(place.matters.stickers.map(\.title) == ["Stuck orders"] && place.matters.stickers.first?.byline == "Lena Park" && place.matters.more == 0)
+        #expect(place.matters.stickers.map(\.title) == ["Stuck orders"] && place.matters.stickers.first?.byline == "Lena Park")
         #expect(urgent.isEmpty && place.minister.status.isEmpty)
 
         // What the minister read: the job described, each finding with its roles and its row, and the matters so far.
@@ -522,7 +522,7 @@ struct MinisterTests {
         now = at.addingTimeInterval(240)
         matters.save(matter("m-newest", "team/e"))
 
-        #expect(matters.stickers.map(\.id) == ["m-urgent", "m-newest", "m-calm-new", "m-calm-old"] && matters.shown.count == 3 && matters.more == 1)
+        #expect(matters.stickers.map(\.id) == ["m-urgent", "m-newest", "m-calm-new", "m-calm-old"])   // every card is on the deck, one at a time
         #expect(matters.notes(for: "m-calm-old") == "## Old" && matters.notes(for: "m-urgent") == nil)
         #expect(matters.matter(containing: FindingRef(job: "team/d", id: "1"))?.id == "m-quiet")
         #expect(Matters(directory: root).all == matters.all)   // read back as written
