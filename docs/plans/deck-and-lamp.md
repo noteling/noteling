@@ -61,7 +61,8 @@ corner, red when pinned, hollow when the note lies on the desktop, is the switch
 Notes beside it; a woken note stays pinned where it was clicked. PR #101, stacked on #100; `release/0.9.2` carries it
 by a merge. The rest of the round (deck, lamp, receipt, teaching) is still to come. The gaps found meanwhile, when
 asked how a script reaches the paper and whether the minister can put a next step under a card, are in
-`after-the-deck.md`.
+`after-the-deck.md`. Running a throwaway job through 0.9.2 found the triage prompt still saying three matters show at
+once, the stack's rule: the deck holds six (`Matters.deckLimit`, PR #102, stacked on `release/0.9.2`).
 
 ## Why
 
