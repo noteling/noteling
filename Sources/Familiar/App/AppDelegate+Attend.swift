@@ -241,7 +241,7 @@ extension AppDelegate {
 
     // MARK: your own notes
 
-    /// Your notes: files in `memos/`, each a panel pinned where you put it. A new one comes from the menu bar, the
+    /// Your notes: files in `memos/`, each an ordinary window where you put it. A new one comes from the menu bar, the
     /// bubble's menu, or the scribe in chat; the same menus bring them all up; the minister and the chat read them
     /// through recall.
     func setupMemos() {
@@ -261,8 +261,7 @@ extension AppDelegate {
         windows.start()
         memoWindows = windows
         shell.onNewNote = { [weak self] in self?.newNote() }
-        shell.onShowMyNotes = { [weak self] in self?.showNotes() }
-        store.$all.receive(on: RunLoop.main).sink { [weak self] all in self?.shell.noteCount = all.count }.store(in: &cancellables)
+        shell.onGlance = { [weak self] in self?.memoWindows?.toggleGlance() }
         // The scribe: "remind me to…" on the pad puts the paper up at once, and the model writes it properly.
         let scribe = MemoScribe(store: store, windows: windows)
         memoScribe = scribe
@@ -281,8 +280,6 @@ extension AppDelegate {
 
     @objc func menuShowNotes() { showNotes() }
 
-    /// Every note lies down on the desktop, under your windows.
-    @objc func menuUnpinNotes() { memoWindows?.unpinAll() }
 
     /// The stickers were hidden from their own menu: a callout under the menu bar icon says where they come back from.
     func showStickersHiddenHint() {

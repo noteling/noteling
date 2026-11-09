@@ -1,6 +1,6 @@
 # Your own notes
 
-A note of your own is a sticky in your hand, pinned on your screen where you put it. Nothing goes through Noteling's
+A note of your own is a sticky in your hand, on your screen where you put it. Nothing goes through Noteling's
 minister or a job: you write it, and it stays until you take it down.
 
 ## Writing one
@@ -14,15 +14,17 @@ minister or a job: you write it, and it stays until you take it down.
 
 ## Where it sits
 
-A new note is pinned where you made it: over your windows, on the Space you are on, and nowhere else. It never follows
-you into another Space or over a full-screen app, and nothing takes it down but you. The pin at its top-right corner
-says so: pushed in and red. Click the pin and the note lies down on the desktop instead, over the wallpaper and its
-icons, under your windows, the same on every Space, the way the desktop's widgets sit; its pin lies hollow. Click it
-again to pin the note back up.
+A note is an ordinary window, on the Space you made it on: on top while you write on it, covered by the window you
+click into, as any window is, and there again when that one moves. It never follows you into another Space or over a
+full-screen app, and where it sits is never a decision you have to make. It comes up by itself in three ways, and no
+others:
 
-**Show My Notes**, in the pencil icon in the menu bar or in Noteling's right-click menu, brings every note up on top of
-everything where you are, pinned or not, for as long as you look: click anywhere else and each goes back to its place.
-Pin one while they are up and it stays. **Unpin All Notes**, in the pencil's menu, lays them all on the desktop.
+- **Click Noteling.** Every note comes up on top of everything where you are, for about twenty seconds; then each goes
+  back to its place. They go back sooner if you switch Space, click Noteling again, or open the chat or the pen. A
+  note you click while they are up stays in front, as any window you touched does. **Show My Notes**, in the pencil
+  icon in the menu bar, is the same in words.
+- **When its time is near.** A note with a time comes up for a moment when its countdown starts, an hour before.
+- **At its time**, wherever you are, glowing until you click it; then it stays where you are.
 
 ## On the paper
 
@@ -31,13 +33,14 @@ Pin one while they are up and it stays. **Unpin All Notes**, in the pencil's men
 - **Drag the strip** along the top edge to move it. It stays there, across restarts.
 - **Double-click the strip** to fold the note to its first line, and again to open it.
 - **A time** shows as the clock far off, a countdown within the hour that moves on the minute, and "now" when it
-  comes: the note comes up wherever you are and glows until you click it; then it stays, pinned where you are. After,
-  it reads "was 3:00 PM" until you change it or take the note down.
+  comes. The note comes up for a moment when the countdown starts, and at its time it comes up wherever you are and
+  glows until you click it; then it stays where you are. After, it reads "was 3:00 PM" until you change it or take
+  the note down.
 - **A page** shows as its address. Click it to open the page.
 - **The peel.** Point at a note and a round button appears over its top-left corner. Click it and the note peels
   off. Its file goes to the Trash, so a wrong click is undone in Finder, and what it said stays in Noteling's memory,
   so "what was on my note about Marco?" in chat still finds it.
-- **Right-click** for the paper's colour (yellow, pink, blue or green), Fold, Pinned, Bigger and Smaller, and Remove.
+- **Right-click** for the paper's colour (yellow, pink, blue or green), Fold, Bigger and Smaller, and Remove.
 
 ## The files
 

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// `Noteling --render-paper <dir>`: the paper as your notes and the minister's cards would wear it, as PNGs, to judge
-/// against the bar: if these were a standalone product and a person had written and pinned them, would they be useful
+/// against the bar: if these were a standalone product and a person had written them and put them on their screen, would they be useful
 /// and pretty enough? Your notes in your hand, with a when, a page and a checklist; cards typed with a handwritten
 /// headline; alone, scattered on a light and a dark desk, and at the smallest and biggest sizes. Then exit.
 @MainActor
@@ -86,11 +86,8 @@ func runRenderPaper() {
     // The peel, as it shows when the mouse is on the paper.
     render(onDesk(ZStack(alignment: .topLeading) {
         memoView(dictated, tilt: false)
-            .overlay(alignment: .topTrailing) { PinButton(pinned: true, action: {}).padding(.top, -3).padding(.trailing, 5) }
         PeelButton(help: "Take this note down", action: {}).offset(x: PeelButton.offset, y: PeelButton.offset)
     }), "memo-peel.png")
-    // Unpinned: the note lies on the desktop, its pin lying hollow.
-    render(onDesk(memoView(shopping, tilt: false).overlay(alignment: .topTrailing) { PinButton(pinned: false, action: {}).padding(.top, -3).padding(.trailing, 5) }), "memo-unpinned.png")
     for (card, name) in zip(cards, ["card-urgent", "card-prices", "card-orders", "card-stock", "card-review"]) {
         render(onDesk(cardView(card)), "\(name).png")
     }

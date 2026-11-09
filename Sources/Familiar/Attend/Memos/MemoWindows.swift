@@ -3,8 +3,9 @@ import Combine
 import Foundation
 
 /// Your notes on the screen: a panel for every note in the store, placed where the note says, a new one near the orb,
-/// each kept as the note changes here or in its file, brought up when its when comes or for a glance at them all, and
-/// all drawn at one size that Bigger and Smaller step through.
+/// each kept as the note changes here or in its file, brought up for a moment when its time comes near, until clicked
+/// when its when comes, and all together for a glance from a click on the orb; all drawn at one size that Bigger and
+/// Smaller step through.
 @MainActor
 final class MemoWindows {
     let store: MemoStore
@@ -14,13 +15,22 @@ final class MemoWindows {
     var orbFrame: () -> NSRect? = { nil }
     var onScaleChange: ((CGFloat) -> Void)?
     var openPage: (String) -> Void = { page in if let url = URL(string: page) { NSWorkspace.shared.open(url) } }
+    var clock: () -> Date = Date.init
     private(set) var panels: [String: MemoPanel] = [:]
     /// Whether panels are put on the screen; tests keep them off it.
     var shows = true
     private var subscriptions = Set<AnyCancellable>()
     private var ticker: Timer?
-    /// While a glance lasts: the watch for a click anywhere else, which ends it.
-    private var glanceMonitors: [Any] = []
+    private var spaceObserver: NSObjectProtocol?
+    private var started = false
+    /// How long a glance lasts, and a note's moment when its time comes near, unless something ends it sooner.
+    static let glanceSeconds: TimeInterval = 20
+    /// Every note is up for a look. It ends by itself, with a switch of Space, with another click on the orb, or when
+    /// the chat or the pen opens.
+    private(set) var glancing = false
+    private var glanceEnd: DispatchWorkItem?
+    /// The notes up on their own for a moment, by id: each when its time came near.
+    private var moments: [String: DispatchWorkItem] = [:]
 
     init(store: MemoStore, scale: CGFloat, hideFromScreenShare: Bool) {
         self.store = store
@@ -39,48 +49,78 @@ final class MemoWindows {
         timer.tolerance = 0.2
         RunLoop.main.add(timer, forMode: .common)
         ticker = timer
+        // Another Space is another desk: a glance ends there, and the notes stay on theirs.
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.spaceChanged() }
+        }
+        started = true
+        tick(now: clock())   // a note already within the hour of its time comes up for a moment, at launch as at the hour
     }
 
-    /// Every note reads its when against this moment.
+    /// Every note reads its when against this moment, and one whose time has just come within the hour comes up for a
+    /// moment to say so: the heads-up before the wake, once.
     func tick(now: Date = Date()) {
-        for panel in panels.values { panel.state.now = now }
+        for panel in panels.values {
+            panel.state.now = now
+            guard let when = panel.memo.when, PaperWhen.state(when, now: now) == .near, !panel.headsUpGiven else { continue }
+            panel.headsUpGiven = true
+            moment(panel)
+        }
     }
 
-    /// Whether there is a note to show, and whether one is pinned.
+    /// Whether there is a note to show.
     var hasNotes: Bool { !panels.isEmpty }
-    var hasPinned: Bool { panels.values.contains { $0.memo.pinned } }
-    var glancing: Bool { !glanceMonitors.isEmpty }
 
-    /// A glance at your notes: every one comes up on top of everything where you are, pinned or lying on the desktop,
-    /// and stays until you click somewhere else; then each goes back to its place. Pin one meanwhile and it stays.
+    /// A glance at your notes: every one comes up on top of everything where you are and stays a moment; then each goes
+    /// back to its place. It ends sooner with a switch of Space, another click on the orb, or the chat or the pen
+    /// opening. A note you click meanwhile stays in front, as any window you touched does.
     func showAll() {
-        tick()
+        tick(now: clock())
         for panel in panels.values {
             panel.raise()
             if shows { panel.orderFrontRegardless() }
         }
-        guard glanceMonitors.isEmpty else { return }
-        let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
-        if let elsewhere = NSEvent.addGlobalMonitorForEvents(matching: clicks, handler: { [weak self] _ in
-            MainActor.assumeIsolated { self?.endGlance() }
-        }) { glanceMonitors.append(elsewhere) }
-        if let here = NSEvent.addLocalMonitorForEvents(matching: clicks, handler: { [weak self] event in
-            if !(event.window is MemoPanel) { MainActor.assumeIsolated { self?.endGlance() } }
-            return event
-        }) { glanceMonitors.append(here) }
+        glancing = true
+        glanceEnd?.cancel()
+        let end = DispatchWorkItem { [weak self] in self?.endGlance() }
+        glanceEnd = end
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.glanceSeconds, execute: end)
     }
 
-    /// The glance is over: each note goes back to its place, but one that woke stays up until it is had, and one being
-    /// written on settles when the writing ends.
+    /// A click on the orb: the notes come up, or go back if they are up.
+    func toggleGlance() {
+        if glancing { endGlance() } else { showAll() }
+    }
+
+    /// The glance is over, and so is any note's moment: each goes back to its place, but one that woke stays up until
+    /// it is had, and one being written on settles when the writing ends.
     func endGlance() {
-        for monitor in glanceMonitors { NSEvent.removeMonitor(monitor) }
-        glanceMonitors = []
+        glanceEnd?.cancel()
+        glanceEnd = nil
+        glancing = false
+        for work in moments.values { work.cancel() }
+        moments = [:]
         for panel in panels.values where !panel.state.warm && !panel.state.editing { panel.settle() }
     }
 
-    /// Every note lies down on the desktop, under your windows.
-    func unpinAll() {
-        for panel in panels.values { panel.pin(false) }
+    /// The person went to another Space: the glance ends, and the notes stay on theirs.
+    func spaceChanged() { endGlance() }
+
+    /// One note up on its own for a moment, as when its time comes near; then back to its place, unless it woke, is
+    /// being written on, or every note is up for a glance meanwhile.
+    private func moment(_ panel: MemoPanel) {
+        panel.raise()
+        if shows { panel.orderFrontRegardless() }
+        let id = panel.memo.id
+        moments[id]?.cancel()
+        let end = DispatchWorkItem { [weak self, weak panel] in
+            guard let self else { return }
+            self.moments[id] = nil
+            guard let panel, !self.glancing, !panel.state.warm, !panel.state.editing else { return }
+            panel.settle()
+        }
+        moments[id] = end
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.glanceSeconds, execute: end)
     }
 
     /// The next whole minute, a hair after it, so the words have moved once the menu bar's clock has.
@@ -140,6 +180,9 @@ final class MemoWindows {
         panel.onResize = { [weak self] next in self?.setScale(next) }
         panel.onToggle = { [weak self] index in self?.store.toggle(memo.id, item: index) }
         panel.onOpenPage = { [weak self] page in self?.openPage(page) }
+        // A note made within the hour of its time is in front as it is made: no moment for it. At launch, every note is new
+        // to the screen, so the first tick gives those within the hour theirs.
+        if started, let when = memo.when, PaperWhen.state(when, now: clock()) == .near { panel.headsUpGiven = true }
         panels[memo.id] = panel
         panel.place(topLeft: memo.at ?? spot())
         clamp(panel)

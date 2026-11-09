@@ -68,7 +68,7 @@ Acme?", "why did I get that card?", "what did the orders job find yesterday?".
   It needs nothing of you; **Thanks** puts it away, and it never lights the lamp on its own.
 - Under the card, three verbs on paper tabs. **Its action** (such as **Nudge warehouse**, the button the minister picked
   from the job's own) has Noteling do it, as you: a line under the deck counts down a few seconds with **undo**, then
-  it runs and the line says what came of it. **Mine** turns the card into a note of your own, pinned near the deck,
+  it runs and the line says what came of it. **Mine** turns the card into a note of your own, placed near the deck,
   with the matter still a click away on it. **Not now** puts it away: it stays away until something about it changes
   and the minister thinks you should see it again. The round peel button over the card's corner, when you point at it, is Not now too.
 - Click the deck once and the keys do the same: **←** its action, **→** Mine, **↑** Not now, **⏎** opens it, **Esc**
