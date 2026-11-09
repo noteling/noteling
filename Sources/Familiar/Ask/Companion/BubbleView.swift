@@ -69,6 +69,7 @@ struct BubbleView: View {
         )
         .contextMenu {
             Button("Open chat") { shell.expanded = true }
+            Button("New note") { shell.onNewNote?() }
             Button(state.watching ? "Point at what you clicked" : "Point the pen") { state.startWand() }
             Button(state.watching ? "Stop watching" : "Watch me") { state.toggleWatching() }
             Divider()

@@ -59,6 +59,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var minister: Minister!
     var stickersPanel: StickersPanel?
     var stickersScreenObserver: NSObjectProtocol?
+    /// Your own notes, as files, and on the screen.
+    var memos: MemoStore!
+    var memoWindows: MemoWindows?
+    var memoScribe: MemoScribe?
+    var noteHotKey: HotKey?
 
     var watcherMenuItem: NSMenuItem!
     var hideMenuItem: NSMenuItem!
@@ -89,6 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupWand()
         setupAttendHousekeeping()
         setupRunStickers()
+        setupMemos()
         requestPermissionsOnFirstRun()
         Task {
             runner.networkEnv = await ScriptNetwork.current()   // before the first script: the Mac's proxy and certificates
@@ -228,6 +234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         stickersMenuItem = NSMenuItem(title: "Stickers", action: nil, keyEquivalent: "")
         stickersMenuItem.submenu = NSMenu(title: "Stickers")
         menu.addItem(stickersMenuItem)
+        menu.addItem(NSMenuItem(title: "New Note   \(HotKey.display(config.noteHotkey))", action: #selector(menuNewNote), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Point the Pen   ⌃⌥Space", action: #selector(menuWand), keyEquivalent: ""))
         watchMenuItem = NSMenuItem(title: "Watch Me", action: #selector(menuWatch), keyEquivalent: "")
@@ -303,6 +310,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func setupHotKey() {
         hotKey?.unregister()
         hotKey = nil
+        noteHotKey?.unregister()
+        noteHotKey = nil
+        if let (code, mods) = HotKey.parse(config.noteHotkey) {
+            noteHotKey = HotKey(keyCode: code, modifiers: mods) { [weak self] in self?.newNote() }
+        } else if !config.noteHotkey.isEmpty {
+            Log.info("hotkey: cannot parse the note hotkey \"\(config.noteHotkey)\"")
+        }
         let spec = config.hotkey.isEmpty ? "control+option+space" : config.hotkey
         guard let (code, mods) = HotKey.parse(spec) else { Log.info("hotkey: cannot parse \"\(spec)\""); return }
         hotKey = HotKey(keyCode: code, modifiers: mods) { [weak self] in
