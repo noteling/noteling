@@ -30,7 +30,7 @@ struct PadWritingTests {
 
         // While it writes: one answer on the pad, growing, without the Suggestions line.
         var during: [String] = []
-        let end = Date().addingTimeInterval(3)
+        let end = Date().addingTimeInterval(15)   // the loop ends as soon as the answer lands; the budget is for a suite running in parallel
         while Date() < end, assistant.chatBusy {
             if let answer = assistant.transcript.last(where: { $0.role == .assistant }) { during.append(answer.text) }
             try await Task.sleep(for: .milliseconds(20))

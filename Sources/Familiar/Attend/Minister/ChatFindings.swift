@@ -56,7 +56,8 @@ struct ChatSource {
 /// with an id and a map saying which column is what. Each source is a job of the chat kind, kept with its findings
 /// under `job-results/chat/<slug>/`, so the next scan is diffed against the last and the minister sees what is new,
 /// changed and gone. The minister takes its turn at once, since the person is waiting, and the answer says what became
-/// of each row. A reminder the person dictates is not this: that is the scribe's, and nothing judges it.
+/// of each row. A reminder the person dictates is not this: that is the scribe's, and nothing judges it. The chat also
+/// carries what the person tells the minister in words (`tell_the_minister`): standing rules kept with the lessons.
 @MainActor
 final class ChatFindings {
     let store: FolderJobStore
@@ -67,8 +68,11 @@ final class ChatFindings {
     var onFindings: ((FolderJob, FindingsChange) -> Void)?
     /// The minister's turn, now, awaited.
     var takeTurn: () async -> Void = {}
+    /// Where what the person tells the minister is kept, beside what the deck taught it.
+    var lessons: Lessons?
 
     static let tool = "report_findings"
+    static let tellTool = "tell_the_minister"
     static let rowLimit = 200
     static let aboutLimit = 600
 
@@ -100,7 +104,34 @@ final class ChatFindings {
             guard let self else { return .text("unavailable", isError: true) }
             do { return .text(try await self.report(input)) } catch { return .text(error.localizedDescription, isError: true) }
         }
-        return [route]
+        let tell = ToolRoute(match: .tool(name: Self.tellTool), definition: [
+            "name": Self.tellTool,
+            "description": "Tell Noteling's minister a standing rule in the person's own words, when they say how they want their cards from now on (\"for all meetings, make the link the thing to open\", \"anything from Lena goes on top\", \"stop telling me about newsletters\"), or make it forget one. The minister reads them at every turn as preferences within its rules: they never make a finding sure that isn't, and never add a button. Not for a one-off (\"show my notes\", \"remind me to…\"): those have their own tools.",
+            "input_schema": ["type": "object", "additionalProperties": false, "properties": [
+                "instruction": ["type": ["string", "null"], "description": "The rule, in the person's words, one line, at most \(Lessons.instructionLimit) characters."],
+                "forget": ["type": ["string", "null"], "description": "Words of a rule to forget (or its id); the receipt lists them under Taught."],
+            ]],
+        ]) { [weak self] _, input, _ in
+            await MainActor.run {
+                guard let self else { return .text("unavailable", isError: true) }
+                do { return .text(try self.tell(input)) } catch { return .text(error.localizedDescription, isError: true) }
+            }
+        }
+        return [route, tell]
+    }
+
+    /// The person told the minister something, or took it back.
+    func tell(_ input: [String: Any]) throws -> String {
+        guard let lessons else { throw MinisterError("The minister isn't here to tell.") }
+        if let key = input["forget"] as? String, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let gone = lessons.forget(instruction: key) else {
+                throw MinisterError("Nothing told matches “\(JobWords.clip(key, 80))”. Told so far: " + (lessons.told.isEmpty ? "nothing." : lessons.told.map { "“\($0.text)”" }.joined(separator: "; ") + "."))
+            }
+            return "The minister forgot: “\(gone.text)”."
+        }
+        guard let words = input["instruction"] as? String else { throw MinisterError("Give instruction: the rule in the person's words, or forget: words of one to take back.") }
+        let kept = try lessons.tell(words)
+        return "Told the minister: “\(kept.text)”. It applies from its next turn, to its cards and to what it says; the receipt lists it under Taught, where Forget takes it back."
     }
 
     /// One report: the source kept, the rows diffed against its last scan and recorded, the minister's turn taken, and

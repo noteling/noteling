@@ -73,6 +73,21 @@ import Testing
         #expect(store.jobs.filter { $0.source == .chat }.count == 1)
     }
 
+    @Test func tellTheMinisterKeepsARuleAndForgetsIt() throws {
+        let (scans, _, _, _, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(scans.routes().compactMap { $0.definition["name"] as? String } == ["report_findings", "tell_the_minister"])
+        #expect(throws: MinisterError.self) { try scans.tell(["instruction": "x"]) }   // no lessons to keep it in
+        let lessons = Lessons(file: dir.appendingPathComponent("taught.json"))
+        scans.lessons = lessons
+        #expect(try scans.tell(["instruction": "For all meetings, make the link the thing to open"]).hasPrefix("Told the minister: “For all meetings, make the link the thing to open”."))
+        #expect(lessons.told.count == 1)
+        #expect(throws: MinisterError.self) { try scans.tell([:]) }
+        #expect(throws: MinisterError.self) { try scans.tell(["forget": "lunch"]) }
+        #expect(try scans.tell(["forget": "meetings"]) == "The minister forgot: “For all meetings, make the link the thing to open”.")
+        #expect(lessons.told.isEmpty)
+    }
+
     @Test func whatTheChatHandsOverIsChecked() async {
         let (scans, _, _, _, dir) = fixture()
         defer { try? FileManager.default.removeItem(at: dir) }

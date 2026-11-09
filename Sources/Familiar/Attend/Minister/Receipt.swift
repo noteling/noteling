@@ -186,13 +186,24 @@ struct TaughtList: View {
     @ObservedObject var lessons: Lessons
     var now: Date
 
-    static let nothingYet = Text("Nothing yet. Put away two cards from one job within a week and the minister asks whether to stop showing its findings.")
+    static let nothingYet = Text("Nothing yet. Put away two cards from one job within a week and the minister asks whether to stop showing its findings; or tell the chat a standing rule for your cards, in your words.")
         .font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
 
     var body: some View {
-        if lessons.all.isEmpty {
+        if lessons.all.isEmpty && lessons.told.isEmpty {
             Self.nothingYet.fixedSize(horizontal: false, vertical: true)
         } else {
+            ForEach(lessons.told) { told in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("“" + told.text + "”").font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+                        Text("Told " + JobWords.time(told.at, now: now)).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
+                    }
+                    Spacer(minLength: 8)
+                    Button("Forget") { lessons.forget(instruction: told.id) }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
+                        .help("The minister stops following it")
+                }
+            }
             ForEach(lessons.all) { lesson in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {

@@ -200,7 +200,7 @@ final class Minister: ObservableObject {
     private func triage(_ findings: [MinisterPrompt.Shown], client: any ConversationClient) async throws {
         let shown = findings.sorted { $0.ref.key < $1.ref.key }
         let current = matters.current
-        let prompt = MinisterPrompt.triage(shown, descriptions: descriptions(for: shown), matters: current, now: clock(), lessons: lessons?.all ?? [])
+        let prompt = MinisterPrompt.triage(shown, descriptions: descriptions(for: shown), matters: current, now: clock(), lessons: lessons?.all ?? [], told: lessons?.told ?? [])
         var result: (verdicts: [MinisterPrompt.Verdict], recompose: Set<String>)?
         let ids = Set(current.map(\.id))
         let refs = shown.map(\.ref)
@@ -298,7 +298,7 @@ final class Minister: ObservableObject {
             memory.append(["matter": matter.id, "closed": "its findings are gone"])
             return
         }
-        let prompt = MinisterPrompt.compose(matter, findings: findings, descriptions: descriptions(for: findings), notes: matters.notes(for: matter.id), now: clock())
+        let prompt = MinisterPrompt.compose(matter, findings: findings, descriptions: descriptions(for: findings), notes: matters.notes(for: matter.id), now: clock(), told: lessons?.told ?? [])
         var result: (view: MatterView, notes: String?)?
         try await converse(client, system: MinisterPrompt.composeSystem, prompt: prompt, tool: MinisterPrompt.composeDefinition, effort: config().effort,
                            rounds: Self.composeRounds) { input in

@@ -83,6 +83,7 @@ extension AppDelegate {
         let scans = ChatFindings(store: feature.store, matters: matters, memory: memory)
         scans.onFindings = reported
         scans.takeTurn = { [weak self] in await self?.minister.flush() }
+        scans.lessons = lessons
         chatFindings = scans
         feature.buttons.record = { [weak self] job, row, action, press in
             guard let self else { return }
