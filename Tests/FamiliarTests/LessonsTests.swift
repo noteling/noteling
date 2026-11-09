@@ -129,6 +129,16 @@ import Testing
         let matter = Matter(id: "m-1", findings: [], state: .open, view: nil, jobName: "Mail", byline: nil, createdAt: at, updatedAt: at)
         #expect(MinisterPrompt.compose(matter, findings: [], descriptions: [:], notes: nil, now: at, told: lessons.told).contains("Told by the person:"))
         #expect(!MinisterPrompt.triage([], descriptions: [:], matters: [], now: at).contains("Told by the person"))
+        // The person's notes are listed to the triage turn too, newest first, with what a note carries.
+        var standup = Memo(id: "n-1", headline: "Stand-up", when: at.addingTimeInterval(50 * 60), createdAt: at, updatedAt: at)
+        standup.items = [PaperItem(text: "bug 12"), PaperItem(text: "bug 15", done: true)]
+        var acme = Memo(id: "n-2", headline: "Acme Industrial", text: "Yang", page: "https://orders.example.com/order/4417", createdAt: at, updatedAt: at.addingTimeInterval(60))
+        acme.from = "Orders stuck · 4417"
+        let withNotes = MinisterPrompt.triage([], descriptions: [:], matters: [], now: at, notes: [standup, acme])
+        #expect(withNotes.contains("\nThe person's notes (their own; on a note already means no card unless something changed):\n"
+                                   + "- n-2: Acme Industrial · https://orders.example.com/order/4417 · from Orders stuck · 4417\n"
+                                   + "- n-1: Stand-up · in 50 min · 1 of 2 to tick\n"))
+        #expect(!triage.contains("The person's notes"))
         // Kept across a fresh read; forgotten by a part of the words that fits one thing, by the whole words, or by id.
         let again = Lessons(file: file)
         #expect(again.told.map(\.text) == lessons.told.map(\.text))

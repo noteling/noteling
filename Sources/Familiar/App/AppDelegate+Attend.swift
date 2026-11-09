@@ -71,6 +71,7 @@ extension AppDelegate {
         minister.recall = recall
         lessons = Lessons(file: Config.dir.appendingPathComponent(Matters.folder).appendingPathComponent(Lessons.fileName))
         minister.lessons = lessons
+        minister.notes = { [weak self] in self?.memos?.all ?? [] }   // the notes store comes a step later; read at each turn
         minister.onUrgent = { [weak notifier] matter in
             notifier?.post(matter: matter.id, title: matter.jobName, body: matter.view?.text ?? "")
         }
