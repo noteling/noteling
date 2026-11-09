@@ -122,8 +122,8 @@ struct Sticker: Identifiable, Equatable {
 }
 
 /// The matters on this Mac: one folder each in `matters/`, with `matter.json` (what code keeps and the minister's
-/// sticker) and `notes.md` (the minister's dossier). The stickers beside the note are the open matters with a sticker,
-/// urgent ones first, newest next, three at most; the rest are "and N more".
+/// sticker) and `notes.md` (the minister's dossier). The deck's cards are the open matters with a sticker, urgent ones
+/// first, newest next, one at a time; the minister keeps the deck to `deckLimit`.
 @MainActor
 final class Matters: ObservableObject {
     @Published private(set) var all: [Matter] = []
@@ -133,7 +133,8 @@ final class Matters: ObservableObject {
     var memory: MemoryLog?
 
     static let folder = "matters"
-    static let shownLimit = 3
+    /// How many cards the minister may have on the deck at once: told to it at triage, so the rest stay quiet with a why.
+    static let deckLimit = 6
     static let pressLimit = 5
     static let notesLimit = 6_000
 
@@ -172,8 +173,6 @@ final class Matters: ObservableObject {
         while all.contains(where: { $0.id == id }) { id = Matter.newID() }
         return id
     }
-    var shown: [Sticker] { Array(stickers.prefix(Self.shownLimit)) }
-    var more: Int { max(0, stickers.count - Self.shownLimit) }
 
     func notes(for id: String) -> String? {
         guard let directory, let text = try? String(contentsOf: directory.appendingPathComponent(id).appendingPathComponent("notes.md"), encoding: .utf8) else { return nil }
