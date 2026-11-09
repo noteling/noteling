@@ -357,6 +357,17 @@ struct LinkedToolsFolder {
     }
 }
 
+/// Where a tools folder's packs say they apply, read from their SKILL.md files (`ToolRegistry.places(in:)`). For the
+/// team's linked tools, which Noteling never changes: the registry reads them by it, and Settings and the log say so.
+struct PackPlaces: Equatable {
+    /// Packs that apply nowhere until a pack uses them: no `match:` at all, or one with nothing under it, and nothing
+    /// says `anywhere`; a folder without a SKILL.md counts too.
+    var libraries: [String] = []
+    /// Packs read as everywhere because the folder predates `match: anywhere` and `uses:` (0.7.13): they have no
+    /// `match` key, and no pack in the folder says either (`ToolRegistry.predatesPlaces`). Empty once one does.
+    var anywhereByOldContract: [String] = []
+}
+
 // MARK: - Keeping it current
 
 /// Keeps the linked copy current: checks at launch, every 10 minutes, when Jobs opens (at most once a minute),
@@ -533,12 +544,16 @@ final class LinkedToolsUpdater: ObservableObject {
         return ToolRegistry.packFolders(in: folder.root).map(\.lastPathComponent).filter(own.contains)
     }
 
-    /// Linked packs that apply nowhere (no `match:` at all), so Settings can say so: their tools come only with a
-    /// pack that uses them, and Noteling never changes the team's copy.
-    func libraryPacks() -> [String] {
-        guard FileManager.default.fileExists(atPath: folder.root.path) else { return [] }
+    /// Where the linked packs say they apply (`ToolRegistry.places`), less the ones your own folder overrides, so
+    /// Settings can say which apply nowhere until a pack uses them, and which the old contract carries everywhere
+    /// because the team's repository predates `match: anywhere`. Noteling never changes the team's copy.
+    func places() -> PackPlaces {
+        guard FileManager.default.fileExists(atPath: folder.root.path) else { return PackPlaces() }
         let own = Set(ToolRegistry.packFolders(in: config().resolvedToolsDir).map(\.lastPathComponent))
-        return ToolRegistry.libraryPacks(in: folder.root).filter { !own.contains($0) }
+        var places = ToolRegistry.places(in: folder.root)
+        places.libraries.removeAll(where: own.contains)
+        places.anywhereByOldContract.removeAll(where: own.contains)
+        return places
     }
 
     static func ago(_ date: Date, now: Date) -> String {

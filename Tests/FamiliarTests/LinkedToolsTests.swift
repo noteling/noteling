@@ -445,6 +445,22 @@ struct LinkedToolsTests {
         #expect(registry.packs.map(\.name) == ["My shop"])
     }
 
+    /// A team repository from before packs said `match: anywhere`: Settings says which packs it carries everywhere,
+    /// a pack your own folder overrides isn't among them, and the team's first `uses:` ends it.
+    @Test func settingsSaysWhichTeamPacksTheOldContractCarries() throws {
+        let f = Fixture()
+        defer { f.remove() }
+        let linked = f.folder.root
+        try Self.write("---\nname: Team CRM\nmatch:\n  urls: [crm.example.com]\n---\n", to: linked.appendingPathComponent("crm/SKILL.md"))
+        try Self.write("---\nname: Team notes\n---\nHow we write.", to: linked.appendingPathComponent("notes/SKILL.md"))
+        try Self.write("---\nname: Team shop\n---\nTheirs.", to: linked.appendingPathComponent("shop/SKILL.md"))
+        try Self.write("---\nname: My shop\nmatch: anywhere\n---\nMine.", to: f.personal.appendingPathComponent("shop/SKILL.md"))
+        #expect(f.makeUpdater().places() == PackPlaces(libraries: [], anywhereByOldContract: ["notes"]))
+
+        try Self.write("---\nname: Team CRM\nmatch:\n  urls: [crm.example.com]\nuses: [notes]\n---\n", to: linked.appendingPathComponent("crm/SKILL.md"))
+        #expect(f.makeUpdater().places() == PackPlaces(libraries: ["notes"], anywhereByOldContract: []))
+    }
+
     @Test func linkedDocsResolveAndPathsStayInside() throws {
         let f = Fixture()
         defer { f.remove() }

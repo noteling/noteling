@@ -114,13 +114,16 @@ struct PackSelectionTests {
         #expect(section.contains("- hr: HR. HR pages. (for hr.example.com, windows titled “HR Portal”)"))
         #expect(section.contains("- spare: Spare. Unused. (a library: its tools come along with a pack that uses it)"))
         #expect(section.contains("- orders-api__tool: A tool.") && !section.contains("spare__tool"))
-        #expect(!section.contains("No tool pack matched"))
+        #expect(!section.contains("No tool pack matched") && !section.contains("libraries above"))
 
+        // Nothing matched, and libraries are installed: the answer says so by name rather than answering in general.
         let elsewhere = scene("https://nothing.test/")
         let none = Prompt.toolPacks(registry.select(for: elsewhere), scene: elsewhere, stuffLimit: 10_000)
         #expect(none.contains("No tool pack matched the current app/URL. Answer from the screen"))
+        #expect(none.contains("If the question belongs to one of the libraries above (orders-api, spare), say so instead of answering in general: name the pack, and that it is installed but doesn't apply here, so its tools weren't used."))
         let blind = Prompt.toolPacks(registry.select(for: nil), scene: nil, stuffLimit: 10_000)
         #expect(blind.contains("No tool pack matched the current app/URL: nothing could be read about what is in front"))
+        #expect(blind.contains("libraries above (orders-api, spare)"))
         #expect(blind.contains("## Shared tool pack: Shared (anywhere)"))
 
         // Tools say where their pack stands, so a tool for this page reads differently from one for anywhere.
@@ -158,6 +161,53 @@ struct PackSelectionTests {
         #expect(ToolRegistry.libraryPacks(in: root) == ["bare", "deliberate", "empty", "later"])
         #expect(ToolRegistry.markOwnPacksAnywhereOnce(in: home.appendingPathComponent("nowhere")).isEmpty)   // no folder, no marker
         #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent("nowhere").path))
+    }
+
+    /// The team's tools from before packs said `match: anywhere`: no pack in the repository says it or `uses:`, so the
+    /// packs with no `match` apply everywhere, as they did then, and Settings says so. The first pack to say either
+    /// ends it. Your own folder is marked once instead and never read this way.
+    @Test func aTeamRepositoryFromBeforeIsReadAsItWasWritten() async throws {
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write("hr", "---\nname: HR\ndescription: HR questions.\n---\nAnswer from the HR tools.", linked: true)
+        try write("orders", "---\nname: Orders\n---\nOrders.", linked: true)
+        try write("crm", "---\nname: CRM\nmatch:\n  urls: [crm.example.com]\n---\n", linked: true)
+        try write("nowhere", "---\nname: Nowhere\nmatch:\n---\nA match line with nothing under it: nowhere, as written.", linked: true)
+        try write("mine", "---\nname: Mine\n---\nMy own, not yet asked where it applies.")
+        let before = await registry(linked: true)
+        let elsewhere = scene("https://nothing.test/")
+        let carried = before.select(for: elsewhere)
+        #expect(carried.global.map(\.dirName) == ["hr", "orders"] && carried.active.isEmpty)
+        #expect(carried.offered.flatMap(\.scripts).map(\.id) == ["hr__tool", "orders__tool"])   // their tools, as on 0.7.10
+        #expect(carried.others.map(\.dirName) == ["mine", "crm", "nowhere"])
+        let hr = try #require(before.packs.first { $0.dirName == "hr" })
+        #expect(hr.isGlobal && hr.anywhereByOldContract && !hr.isLibrary && carried.scope(of: hr) == "anywhere")
+        let mine = try #require(before.packs.first { $0.dirName == "mine" })
+        #expect(mine.isLibrary && !mine.anywhereByOldContract)   // your own: markOwnPacksAnywhereOnce's business, not this rule's
+        #expect(before.packs.first { $0.dirName == "nowhere" }?.isLibrary == true)
+        #expect(ToolRegistry.places(in: linkedRoot) == PackPlaces(libraries: ["nowhere"], anywhereByOldContract: ["hr", "orders"]))
+        #expect(ToolRegistry.libraryPacks(in: linkedRoot) == ["nowhere"])
+        let section = Prompt.toolPacks(carried, scene: elsewhere, stuffLimit: 10_000)
+        #expect(section.contains("## Shared tool pack: HR (anywhere)") && section.contains("- hr__tool: A tool."))
+        #expect(section.contains("libraries above (mine, nowhere)"))
+
+        // The first `uses:` in the repository ends it: a pack with no `match` is a library again.
+        try write("crm", "---\nname: CRM\nmatch:\n  urls: [crm.example.com]\nuses: [orders]\n---\n", linked: true)
+        let after = await registry(linked: true)
+        let nothing = after.select(for: elsewhere)
+        #expect(nothing.global.isEmpty && nothing.offered.isEmpty && nothing.others.map(\.dirName) == ["mine", "crm", "hr", "nowhere", "orders"])
+        #expect(after.packs.allSatisfy { !$0.anywhereByOldContract })
+        #expect(ToolRegistry.places(in: linkedRoot) == PackPlaces(libraries: ["hr", "nowhere", "orders"], anywhereByOldContract: []))
+        #expect(ToolRegistry.libraryPacks(in: linkedRoot) == ["hr", "nowhere", "orders"])
+        #expect(after.select(for: scene("https://crm.example.com/")).hooked.map(\.dirName) == ["orders"])
+
+        // So does a `match: anywhere`, even in a team pack your own folder overrides: the repository says it.
+        try write("crm", "---\nname: CRM\nmatch:\n  urls: [crm.example.com]\n---\n", linked: true)
+        try write("shared", "---\nname: Shared\nmatch: anywhere\n---\nTheirs.", linked: true)
+        try write("shared", "---\nname: Shared\nmatch: anywhere\n---\nMine.")
+        let overridden = await registry(linked: true)
+        #expect(overridden.select(for: elsewhere).global.map(\.dirName) == ["shared"])
+        #expect(overridden.packs.first { $0.dirName == "hr" }?.isLibrary == true)
+        #expect(ToolRegistry.places(in: linkedRoot).anywhereByOldContract.isEmpty)
     }
 
     @Test func aBriefsFactsReachTheToolsAsCompactJSON() {
