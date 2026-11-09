@@ -174,6 +174,11 @@ final class ToolPack {
     var notes: [StickyNote] = []    // notes.json: what people stuck to this tool's controls with the pen
     var paths: [String: ShowPath] = [:]   // paths/*.json: ways someone showed with Watch Me, to show the next person
     var linked = false              // from the team's linked tools (`LinkedTools`), which only an update changes
+    /// Applies everywhere because the team's repository predates `match: anywhere` and `uses:` (0.7.13): this pack has
+    /// no `match` key at all, and no linked pack says either, so it is read as packs were written then
+    /// (`ToolRegistry.predatesPlaces`). The first `match: anywhere` or `uses:` in the repository ends it. Never set on
+    /// a pack of your own: those are marked once instead (`markOwnPacksAnywhereOnce`).
+    var anywhereByOldContract = false
     /// `match: anywhere`: with every page, in every app.
     var isGlobal: Bool { match.anywhere }
     /// No rules at all: a library, whose tools and words reach a page only through a pack that uses it.
@@ -277,6 +282,14 @@ final class ToolRegistry {
             pack.paths = ShowPathStore.load(packDir: dir)
             result.append(pack)
         }
+        // The team's tools from before packs said `match: anywhere`: read as they were written (`PackPlaces`).
+        if let linkedRoot {
+            let carried = Set(Self.places(in: linkedRoot).anywhereByOldContract)
+            for pack in result where pack.linked && carried.contains(pack.dirName) {
+                pack.match.anywhere = true
+                pack.anywhereByOldContract = true
+            }
+        }
         packs = result
         let scriptCount = packs.reduce(0) { $0 + $1.scripts.count }
         let noteCount = packs.reduce(0) { $0 + $1.notes.count }
@@ -286,6 +299,10 @@ final class ToolRegistry {
         let libraries = packs.filter(\.isLibrary).map(\.dirName)
         if !libraries.isEmpty {
             Log.info("tools: libraries (no match, so used only through a pack that uses them): \(libraries.joined(separator: ", "))")
+        }
+        let carried = packs.filter(\.anywhereByOldContract).map(\.dirName)
+        if !carried.isEmpty {
+            Log.info("tools: the team's packs predate match: anywhere, so \(carried.joined(separator: ", ")) apply everywhere as they were written; the first match: anywhere or uses: in the repository ends this")
         }
     }
 
@@ -553,15 +570,43 @@ final class ToolRegistry {
         return lines.joined(separator: "\n")
     }
 
-    /// The packs of a tools folder that apply nowhere: no `match:` at all, and nothing says `anywhere`. For the
-    /// team's linked tools, which Noteling never changes, so Settings can say so.
-    nonisolated static func libraryPacks(in root: URL) -> [String] {
-        packFolders(in: root).filter { dir in
-            guard let text = try? String(contentsOf: dir.appendingPathComponent("SKILL.md"), encoding: .utf8) else { return true }
-            let rules = matchRules(parseFrontmatter(text).0["match"])
-            return rules.isEmpty && !rules.anywhere
-        }.map(\.lastPathComponent)
+    /// Whether front matter leaves where its pack applies unsaid: it has keys, but no `match` at all. A `match:` with
+    /// nothing under it says nowhere, in its way, and a SKILL.md without front matter has no place to say it, so
+    /// neither counts, exactly as `markOwnPacksAnywhereOnce` has it.
+    nonisolated static func leavesPlaceUnsaid(_ frontmatter: [String: Any]) -> Bool {
+        !frontmatter.isEmpty && frontmatter["match"] == nil
     }
+
+    /// Whether packs were written before they said where they apply (0.7.13): there are some, and none says
+    /// `match: anywhere` or `uses:`, the two keys that version brought. Then "no match" meant everywhere, so the packs
+    /// that leave it unsaid are read that way (`places`). The first pack to say either key ends it: from then on a
+    /// pack with no `match` is a library, as today's contract has it.
+    nonisolated static func predatesPlaces(_ frontmatters: [[String: Any]]) -> Bool {
+        !frontmatters.isEmpty && !frontmatters.contains { matchRules($0["match"]).anywhere || !list($0["uses"]).isEmpty }
+    }
+
+    /// Where a tools folder's packs say they apply, from their SKILL.md files: the ones that apply nowhere, and the
+    /// ones read as everywhere because the folder predates `match: anywhere` (`predatesPlaces`). For the team's linked
+    /// tools, which Noteling never changes; a folder of your own is marked once instead (`markOwnPacksAnywhereOnce`).
+    nonisolated static func places(in root: URL) -> PackPlaces {
+        let packs: [(name: String, frontmatter: [String: Any]?)] = packFolders(in: root).map { dir in
+            let text = try? String(contentsOf: dir.appendingPathComponent("SKILL.md"), encoding: .utf8)
+            return (dir.lastPathComponent, text.map { parseFrontmatter($0).0 })
+        }
+        let before = predatesPlaces(packs.compactMap { $0.frontmatter })
+        var places = PackPlaces()
+        for (name, frontmatter) in packs {
+            guard let frontmatter else { places.libraries.append(name); continue }   // no SKILL.md: nothing says where
+            if before, leavesPlaceUnsaid(frontmatter) { places.anywhereByOldContract.append(name); continue }
+            let rules = matchRules(frontmatter["match"])
+            if rules.isEmpty && !rules.anywhere { places.libraries.append(name) }
+        }
+        return places
+    }
+
+    /// The packs of a tools folder that apply nowhere: no `match:` at all, and nothing says `anywhere`, unless the
+    /// folder predates `match: anywhere` and so reads them as everywhere (`places`).
+    nonisolated static func libraryPacks(in root: URL) -> [String] { places(in: root).libraries }
 
     func script(named id: String) -> ScriptTool? {
         for p in packs { if let s = p.scripts.first(where: { $0.id == id }) { return s } }

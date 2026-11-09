@@ -322,8 +322,12 @@ page: orders.example.com/order/"), a hooked pack's says who uses it, a tool's de
 its pack is for this page, used here, or for anywhere; `others` are named with where they apply, their docs readable,
 their scripts not tools. Before packs said `match: anywhere`, no rules meant everywhere: the first launch since marks
 every own pack with no `match:` at all as `match: anywhere`, once, remembered by `.packs-say-where` in the tools folder
-(`markOwnPacksAnywhereOnce`); linked packs are never changed, so Settings names the team's packs that apply nowhere
-(`LinkedToolsUpdater.libraryPacks`). A brief's `facts` (an object) go to every pack script on that page as
+(`markOwnPacksAnywhereOnce`); linked packs are never changed, so a linked repository in which no pack says
+`match: anywhere` or `uses:` is read by that old contract (`ToolRegistry.places(in:)`, `predatesPlaces`): its packs with
+no `match` key get `match.anywhere` and `anywhereByOldContract` until the first pack in it says either. Settings names
+the team's packs that apply nowhere and the ones the old contract carries (`LinkedToolsUpdater.places`), and when
+nothing matched and a library is installed, `Prompt.toolPacks` tells the model to say so by name instead of answering
+in general. A brief's `facts` (an object) go to every pack script on that page as
 `NOTELING_FACTS` (`ExecutionTools.make(facts:)`).
 Two optional keys name scripts by file name (without `.py`):
 - `brief: <script>`: run as soon as a page the pack matches comes to the front, with no arguments (the script reads

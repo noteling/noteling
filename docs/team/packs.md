@@ -53,7 +53,9 @@ answer.
   `match: anywhere` sends a pack's tools and words with every page and every app, as the shared helpers go; such a
   pack never leads. A pack with no `match` is a library: it applies nowhere on its own. Earlier versions took no
   `match` as everywhere, so say `match: anywhere` for a pack you mean that way; Settings names the packs of yours
-  that apply nowhere.
+  that apply nowhere. A repository from those versions, in which no pack says `match: anywhere` or `uses`, is read as
+  it was written: its packs with no `match` apply everywhere, and Settings says so. The first `match: anywhere` or
+  `uses` in it ends that, so add one when you mean a pack with no `match` as a library.
 - **`uses`**: other packs, by folder name, whose tools come along on this pack's pages, with their words. Name a
   library here, or a pack for another page whose tools help on this one too; what those packs use comes along as well.
 - **The body** is the most important part for the quality of answers. Say who the people are and what they need, name

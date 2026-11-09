@@ -479,7 +479,13 @@ private struct LinkedToolsRow: View {
                         Text("\(own.joined(separator: ", ")): your own folder's \(own.count == 1 ? "copy is" : "copies are") used, not the team's.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
-                    let libraries = updater.libraryPacks()
+                    let places = updater.places()
+                    let carried = places.anywhereByOldContract
+                    if !carried.isEmpty {
+                        Text("\(carried.joined(separator: ", ")): no match, and the team's repository predates match: anywhere, so \(carried.count == 1 ? "it applies everywhere as it was" : "they apply everywhere as they were") written. The first match: anywhere or uses: in the repository ends this; a pack with no match then applies nowhere until a pack uses it.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    let libraries = places.libraries
                     if !libraries.isEmpty {
                         Text("\(libraries.joined(separator: ", ")): no match, so \(libraries.count == 1 ? "it applies" : "they apply") nowhere until a pack uses \(libraries.count == 1 ? "it" : "them"). A pack for every page says match: anywhere.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

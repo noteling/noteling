@@ -301,7 +301,8 @@ enum Prompt {
 
     /// The packs for this request: the one that leads on the page in front first, with the rule that made it the
     /// page's, then the other packs for the page, the packs they use here, and the packs for anywhere. Packs for other
-    /// pages and libraries nobody uses here are named with where they apply, and their docs stay readable.
+    /// pages and libraries nobody uses here are named with where they apply, and their docs stay readable. When nothing
+    /// matched and a library is installed, the model is told to say so by name rather than answer in general.
     static func toolPacks(_ selection: PackSelection, scene: ScreenContext?, stuffLimit: Int) -> String {
         var s = ""
         var budget = stuffLimit
@@ -346,6 +347,10 @@ enum Prompt {
             s += scene == nil
                 ? "\nNo tool pack matched the current app/URL: nothing could be read about what is in front (Noteling itself may be in front, or Accessibility is off). Answer from the question and the screen.\n"
                 : "\nNo tool pack matched the current app/URL. Answer from the screen, and grep the packs if the question sounds like it belongs to one.\n"
+            let libraries = selection.others.filter(\.isLibrary).map(\.dirName)
+            if !libraries.isEmpty {
+                s += "If the question belongs to one of the libraries above (\(libraries.joined(separator: ", "))), say so instead of answering in general: name the pack, and that it is installed but doesn't apply here, so its tools weren't used.\n"
+            }
         }
         return s
     }

@@ -66,6 +66,7 @@ struct PackContextProviderTests {
         #expect(absent.sceneNotes.isEmpty)
         #expect(absent.promptSection.contains("No tool pack matched the current app/URL: nothing could be read"))
         #expect(absent.promptSection.contains("- lib: Library. (a library: its tools come along with a pack that uses it)"))
+        #expect(absent.promptSection.contains("If the question belongs to one of the libraries above (lib), say so instead of answering in general"))
         #expect(absent.promptSection.contains("tools/shared/docs/guide.md (5 chars, use read)"))
         #expect(!absent.promptSection.contains("<file path="))
 
