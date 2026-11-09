@@ -12,13 +12,13 @@ by (`Matter.onYourNote`), "On your note" on the job's page, the receipt's count,
 it: `MatterView.next` (48 characters) from the compose turn when no action fits; the card's first tab and ← take it;
 the matter goes quiet (`Matter.handed`), the stamp is `next`, and the chat opens with the step as the request and the
 card under it (`DeckModel.request`), Do it for me set when the card has a page; the person sends it. The receipt
-lists them under Next steps. 3 built on `feature/sleep-and-mine`, stacked on that: a note the scribe writes for more than an
+lists them under Next steps. 5 built on `feature/sleep-and-mine`, stacked on that: a note the scribe writes for more than an
 hour ahead sleeps folded, its time beside its first line, and opens when its time comes near or comes; Mine on a
 matter's page in Jobs (`FolderJobsPanel.mine`). The pad's Pin tab stays out: the scribe and "note: …" cover it, and a
 tab for its own sake is against fewer features that work. The minister holding back a card about a noted thing is 1b.
-A fifth, from the 0.9.3 UAT ("show me what are the todos for me for this morning" was told, not shown): the scribe's
+Also from the 0.9.3 UAT ("show me what are the todos for me for this morning" was told, not shown): the scribe's
 `show_notes` tool, with a window of time, "still to tick" and words as its filters, brings the matching notes up for
-a moment and lists them (`MemoWindows.show(ids:)`), on `feature/show-notes-from-chat`. A sixth, also from the UAT:
+a moment and lists them (`MemoWindows.show(ids:)`), on `feature/show-notes-from-chat`. And, also from the UAT:
 Show my notes and Hide my notes in Noteling's right-click menu (and the pencil's), Hide keeping every note off the
 screen until shown again (`MemoWindows.hidden`, config `memosHidden`), on `feature/show-hide-notes`. All of it, and #98's
 fix (#106), merged to `main` on 2026-11-09 for 0.9.4.
@@ -80,7 +80,30 @@ gets the order pack's button, chosen by the minister under the same rule: never 
 Kept intact: a next step appears only on cards the minister already shows, so no new interruptions; a step it is
 unsure of is simply absent.
 
-## 3. Left inside the deck phase
+## 3. The chat as a source of findings
+
+Found in the 0.9.3 UAT (2026-11-09): "scan my calendar and Slack and give me a to-do list" was answered as if it were
+a note request, with notes written from everything the chat saw. It is judgment over sources, the minister's work,
+and the minister had no way in but a job. Two kinds of asking: "remind me X" is the person's note, written now and
+judged by nobody; "what needs me from X" is for the minister. **Built on `feature/chat-findings`:** `report_findings`
+(`ChatFindings`, Attend/Minister) takes a source name, an about, a map and rows, the job contract; the source is
+kept as `job-results/chat/<slug>/source.json` and stands among the jobs as `JobSource.chat` (no folder, no
+schedule, Run now says to ask the chat); rows are diffed against the last scan, recorded, handed to the notes keeper
+and the minister, whose turn runs at once (`flush`); the answer lists what became of each row. The coded entry
+point the user asked for, taking rows, not notes.
+
+## 4. What the person tells the minister
+
+The standing instruction, from the same UAT ("for all meetings, go through the meeting link and attach opening the
+link as the action"): the person's rules in their own words, told from the chat (`tell_the_minister`), kept with the
+lessons in `matters/taught.json` (`Instruction`, 20 at most, 200 characters each), listed to both of the minister's
+turns under "Told by the person" as preferences within its rules, never a sure finding and never a button, and shown
+on the receipt under Taught with Forget. Built on `feature/standing-instructions` (PR #111). With it, the first step of
+the "note that watches": the triage turn is handed the person's notes (`Minister.notes`, `MinisterPrompt.noteLines`),
+so a finding about a noted thing is kept quiet, the note named in why; a finding keeping the note's line fresh is still
+ahead. On `feature/minister-sees-notes`.
+
+## 5. Left inside the deck phase
 
 - The pad's Pin tab (the scribe and "note: …" cover it).
 - A note that sleeps folded until its when.

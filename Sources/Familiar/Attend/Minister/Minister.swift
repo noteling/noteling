@@ -29,6 +29,8 @@ final class Minister: ObservableObject {
     var recall: Recall?
     /// What the person taught it: jobs whose findings stay quiet unless one can't wait.
     var lessons: Lessons?
+    /// The person's own notes, read at each triage, so a finding about something they already have a note on gets no card.
+    var notes: () -> [Memo] = { [] }
 
     /// Tool rounds a turn may take: lookups, the answer, and one refusal.
     static let triageRounds = 4
@@ -200,7 +202,7 @@ final class Minister: ObservableObject {
     private func triage(_ findings: [MinisterPrompt.Shown], client: any ConversationClient) async throws {
         let shown = findings.sorted { $0.ref.key < $1.ref.key }
         let current = matters.current
-        let prompt = MinisterPrompt.triage(shown, descriptions: descriptions(for: shown), matters: current, now: clock(), lessons: lessons?.all ?? [])
+        let prompt = MinisterPrompt.triage(shown, descriptions: descriptions(for: shown), matters: current, now: clock(), lessons: lessons?.all ?? [], told: lessons?.told ?? [], notes: notes())
         var result: (verdicts: [MinisterPrompt.Verdict], recompose: Set<String>)?
         let ids = Set(current.map(\.id))
         let refs = shown.map(\.ref)
@@ -298,7 +300,7 @@ final class Minister: ObservableObject {
             memory.append(["matter": matter.id, "closed": "its findings are gone"])
             return
         }
-        let prompt = MinisterPrompt.compose(matter, findings: findings, descriptions: descriptions(for: findings), notes: matters.notes(for: matter.id), now: clock())
+        let prompt = MinisterPrompt.compose(matter, findings: findings, descriptions: descriptions(for: findings), notes: matters.notes(for: matter.id), now: clock(), told: lessons?.told ?? [])
         var result: (view: MatterView, notes: String?)?
         try await converse(client, system: MinisterPrompt.composeSystem, prompt: prompt, tool: MinisterPrompt.composeDefinition, effort: config().effort,
                            rounds: Self.composeRounds) { input in

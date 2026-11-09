@@ -7,6 +7,7 @@ import SwiftUI
 enum FolderJobWords {
     /// "every 15 minutes", "every hour", "every 2 hours", "every day", or "when you run it".
     static func every(_ job: FolderJob) -> String {
+        if job.source == .chat { return "when you ask the chat to look again" }
         guard let minutes = job.everyMinutes else { return "when you run it" }
         if minutes == 1_440 { return "every day" }
         if minutes % 60 == 0 { return minutes == 60 ? "every hour" : "every \(minutes / 60) hours" }

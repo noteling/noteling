@@ -163,7 +163,7 @@ final class FolderJobConversation {
     /// A job as the chat sees it.
     private func summary(_ job: FolderJob) -> [String: Any] {
         var result: [String: Any] = ["name": job.name, "id": job.id.uuidString, "path": job.path,
-                                     "from": job.isTeam ? "your team's tools" : "your own jobs folder",
+                                     "from": job.source == .team ? "your team's tools" : job.source == .chat ? "a scan you did for the person (report_findings)" : "your own jobs folder",
                                      "runs": FolderJobWords.every(job), "last_run": FolderJobWords.lastRun(job, now: now())]
         if !job.about.isEmpty { result["about"] = JobWords.clip(job.about, 400) }
         if let names = FolderJobWords.names(job.contributors) { result["shared_by"] = names }

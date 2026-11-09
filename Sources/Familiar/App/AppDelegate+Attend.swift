@@ -71,13 +71,21 @@ extension AppDelegate {
         minister.recall = recall
         lessons = Lessons(file: Config.dir.appendingPathComponent(Matters.folder).appendingPathComponent(Lessons.fileName))
         minister.lessons = lessons
+        minister.notes = { [weak self] in self?.memos?.all ?? [] }   // the notes store comes a step later; read at each turn
         minister.onUrgent = { [weak notifier] matter in
             notifier?.post(matter: matter.id, title: matter.jobName, body: matter.view?.text ?? "")
         }
-        feature.runner.onFindings = { [weak self] job, change in
+        let reported: (FolderJob, FindingsChange) -> Void = { [weak self] job, change in
             self?.jobNotes?.notice(job, change: change)   // the rows the job marks as notes are the person's, before the minister sees the rest
             self?.minister.notice(job, change: change)
         }
+        feature.runner.onFindings = reported
+        // The chat as a source: what it reads for the person goes to the minister as a job's rows do, and the turn is now.
+        let scans = ChatFindings(store: feature.store, matters: matters, memory: memory)
+        scans.onFindings = reported
+        scans.takeTurn = { [weak self] in await self?.minister.flush() }
+        scans.lessons = lessons
+        chatFindings = scans
         feature.buttons.record = { [weak self] job, row, action, press in
             guard let self else { return }
             let ref = FindingRef(job: job, id: row.id)
@@ -284,7 +292,7 @@ extension AppDelegate {
         // The scribe: "remind me to…" on the pad puts the paper up at once, and the model writes it properly.
         let scribe = MemoScribe(store: store, windows: windows)
         memoScribe = scribe
-        assistant.extraRoutes = { [weak scribe] in scribe?.routes() ?? [] }
+        assistant.extraRoutes = { [weak scribe, weak self] in (scribe?.routes() ?? []) + (self?.chatFindings?.routes() ?? []) }
         assistant.onQuestion = { [weak scribe] question, ctx in scribe?.began(question, page: ctx?.url) }
         assistant.onTurnEnd = { [weak scribe] in scribe?.turnEnded() }
     }

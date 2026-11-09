@@ -12,6 +12,11 @@ minister or a job: you write it, and it stays until you take it down.
 - **Write it yourself.** Right-click Noteling and choose **New note**, or choose **New Note** in the pencil icon in
   the menu bar. A blank sticky appears near Noteling, ready to type on.
 
+The minister reads your notes at every turn, so a finding about something you already have a note on gets no card of
+its own unless something about it changed. Two kinds of asking look alike and are not. "Remind me to call Marco" is a note: yours, written now, judged by nobody.
+"Scan my calendar and tell me what needs me" is a question for the minister: the chat gathers what it reads and hands
+it over as findings, and what deserves you comes back as cards on the deck. [Ask the chat to look](jobs.md#ask-the-chat-to-look).
+
 ## Where it sits
 
 A note is an ordinary window, on the Space you made it on: on top while you write on it, covered by the window you

@@ -64,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var memos: MemoStore!
     var memoWindows: MemoWindows?
     var jobNotes: JobNotes?
+    var chatFindings: ChatFindings?
     var memoScribe: MemoScribe?
     /// The deck is open: the person clicked the lamp, and no card has run out since.
     var deckOpen = false
