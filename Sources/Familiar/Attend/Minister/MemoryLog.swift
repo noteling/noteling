@@ -14,7 +14,7 @@ final class MemoryLog {
     init(directory: URL) { self.directory = directory }
 
     /// Where a job's lines say which job: `team/holiday/oct/gm`, `own/stuck-orders`.
-    static func name(of job: FolderJob) -> String { (job.isTeam ? "team/" : "own/") + job.path }
+    static func name(of job: FolderJob) -> String { job.source.key + "/" + job.path }
 
     /// A job ran: what it checked, how many it read and found, and what it said.
     func ran(_ job: FolderJob, outcome: FindingsOutcome) {

@@ -121,6 +121,7 @@ final class FolderJobRunner: ObservableObject {
     @discardableResult
     func run(_ id: UUID) -> String? {
         guard let job = store.job(id: id) else { return "This job is no longer here." }
+        guard job.source != .chat else { return "The chat read this for you. Ask it to look again." }
         guard job.on else { return "Turn it on first." }
         guard job.running(at: now()) else { return "It runs only between its start and its end." }
         asked.insert(id)

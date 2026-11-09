@@ -172,6 +172,7 @@ struct JobRow: View {
     static func symbol(_ kind: Job.Kind) -> String {
         switch kind {
         case .job, .teamJob: return "folder"
+        case .chatScan: return "bubble.left"
         }
     }
 }

@@ -5,8 +5,9 @@ import Foundation
 /// The Jobs page lists them as one list; this is each one as that list and the job's own page say it.
 struct Job: Identifiable, Equatable {
     enum Kind: Equatable {
-        /// Yours, in `jobs/`; your team's, in their linked tools, which runs only once you turn it on.
-        case job, teamJob
+        /// Yours, in `jobs/`; your team's, in their linked tools, which runs only once you turn it on; the chat's, a
+        /// source it read for you, scanned again only when you ask.
+        case job, teamJob, chatScan
     }
 
     /// How a job stands, on its row and its page. A job that is ready says nothing.
@@ -63,6 +64,7 @@ struct Job: Identifiable, Equatable {
     var sharedBy: String? = nil
 
     var isTeam: Bool { kind == .teamJob }
+    var isChat: Bool { kind == .chatScan }
     var isLive: Bool { phase == .live }
     /// Everything its row says is wrong: what needs the person, then its last run's problem.
     var allProblems: [String] { problems + (runProblem.map { [$0] } ?? []) }
@@ -198,9 +200,9 @@ enum Jobs {
         var problems = missing.isEmpty ? [] : [needs(missing)]
         if phase == .ended { problems = [] }
         let line = aboutLine(job)
-        let about = line.isEmpty ? "Runs its job.py" : line
-        return Job(id: job.id, kind: job.isTeam ? .teamJob : .job, name: job.name, path: job.isTeam ? job.path : "",
-                   does: about + (job.isTeam ? " · " + fromTeam : ""), every: FolderJobWords.schedule(job, now: now),
+        let about = line.isEmpty ? (job.source == .chat ? "What the chat read for you" : "Runs its job.py") : line
+        return Job(id: job.id, kind: job.source == .team ? .teamJob : job.source == .chat ? .chatScan : .job, name: job.name, path: job.isTeam ? job.path : "",
+                   does: about + (job.isTeam ? " · " + fromTeam : job.source == .chat ? " · read by the chat for you" : ""), every: FolderJobWords.schedule(job, now: now),
                    lastRun: FolderJobWords.lastRun(job, now: now), lastRunAt: job.state.lastRunAt, status: status,
                    resultIsProblem: live && job.on && failed, problems: problems,
                    runProblem: live && failed ? job.state.error : nil,
@@ -250,7 +252,7 @@ enum Jobs {
         guard job.isLive else { return job.phase == .upcoming && job.isTeam ? [.onOff] : [] }
         var controls: [Control] = []
         if job.status == .needsSettings && canOpenSettings { controls.append(.openSettings) }
-        else if job.on { controls.append(.runNow) }
+        else if job.on, !job.isChat { controls.append(.runNow) }   // the chat's sources are scanned by asking it
         if job.isTeam { controls.append(.onOff) }
         return controls
     }

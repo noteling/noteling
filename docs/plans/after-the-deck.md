@@ -79,6 +79,18 @@ gets the order pack's button, chosen by the minister under the same rule: never 
 Kept intact: a next step appears only on cards the minister already shows, so no new interruptions; a step it is
 unsure of is simply absent.
 
+## 4. The chat as a source of findings
+
+Found in the 0.9.3 UAT (2026-11-09): "scan my calendar and Slack and give me a to-do list" was answered as if it were
+a note request, with notes written from everything the chat saw. It is judgment over sources, the minister's work,
+and the minister had no way in but a job. Two kinds of asking: "remind me X" is the person's note, written now and
+judged by nobody; "what needs me from X" is for the minister. **Built on `feature/chat-findings`:** `report_findings`
+(`ChatFindings`, Attend/Minister) takes a source name, an about, a map and rows, the job contract; the source is
+kept as `job-results/chat/<slug>/source.json` and stands among the jobs as `JobSource.chat` (no folder, no
+schedule, Run now says to ask the chat); rows are diffed against the last scan, recorded, handed to the notes keeper
+and the minister, whose turn runs at once (`flush`); the answer lists what became of each row. The coded entry
+point the user asked for, taking rows, not notes.
+
 ## 3. Left inside the deck phase
 
 - The pad's Pin tab (the scribe and "note: …" cover it).

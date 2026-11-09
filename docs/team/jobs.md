@@ -210,6 +210,14 @@ Ended (2) · Show**, where it can still be opened, and an upcoming job can be tu
 Push a later `ends`, and the job comes back once the update reaches each Mac. Give every job for an event an `ends`, so
 it leaves people's desks when the event does.
 
+## The chat as a source
+
+The chat can report findings too, with the same contract: when a person asks it what needs them from somewhere
+with no job, it gathers rows from what it can read and calls `report_findings` with a source name, a description
+like a job.md, a `map` and the rows. The source is kept under `job-results/chat/<slug>/` as a job of the chat's kind,
+with no job.py and no schedule, so the next scan is diffed against the last. A job you write for the same source
+will do it better and on its own; the chat is the way in before that exists.
+
 ## Turning it on
 
 Each person turns on the jobs that are theirs, in Jobs or by asking in chat, as many as they like. Only those run on their

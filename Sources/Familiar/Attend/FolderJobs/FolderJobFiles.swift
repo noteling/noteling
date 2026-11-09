@@ -175,7 +175,7 @@ enum FolderJobFiles {
 
     /// A job's id, the same on every Mac and through every update: made from whose it is and its path.
     static func id(_ source: JobSource, _ path: String) -> UUID {
-        JobFiles.derivedID((source == .team ? "job-team:" : "job-own:") + path)
+        JobFiles.derivedID("job-\(source.key):" + path)
     }
 
     // MARK: files
