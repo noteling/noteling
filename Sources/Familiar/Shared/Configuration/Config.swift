@@ -44,6 +44,7 @@ struct Config: Codable {
     var stickerScale: Double = 1              // how big the stickers are drawn, 1 = as designed (`StickersLook.steps`)
     var memoScale: Double = 1                 // how big your own notes are drawn, 1 = as designed (`PaperLook.steps`)
     var lampHidden: Bool = false              // the lamp on the bubble, hidden from its own menu
+    var memosHidden: Bool = false             // your notes, off the screen from Noteling's menu until shown again
     var pokeHintsShown: Int = 0               // the "double-click to chat" callout shows on the first few pokes
     var secretsStore: String = "auto"         // "auto": Keychain for Developer ID builds, file for dev builds; or "file" / "keychain"
     var watchMaxImages: Int = 60              // Watch me: most images sent to Claude when writing a recording up
@@ -161,6 +162,7 @@ struct Config: Codable {
         stickerScale = try c.decodeIfPresent(Double.self, forKey: .stickerScale) ?? d.stickerScale
         memoScale = try c.decodeIfPresent(Double.self, forKey: .memoScale) ?? d.memoScale
         lampHidden = try c.decodeIfPresent(Bool.self, forKey: .lampHidden) ?? d.lampHidden
+        memosHidden = try c.decodeIfPresent(Bool.self, forKey: .memosHidden) ?? d.memosHidden
         pokeHintsShown = try c.decodeIfPresent(Int.self, forKey: .pokeHintsShown) ?? 0
         secretsStore = try c.decodeIfPresent(String.self, forKey: .secretsStore) ?? d.secretsStore
         watchMaxImages = try c.decodeIfPresent(Int.self, forKey: .watchMaxImages) ?? d.watchMaxImages

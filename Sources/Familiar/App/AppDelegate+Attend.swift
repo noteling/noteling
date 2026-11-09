@@ -255,7 +255,13 @@ extension AppDelegate {
         store.memory = matters?.memory ?? MemoryLog(directory: Config.dir.appendingPathComponent(MemoryLog.folder))
         memos = store
         Log.info("notes: \(store.all.count) in \(MemoStore.folder)/")
-        let windows = MemoWindows(store: store, scale: CGFloat(config.memoScale), hideFromScreenShare: config.hideFromScreenShare)
+        let windows = MemoWindows(store: store, scale: CGFloat(config.memoScale), hideFromScreenShare: config.hideFromScreenShare, hidden: config.memosHidden)
+        shell.notesHidden = config.memosHidden
+        windows.onHiddenChange = { [weak self] hidden in
+            self?.shell.notesHidden = hidden
+            self?.config.memosHidden = hidden
+            self?.config.save()
+        }
         windows.orbFrame = { [weak self] in
             guard let self, self.panel.isVisible, !self.shell.expanded else { return nil }
             return self.panel.frame
@@ -268,6 +274,9 @@ extension AppDelegate {
         memoWindows = windows
         shell.onNewNote = { [weak self] in self?.newNote() }
         shell.onGlance = { [weak self] in self?.memoWindows?.toggleGlance() }
+        shell.onShowNotes = { [weak self] in self?.memoWindows?.showAll() }
+        shell.onHideNotes = { [weak self] in self?.memoWindows?.hide() }
+        store.$all.receive(on: RunLoop.main).sink { [weak self] all in self?.shell.noteCount = all.count }.store(in: &cancellables)
         // The rows a job marks as notes become notes of yours, near the orb, with no minister.
         let notes = JobNotes(store: store, memory: store.memory)
         notes.spot = { [weak self] in self?.memoWindows?.spot() }
@@ -301,6 +310,7 @@ extension AppDelegate {
     }
 
     @objc func menuShowNotes() { showNotes() }
+    @objc func menuHideNotes() { memoWindows?.hide() }
 
 
     /// The stickers were hidden from their own menu: a callout under the menu bar icon says where they come back from.

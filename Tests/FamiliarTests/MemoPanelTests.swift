@@ -154,6 +154,19 @@ import Testing
         windows.showAll()
         windows.spaceChanged()
         #expect(!windows.glancing && windows.panels.values.allSatisfy { !$0.up })
+        // Hide my notes: off the screen until shown, by the menu, the orb, the chat or a new note; told to the config.
+        var hiddenChanges: [Bool] = []
+        windows.onHiddenChange = { hiddenChanges.append($0) }
+        windows.showAll()
+        windows.hide()
+        #expect(windows.hidden && !windows.glancing && windows.panels.values.allSatisfy { !$0.up })
+        windows.hide()   // twice says nothing more
+        windows.show(ids: ["n-1"])
+        #expect(!windows.hidden && windows.glancing && windows.panels["n-1"]!.up)
+        windows.endGlance()
+        windows.hide()
+        windows.newNote(memo("n-3", text: "Fresh"))
+        #expect(!windows.hidden && hiddenChanges == [true, false, true, false])
         // A note that woke is passed by: it stays up and glowing until it is had.
         windows.panels["n-1"]!.wake()
         windows.showAll()
