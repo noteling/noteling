@@ -5,6 +5,11 @@ two questions were asked: how a script of one's own reaches the paper with a sti
 a next step under a card. Nothing here is built. It comes after the round closes and the stack merges, and after #98
 (a linked pack with no `match` stopped working in 0.7.13), which is a bug on `main` and goes first.
 
+**Status (2026-11-09):** 1a and 1b built on `feature/row-notes`, stacked on `release/0.9.3`: the `note` role in a
+job's `map`, `JobNotes` (Attend/Memos) as the keeper, `Memo.finding` and `Memo.from`, the minister passing such rows
+by (`Matter.onYourNote`), "On your note" on the job's page, the receipt's count, and the two new sections of
+`docs/use/notes.md`. Allowed for any job the person turned on, as the lean said.
+
 ## Where things stand (checked 2026-11-09 against 0.9.2)
 
 - **A note is a file, and the folder is watched.** Live: a shell wrote a file with no front matter into `memos/` while

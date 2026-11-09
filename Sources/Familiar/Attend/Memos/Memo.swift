@@ -3,7 +3,7 @@ import Foundation
 
 /// One of your own notes: the words you wrote or dictated, on paper of your colour, on your screen where you put it. It may
 /// carry a when, a page and a checklist, and remembers the words you said when the scribe wrote it and the matter it
-/// came from when it was a card. It is a file (`MemoFile`), so Finder is its folder.
+/// came from when it was a card, or the finding it is when a job made it. It is a file (`MemoFile`), so Finder is its folder.
 struct Memo: Identifiable, Equatable {
     var id: String
     var headline: String?
@@ -16,6 +16,10 @@ struct Memo: Identifiable, Equatable {
     var asked: String?
     /// The matter whose card became this note.
     var matter: String?
+    /// The finding this note is, when a job made it (`JobNotes`): its job and id, as the memory log keys them.
+    var finding: String?
+    /// Where it came from, for the paper's last line: the job's name and the row's id ("Orders stuck · 4417").
+    var from: String?
     /// Where it sits: the paper's top-left corner on the screen, so it grows downward as it is written; nil until placed.
     var at: CGPoint?
     var collapsed = false
@@ -80,7 +84,7 @@ enum MemoFile {
         return Memo(id: id, headline: headline?.isEmpty == false ? headline : nil, text: body, items: items,
                     colour: PaperColour(rawValue: head["colour"] ?? "") ?? .yellow,
                     when: head["when"].flatMap(date), page: value(head["page"]), asked: value(head["asked"]), matter: value(head["matter"]),
-                    at: head["at"].flatMap(point), collapsed: head["collapsed"] == "true",
+                    finding: value(head["finding"]), from: value(head["from"]), at: head["at"].flatMap(point), collapsed: head["collapsed"] == "true",
                     createdAt: created, updatedAt: head["updated"].flatMap(date) ?? modified ?? created)
     }
 
@@ -104,6 +108,8 @@ enum MemoFile {
         if let page = memo.page, !page.isEmpty { head.append(("page", oneLine(page))) }
         if let asked = memo.asked, !asked.isEmpty { head.append(("asked", oneLine(asked))) }
         if let matter = memo.matter, !matter.isEmpty { head.append(("matter", matter)) }
+        if let finding = memo.finding, !finding.isEmpty { head.append(("finding", finding)) }
+        if let from = memo.from, !from.isEmpty { head.append(("from", oneLine(from))) }
         if let at = memo.at { head.append(("at", "\(Self.number(at.x)),\(Self.number(at.y))")) }
         if memo.collapsed { head.append(("collapsed", "true")) }
         head.append(("created", stamp(memo.createdAt)))

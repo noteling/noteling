@@ -34,6 +34,8 @@ struct Receipt: Equatable {
     /// The matters the person put away, newest first.
     var putAway: [Matter] = []
     var looked: [Looked] = []
+    /// Notes made today by jobs, for the rows they mark as notes (`JobNotes`).
+    var noted = 0
 
     static let listLimit = 30
 
@@ -62,6 +64,7 @@ struct Receipt: Equatable {
             if line["ran"] != nil, let job = line["job"] as? String {
                 lastLooked[job] = Looked(job: job, name: line["name"] as? String ?? job, at: at)
             }
+            if line["note"] != nil, line["made"] != nil { receipt.noted += 1 }
         }
         receipt.did.reverse()
         receipt.yours = matters.all.filter { $0.state == .yours }.sorted { $0.updatedAt > $1.updatedAt }
@@ -70,13 +73,14 @@ struct Receipt: Equatable {
         return receipt
     }
 
-    var isEmpty: Bool { did.isEmpty && decided == 0 && yours.isEmpty && putAway.isEmpty }
+    var isEmpty: Bool { did.isEmpty && decided == 0 && yours.isEmpty && putAway.isEmpty && noted == 0 }
 
     /// "Noteling did 2 · you decided 5", "Nothing came through the deck today."
     var tally: String {
-        guard did.count > 0 || decided > 0 else { return "Nothing came through the deck today." }
+        guard did.count > 0 || decided > 0 || noted > 0 else { return "Nothing came through the deck today." }
         var parts = ["Noteling did \(did.count)", "you decided \(decided)"]
         if undone > 0 { parts.append("\(undone) taken back") }
+        if noted > 0 { parts.append("\(noted) on your notes") }
         return parts.joined(separator: " · ")
     }
 

@@ -42,6 +42,25 @@ others:
   so "what was on my note about Marco?" in chat still finds it.
 - **Right-click** for the paper's colour (yellow, pink, blue or green), Fold, Bigger and Smaller, and Remove.
 
+## From a job
+
+A job can make notes too. A row it marks as a note (`note` in its job.json) becomes a sticky of yours the moment it
+appears, with no card and no minister, and its last line says which job and row it came from. Its words keep up with
+the row until you write on it; what you write is yours. When the row is gone, the note goes to the Trash. [Jobs](../team/jobs.md#a-row-as-a-note)
+says how a job marks one.
+
+## From a script
+
+Anything that can write a file can make a note. Drop a markdown file into `~/.noteling/memos/` and the note is on
+your screen within a second; delete the file and the note goes. The file's name is the note's id, so writing the same
+name again changes the note rather than making another. The front matter is optional; its lines are `colour` (yellow,
+pink, blue or green), `when` (an ISO 8601 time), `page` (an address), `at` (the paper's top-left corner on the
+screen, as `x,y`), `collapsed`, `created` and `updated`. One line from a shell:
+
+```
+printf '%s\n' '---' 'when: 2026-11-10T15:00:00-05:00' 'colour: blue' '---' '# Stand-up' 'Bring the two open bugs.' > ~/.noteling/memos/standup.md
+```
+
 ## The files
 
 Every note is a file in `~/.noteling/memos/`, named by its id (`n-1a2b3c4d.md`). A few lines between `---` keep its

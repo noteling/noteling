@@ -118,7 +118,7 @@ struct MemoPanelView: View {
 
     private var reading: some View {
         PaperView(headline: state.memo.headline, text: state.memo.text, items: state.memo.items, when: state.memo.when, page: state.memo.page,
-                  hand: .yours, colour: state.memo.colour, scale: scale, collapsed: state.memo.collapsed, now: state.now,
+                  byline: state.memo.from, hand: .yours, colour: state.memo.colour, scale: scale, collapsed: state.memo.collapsed, now: state.now,
                   tilt: PaperLook.tilt(for: state.memo.id), onToggle: actions.toggle, onPage: actions.openPage)
             .contentShape(Rectangle())
             .onTapGesture {

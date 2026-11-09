@@ -104,6 +104,7 @@ no prose about it. It returns its own table, and `map` in `job.json` says which 
 | `at` | The column saying when it happened. With `at`, rows are events: a run reports what happened, nothing is ever gone. | no |
 | `what` | A column holding a ready sentence, for a job whose rows don't share a shape. | no |
 | `files` | A column naming files the job left in its output. | no |
+| `note` | A column whose value marks the row as a note of the person's: a sticky the job makes, with no minister and no Mine. Empty, "false", "no" or "0" is not. See [A row as a note](#a-row-as-a-note). | no |
 
 Column names are the keys of the rows. A row without the `id` column, or with an empty one, is left out and the job's
 page says so.
@@ -134,6 +135,15 @@ sticker's words, picks one of your actions at most, and keeps notes on why. A fi
 at once, in code. The person can put a sticker away; it stays away until the finding changes and the minister thinks they
 should see it again. Clicking a sticker opens the matter: the words, the notes, the findings as your rows, and the buttons.
 An urgent sticker is also a notification.
+
+**A row as a note.** A row the job marks with its `note` column skips the minister: it becomes one of the person's own
+notes the moment it appears, with no card and no Mine. Its headline is the `what` column, else the first `about`
+value, else the job's name and the id; the other `about` values are its words; `where` is its page and `due` its
+time; its last line says which job and row it is. While the row stays, the parts the person hasn't rewritten follow
+it; a part they changed is theirs. When the row is gone, or no longer marked, the note peels to the Trash and the log
+says so. The job's page lists such a row as "On your note". A note is attention the person never asked the minister
+to weigh, so mark a row only when they would have written the note themselves: their own order stuck, their own
+page down.
 
 **Limits.** Up to 500 findings a run; past that, the first 500 are kept and the page says so. A value longer than 4,000
 characters is cut. A job with more to report than that boils it down first: the job's output can still hold the whole

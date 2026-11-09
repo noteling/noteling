@@ -63,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Your own notes, as files, and on the screen.
     var memos: MemoStore!
     var memoWindows: MemoWindows?
+    var jobNotes: JobNotes?
     var memoScribe: MemoScribe?
     /// The deck is open: the person clicked the lamp, and no card has run out since.
     var deckOpen = false

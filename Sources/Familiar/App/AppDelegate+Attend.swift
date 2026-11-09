@@ -70,7 +70,10 @@ extension AppDelegate {
         minister.onUrgent = { [weak notifier] matter in
             notifier?.post(matter: matter.id, title: matter.jobName, body: matter.view?.text ?? "")
         }
-        feature.runner.onFindings = { [weak self] job, change in self?.minister.notice(job, change: change) }
+        feature.runner.onFindings = { [weak self] job, change in
+            self?.jobNotes?.notice(job, change: change)   // the rows the job marks as notes are the person's, before the minister sees the rest
+            self?.minister.notice(job, change: change)
+        }
         feature.buttons.record = { [weak self] job, row, action, press in
             guard let self else { return }
             let ref = FindingRef(job: job, id: row.id)
@@ -242,8 +245,8 @@ extension AppDelegate {
     // MARK: your own notes
 
     /// Your notes: files in `memos/`, each an ordinary window where you put it. A new one comes from the menu bar, the
-    /// bubble's menu, or the scribe in chat; the same menus bring them all up; the minister and the chat read them
-    /// through recall.
+    /// bubble's menu, the scribe in chat, or a job's row marked as a note; a click on the orb brings them all up; the
+    /// minister and the chat read them through recall.
     func setupMemos() {
         let store = MemoStore(directory: Config.dir.appendingPathComponent(MemoStore.folder))
         store.memory = matters?.memory ?? MemoryLog(directory: Config.dir.appendingPathComponent(MemoryLog.folder))
@@ -262,6 +265,10 @@ extension AppDelegate {
         memoWindows = windows
         shell.onNewNote = { [weak self] in self?.newNote() }
         shell.onGlance = { [weak self] in self?.memoWindows?.toggleGlance() }
+        // The rows a job marks as notes become notes of yours, near the orb, with no minister.
+        let notes = JobNotes(store: store, memory: store.memory)
+        notes.spot = { [weak self] in self?.memoWindows?.spot() }
+        jobNotes = notes
         // The scribe: "remind me to…" on the pad puts the paper up at once, and the model writes it properly.
         let scribe = MemoScribe(store: store, windows: windows)
         memoScribe = scribe
