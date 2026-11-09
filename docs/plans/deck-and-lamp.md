@@ -64,6 +64,16 @@ asked how a script reaches the paper and whether the minister can put a next ste
 `after-the-deck.md`. Running a throwaway job through 0.9.2 found the triage prompt still saying three matters show at
 once, the stack's rule: the deck holds six (`Matters.deckLimit`, PR #102, stacked on `release/0.9.2`).
 
+**Round two, finding four (2026-11-09):** on 0.9.2 "the manual pin is a friction itself", and both of its positions were
+wrong: pinned was over the person's work, unpinned under all of it. Where a note sits is no longer anyone's decision. A
+note is an **ordinary window** of its Space: on top while written on, covered by the window the person clicks into, back
+when that moves. It comes up by itself three ways and no others: for a moment when its time comes within the hour (the
+moment the paper starts counting down), at its time until clicked, and all together for a glance, which is now **a
+click on the orb** (the person's pick over a shake gesture and the right-click menu): twenty seconds, ended sooner by
+another click, a switch of Space, or the chat or the pen opening; a note clicked meanwhile stays in front. The pin,
+Unpin All Notes and the desktop level are gone; a `pinned` or `top` line in an older file is read past. PR #103,
+stacked on #102; `release/0.9.3` carries both.
+
 ## Why
 
 The stickers as shipped (0.8.0 to 0.8.3) are three slabs of paper beside the orb, always on, each headed by the name of
@@ -263,7 +273,8 @@ team has used one). Formatting, lists, folders, tags, sync. Sound (off by defaul
 - A timed note wakes on its own and does not go through the lamp: the lamp stays the minister's.
 - A separate lamp beside the orb rather than the orb glowing: the orb's states belong to Ask and Act.
 - Body face for the minister's text: the pad's body (SF) first, New York as the alternative in the fixture.
-- Your notes float above windows by default, as the orb does, with Keep below windows as the alternative.
+- Your notes as ordinary windows, after two rounds found floating and the desktop both wrong (the first lean was
+  floating, with Keep below windows as the alternative).
 - Mine becomes a note rather than a line in a list; if screens fill up, the receipt's Yours is the fallback.
 - Dragging selected text onto the orb makes a note that knows its page: cheap, and the first step toward adjacency.
 - Six cards per deck; five seconds of undo; one good card per deck at most.
