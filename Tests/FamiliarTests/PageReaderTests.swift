@@ -56,6 +56,21 @@ struct PageReaderTests {
         #expect(slow.truncated && slow.elements.count < 500)
     }
 
+    @Test func aPageStillLoadingSaysSo() {
+        func read(_ attributes: [String: Any]) -> PageWalk.Result? {
+            var all = attributes
+            all["AXURL"] = "https://example.test/"
+            let page = FakeNode("AXWebArea", all, frame: Self.viewport, [FakeNode("AXButton", ["AXTitle": "OK"], frame: CGRect(x: 10, y: 10, width: 80, height: 30))])
+            return PageWalk.read(window: FakeNode("AXWindow", [:], frame: Self.viewport, [page]), viewport: Self.viewport)
+        }
+        // Chromium gives how far the page has loaded, Safari whether it has; a browser saying neither has loaded.
+        #expect(read(["AXLoadingProgress": 0])?.loading == true)
+        #expect(read(["AXLoadingProgress": 1])?.loading == false)
+        #expect(read(["AXLoaded": false])?.loading == true)
+        #expect(read(["AXLoaded": true])?.loading == false)
+        #expect(read([:])?.loading == false)
+    }
+
     @Test func aWindowWithoutAPageReadsNothing() {
         let window = FakeNode("AXWindow", [:], frame: Self.viewport, [FakeNode("AXButton", ["AXTitle": "OK"])])
         #expect(PageWalk.read(window: window, viewport: Self.viewport) == nil)

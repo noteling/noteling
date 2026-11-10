@@ -130,6 +130,49 @@ struct HintsTests {
         #expect(reads == 2)
     }
 
+    @Test func thePageIsLookedAtAgainUntilTheMarksSettle() async {
+        // A page laying itself out after a reload or in a new tab: the control moves between the first looks, then
+        // stays; later it moves once more, after a touch of the page.
+        let frames = [NSRect(x: 100, y: 500, width: 120, height: 30), NSRect(x: 100, y: 420, width: 120, height: 30), NSRect(x: 100, y: 400, width: 120, height: 30)]
+        var reads = 0
+        let hints = controller { _, notes in
+            reads += 1
+            let frame = reads <= 4 ? frames[min(reads, 3) - 1] : frames[0]
+            return .init(marks: notes.map { .init(note: $0, frame: frame) })
+        }
+        hints.retryDelays = [0.05, 0.05, 0.05]
+        hints.arrive(scene(), notes: [note("a")])
+        await hints.settle()
+        #expect(hints.marks.first?.frame == frames[0])
+        try? await Task.sleep(for: .milliseconds(500))
+        await hints.settle()
+        // Looked at again after each move, once more to see it stayed, then left alone.
+        #expect(hints.marks.first?.frame == frames[2])
+        #expect(reads == 4)
+        // A touch of the page (a click, a key, the wheel, another element with the focus) starts the looks over.
+        hints.touch()
+        hints.read()
+        await hints.settle()
+        try? await Task.sleep(for: .milliseconds(300))
+        await hints.settle()
+        #expect(hints.marks.first?.frame == frames[0])
+        #expect(reads == 6)
+    }
+
+    @Test func aPageStillLoadingIsLookedAtAgainThoughEveryHintWasPlaced() async {
+        var reads = 0
+        let hints = controller { _, notes in
+            reads += 1
+            return .init(marks: notes.map { .init(note: $0, frame: self.small) }, loading: reads < 3)
+        }
+        hints.retryDelays = [0.05, 0.05, 0.05]
+        hints.arrive(scene(), notes: [note("a")])
+        await hints.settle()
+        try? await Task.sleep(for: .milliseconds(500))
+        await hints.settle()
+        #expect(reads == 3)
+    }
+
     @Test func thePenUpKeepsTheMarksAway() async {
         var penUp = true
         let hints = controller { _, notes in .init(marks: notes.map { .init(note: $0, frame: self.small) }) }

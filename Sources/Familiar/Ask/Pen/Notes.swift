@@ -139,6 +139,15 @@ struct NoteAnchor: Codable, Equatable {
         return NSRect(x: x, y: top - h, width: w, height: h)
     }
 
+    /// Where the control was in the window, as a rectangle in this window, in Accessibility's top-left coordinates
+    /// (the page reader's): the place of a hint with no name to go by; and of several controls by one name, or
+    /// several named neighbours, the hint's is the one nearest it.
+    func spot(in window: CGRect?) -> CGRect? {
+        guard let window, let r = rect, r.count == 4 else { return nil }
+        return CGRect(x: window.minX + window.width * r[0], y: window.minY + window.height * r[1],
+                      width: window.width * r[2], height: window.height * r[3])
+    }
+
     static func fractions(of rect: NSRect, in windowFrame: NSRect) -> [Double] {
         guard windowFrame.width > 0, windowFrame.height > 0 else { return [0, 0, 0, 0] }
         let x = (rect.minX - windowFrame.minX) / windowFrame.width

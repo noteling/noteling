@@ -279,14 +279,17 @@ final class WandController {
             : "\(count) more hints here are for things not on screen. Point the pen at the page to hear them."
     }
 
-    /// Notes placed on a page's controls: by the page's own id, then by role and label, then by the spot kept for
-    /// controls without a name. A note whose control isn't on the page is left out rather than stuck somewhere wrong.
+    /// Notes placed on a page's controls: by the page's own id, then by role and label, then beside the named control
+    /// a nameless one sat next to, then by the spot kept for it. Of several controls by one name, the one nearest
+    /// where the note's control was in the window. A note whose control isn't on the page is left out rather than
+    /// stuck somewhere wrong.
     static func place(_ notes: [StickyNote], page: PageSnapshot, primaryMaxY: CGFloat)
         -> (placed: [PlacedNote], missing: [StickyNote], below: [StickyNote]) {
         func appKit(_ frame: CGRect) -> NSRect { NSRect(x: frame.minX, y: primaryMaxY - frame.maxY, width: frame.width, height: frame.height) }
         var placed: [PlacedNote] = [], missing: [StickyNote] = [], below: [StickyNote] = []
         for note in notes {
             let anchor = note.anchor
+            let spot = anchor.spot(in: page.windowFrame)
             var found: CGRect?
             // By the page's own id only when it is steady, names one control, and that control has the note's role.
             if let id = anchor.domID, NoteAnchor.isSteadyID(id) {
@@ -297,27 +300,24 @@ final class WandController {
                 // Its own role first: a hint an older pen kept on the words inside a button goes on plain text by
                 // that name when the page shows some, else on the button.
                 let named = page.elements.filter { $0.visible && anchor.matchesElement(role: $0.role, label: $0.label) }
-                found = (named.first { $0.role == anchor.role } ?? named.first)?.frame
+                let own = named.filter { $0.role == anchor.role }
+                found = Self.nearest(own.isEmpty ? named : own, to: spot)?.frame
                     // On another page of the kind the name may carry the item's own: "Add to cart - Bananas".
-                    ?? page.elements.first { $0.visible && anchor.isLikeElement(role: $0.role, label: $0.label) }?.frame
+                    ?? Self.nearest(page.elements.filter { $0.visible && anchor.isLikeElement(role: $0.role, label: $0.label) }, to: spot)?.frame
             }
             var predicted = false
             // A control with no name: beside the named one it was next to, where that one is now.
-            if found == nil, let near = anchor.near,
-               let named = page.elements.filter({ $0.role == near.role && $0.frame != nil && NoteAnchor.alike(near.label, $0.label) }).sorted(by: { $0.visible && !$1.visible }).first,
-               let there = named.frame {
+            if found == nil, let near = anchor.near, let named = Self.neighbour(near, in: page, spot: spot), let there = named.frame {
                 guard named.visible else { below.append(note); continue }
                 let expected = near.rect(from: there)
-                let box = expected.insetBy(dx: -expected.width * 0.25, dy: -expected.height * 0.25)
-                let control = page.elements.first { $0.visible && $0.role == anchor.role && $0.frame.map { box.contains(CGPoint(x: $0.midX, y: $0.midY)) } == true }
+                let control = Self.control(like: expected, role: anchor.role, in: page)
                 found = control?.frame ?? expected
                 predicted = control == nil
             }
             // A named control that isn't on the page is left out, not drawn where it was: the spot kept beside a
             // name says where it was, nothing more.
-            if found == nil, anchor.label == nil, let window = page.windowFrame, let rect = anchor.rect, rect.count == 4 {
-                found = CGRect(x: window.minX + window.width * rect[0], y: window.minY + window.height * rect[1],
-                               width: window.width * rect[2], height: window.height * rect[3])
+            if found == nil, anchor.label == nil, let spot {
+                found = spot
                 predicted = true
             }
             if let found, found.width > 0 || found.height > 0 { placed.append(PlacedNote(note: note, frame: appKit(found), predicted: predicted)) }
@@ -330,14 +330,53 @@ final class WandController {
         return (placed, missing, below)
     }
 
-    /// Marks placed by where their control should be, moved onto the control that is there on the live page: a hint
-    /// on a price block lands on the block as the page has it now, not where the block was on the page it was left
-    /// on. One Accessibility call per such mark; a spot with no control of the hint's role keeps its place.
+    /// Of the controls a note may be on, the one nearest where the note's control was in the window, when the note
+    /// says where; else the first in reading order.
+    static func nearest(_ elements: [PageElement], to spot: CGRect?) -> PageElement? {
+        guard let spot else { return elements.first }
+        func gap(_ e: PageElement) -> CGFloat { e.frame.map { hypot($0.midX - spot.midX, $0.midY - spot.midY) } ?? .infinity }
+        return elements.min { gap($0) < gap($1) }
+    }
+
+    /// The named control a nameless one sat next to, on this page: one in view before one scrolled away, and of
+    /// several by that name (a page's own "Add to list" and the ones in its carousels) the one that puts the note
+    /// nearest where its control was in the window.
+    static func neighbour(_ near: NoteNear, in page: PageSnapshot, spot: CGRect?) -> PageElement? {
+        let alike = page.elements.filter { $0.role == near.role && $0.frame != nil && NoteAnchor.alike(near.label, $0.label) }
+        let shown = alike.filter(\.visible)
+        guard !shown.isEmpty else { return alike.first }
+        guard let spot else { return shown.first }
+        func gap(_ e: PageElement) -> CGFloat { let r = near.rect(from: e.frame!); return hypot(r.midX - spot.midX, r.midY - spot.midY) }
+        return shown.min { gap($0) < gap($1) }
+    }
+
+    /// A control of the note's role where its control should be: its middle within the expected rectangle, with a
+    /// quarter's give around it, and about the expected size, never a section of the page around the spot; of
+    /// several, the one most alike in place and size. Nil when the page lists none there.
+    static func control(like expected: CGRect, role: String?, in page: PageSnapshot) -> PageElement? {
+        guard let role else { return nil }
+        let box = expected.insetBy(dx: -expected.width * 0.25, dy: -expected.height * 0.25)
+        let there = page.elements.filter { element in
+            guard element.visible, element.role == role, let frame = element.frame else { return false }
+            return box.contains(CGPoint(x: frame.midX, y: frame.midY)) && ControlSnap.fits(frame, like: expected.size)
+        }
+        func overlap(_ e: PageElement) -> CGFloat {
+            let f = e.frame!, shared = f.intersection(expected)
+            let common = shared.isNull ? 0 : shared.width * shared.height
+            return common / (f.width * f.height + expected.width * expected.height - common)
+        }
+        return there.max { overlap($0) < overlap($1) }
+    }
+
+    /// Marks placed by where their control should be, moved onto the control that is there on the live page, when
+    /// one about the size of the hint's is: a hint on a price block lands on the block as the page has it now, not
+    /// where the block was on the page it was left on, and never on the column or the page around the spot. One
+    /// Accessibility call per such mark; a spot with no such control keeps its place.
     nonisolated static func snapped(_ placed: [PlacedNote], bundleID: String, primaryMaxY: CGFloat) -> [PlacedNote] {
         placed.map { mark in
             guard mark.predicted, let role = mark.note.anchor.role else { return mark }
             let centre = CGPoint(x: mark.frame.midX, y: primaryMaxY - mark.frame.midY)
-            guard let frame = ControlSnap.frame(bundleID: bundleID, at: centre, role: role, classes: mark.note.anchor.classes),
+            guard let frame = ControlSnap.frame(bundleID: bundleID, at: centre, role: role, classes: mark.note.anchor.classes, like: mark.frame.size),
                   frame.width > 0, frame.height > 0 else { return mark }
             return PlacedNote(note: mark.note, frame: NSRect(x: frame.minX, y: primaryMaxY - frame.maxY, width: frame.width, height: frame.height))
         }

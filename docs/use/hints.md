@@ -33,7 +33,8 @@ when you leave a hint, and nothing goes anywhere but your own Mac until you shar
   yellow for a tip, orange with a **!** for a warning. Move the mouse to the control, or to the tag, and the hint
   opens, with who left it and when. Move away and it folds back to the tag. The tags follow the page: scroll, click or
   type, and they go and come back where the controls are now. They catch nothing: the page underneath works as it
-  always did, clicks included.
+  always did, clicks included. A page still laying itself out, after a reload or in a new tab, is looked at again for
+  a few seconds, so the tags settle where the controls do.
 - **With the pen.** Pick up the pen and every hint on the page shows where it sits; point at a hint's control and it
   opens wide. Click a hint to ask the chat about it, right-click it to change it. A hint whose control isn't on your
   screen (a button you don't have, a field further down) shows down the window's right edge, saying what it is for.
@@ -42,7 +43,9 @@ when you leave a hint, and nothing goes anywhere but your own Mac until you shar
 - **Noteling's glance.** Arriving where there are hints, Noteling holds up a small badge for a moment with their
   count. Click it to show them.
 - **Something with no name.** A hint on a block the page gives no name to, such as a price, is found on the next page
-  of its kind beside the named control it sits next to ("Add to cart"), where that control is now.
+  of its kind beside the named control it sits next to ("Add to cart"), where that control is now, and about the
+  size it was: a section of the page around that spot is never taken for it. Of several controls by one name, the
+  one nearest where the hint was left.
 
 Turn the tags off with **Hints on pages** in Noteling's right-click menu, or in Settings. Hints then show only with
 the pen or ⌥ Option twice.
