@@ -100,15 +100,23 @@ struct NoteAnchor: Codable, Equatable {
     static func isSteadyID(_ id: String?) -> Bool { GeneratedID.isSteady(id) }
 
     func matchesElement(role r: String?, label l: String?) -> Bool {
-        guard let role, let label, let r, role == r, let want = Self.norm(label), let have = Self.norm(l) else { return false }
+        guard let label, roleAgrees(r), let want = Self.norm(label), let have = Self.norm(l) else { return false }
         return want == have
     }
 
     /// The same control on another page of the kind, where its name carries the item's own ("Add to cart - Great
     /// Value Milk" there, "Add to cart - Bananas" here): the same role, and the names share their first words.
     func isLikeElement(role r: String?, label l: String?) -> Bool {
-        guard let role, let label, let r, role == r else { return false }
+        guard let label, roleAgrees(r) else { return false }
         return Self.alike(label, l)
+    }
+
+    /// The control's role is the hint's; or the hint was kept by an older pen on the words inside a control (the
+    /// text's role with the control's name), and the control is of a kind whose words are its name, which is how the
+    /// page reader lists such a control, never its text.
+    func roleAgrees(_ r: String?) -> Bool {
+        guard let role, let r else { return false }
+        return role == r || (role == "AXStaticText" && PageWalk.atomic.contains(r))
     }
 
     /// Two names of one control across pages: equal, or sharing at least ten characters of whole words at the start.
@@ -164,8 +172,7 @@ struct NoteNear: Codable, Equatable {
     /// Named controls whose name is steady across pages of a kind: short, no number, no price; buttons, links and
     /// fields first, headings and text (which may be the item's own name) only when nothing else is near.
     static func tier(of element: PageElement) -> Int? {
-        guard let label = element.label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty, label.count <= 40,
-              !label.contains(where: { $0.isNumber || "$€£¥".contains($0) }) else { return nil }
+        guard let label = element.label?.trimmingCharacters(in: .whitespacesAndNewlines), label.count <= 40, PageWalk.isAName(label) else { return nil }
         switch element.role {
         case "AXButton", "AXLink", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXMenuButton", "AXTab", "AXTextField", "AXComboBox": return 1
         case "AXHeading", "AXStaticText": return 2
@@ -373,8 +380,10 @@ enum AXScan {
             visited += 1
             let role = AX.string(el, kAXRoleAttribute) ?? "AXUnknown"
             if !structural.contains(role), let frame = ScreenHitTester.axFrame(of: el, primaryMaxY: primaryMaxY), frame.width > 0, frame.height > 0 {
-                let label = [AX.string(el, kAXTitleAttribute), AX.string(el, kAXDescriptionAttribute), AX.string(el, kAXPlaceholderValueAttribute)]
-                    .compactMap { $0 }.first { !$0.isEmpty }
+                // Plain text goes by its own words, when they can be a name, as the page reader lists it.
+                let label = role == "AXStaticText" ? PageWalk.nameOfText(AX.string(el, kAXValueAttribute))
+                    : [AX.string(el, kAXTitleAttribute), AX.string(el, kAXDescriptionAttribute), AX.string(el, kAXPlaceholderValueAttribute)]
+                        .compactMap { $0 }.first { !$0.isEmpty }
                 out.items.append(Item(role: role, label: label, frame: frame))
             }
             for k in AX.children(el).reversed() { stack.append(k) }

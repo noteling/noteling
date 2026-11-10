@@ -12,8 +12,9 @@ with yourself.
 ## Leaving one
 
 1. Pick up the pen: hold Noteling until its ring fills, or press **⌃⌥Space**.
-2. **Right-click** the control. A small paper opens beside it: write what the next person should know, in a line or
-   two. Tick **⚠︎ Warning** when it is one. **Return** keeps it, **Esc** drops it.
+2. **Right-click** the control; the words on a button, or its icon, are the button. A small paper opens beside it:
+   write what the next person should know, in a line or two. Tick **⚠︎ Warning** when it is one. **Return** keeps it,
+   **Esc** drops it.
 3. **Right-drag** to circle a part of the screen that isn't a control; the hint sticks to that spot.
 
 Where the next person meets it is the paper's small menu: **This page**, **Pages like this** or **Whole site**. On a
@@ -75,7 +76,9 @@ changed it, wins on your Mac. [Keeping a team's tools](../team/README.md) has th
 ## The files
 
 A hint is a JSON file in `~/.noteling/notes/`, named by its id: where it is stuck (the page's key, or the pattern of
-the pages it is for, such as `www.walmart.com/ip/*/*`; the control's role and the label it shows, the page's own
-steady id for it when there is one, or a spot in the window; for a control with no name, the named control beside it
-and where it sits from that one), its kind, its words, who left it, when, and when it was last confirmed. They are read with the tools: after changing them by hand,
-choose **Reload** under Tool packs in Settings.
+the pages it is for, such as `www.walmart.com/ip/*/*`; the control's role and the label it shows, or plain text's own
+words; the page's own steady id for it when there is one; where it was in the window, which alone places a hint with
+no name to go by; for a control with no name, the named control beside it and where it sits from that one), its
+kind, its words, who left it, when, and when it was last confirmed. They are read with the tools: after changing them
+by hand, choose **Reload** under Tool packs in Settings. When a hint is not placed on its page, `~/.noteling/noteling.log`
+says what it looked for.

@@ -261,6 +261,66 @@ struct NotesStoreTests {
         #expect(!odd.anchor.matchesScene(fixture.scene("https://www.walmart.com/ip/Bananas-each/44390948")))
     }
 
+    @Test func aHintOnTheWordsInsideAButtonIsPlacedOnTheButton() throws {
+        func element(_ role: String, _ label: String, _ y: CGFloat, visible: Bool = true) -> PageElement {
+            PageElement(kind: "thing", role: role, label: label, frame: CGRect(x: 100, y: y, width: 200, height: 30), visible: visible, enabled: true, document: 0)
+        }
+        let window = CGRect(x: 0, y: 0, width: 1_000, height: 800)
+        func page(_ elements: [PageElement]) -> PageSnapshot {
+            PageSnapshot(appName: "Chrome", bundleID: "com.google.Chrome", windowTitle: "Items",
+                         documents: [PageDocument(url: "https://portal.example.test/items", frame: window)],
+                         elements: elements, selectedText: nil, windowFrame: window, truncated: false, elapsed: 0)
+        }
+        // The file an older pen kept for the words on a button: the text's role with the button's name, and no spot.
+        let old = try JSONDecoder().decode(StickyNote.self, from: Data(#"{"id":"w","anchor":{"host":"portal.example.test","path":"/items","page":{"host":"portal.example.test","path":"/items","query":{}},"role":"AXStaticText","label":"Import from spreadsheet"},"kind":"tip","text":"Takes the first sheet only","by":"Yang","at":"2026-11-10","confirmed":"2026-11-10"}"#.utf8))
+        // The reader lists the button and never the words inside it: the hint goes on the button.
+        let listed = page([element("AXHeading", "Items", 100), element("AXButton", "Import from spreadsheet", 200), element("AXButton", "New item", 240)])
+        var result = WandController.place([old], page: listed, primaryMaxY: 1_000)
+        #expect(result.placed.map(\.note.id) == ["w"] && result.placed.first?.frame == NSRect(x: 100, y: 770, width: 200, height: 30))
+        // On a link, a tab, a heading, a menu item or a checkbox as much as on a button.
+        for role in ["AXLink", "AXTab", "AXHeading", "AXMenuItem", "AXCheckBox"] {
+            #expect(WandController.place([old], page: page([element(role, "Import from spreadsheet", 200)]), primaryMaxY: 1_000).placed.count == 1, "\(role)")
+        }
+        // Plain text by that name, when the page shows some, is what the hint was on; a field or a group by that
+        // name is no control whose words are its name.
+        let both = page([element("AXButton", "Import from spreadsheet", 200), element("AXStaticText", "Import from spreadsheet", 300)])
+        #expect(WandController.place([old], page: both, primaryMaxY: 1_000).placed.first?.frame == NSRect(x: 100, y: 670, width: 200, height: 30))
+        #expect(WandController.place([old], page: page([element("AXTextField", "Import from spreadsheet", 200), element("AXGroup", "Import from spreadsheet", 300)]),
+                                     primaryMaxY: 1_000).placed.isEmpty)
+        // The other way round stays strict: a hint on a button is not placed on text by its name.
+        var onButton = old
+        onButton.anchor.role = "AXButton"
+        result = WandController.place([onButton], page: page([element("AXStaticText", "Import from spreadsheet", 200)]), primaryMaxY: 1_000)
+        #expect(result.placed.isEmpty && result.missing.map(\.id) == ["w"])
+        // The button scrolled out of view is further down, not missing.
+        result = WandController.place([old], page: page([element("AXButton", "Import from spreadsheet", 2_000, visible: false)]), primaryMaxY: 1_000)
+        #expect(result.placed.isEmpty && result.below.map(\.id) == ["w"])
+        // The pen, right-clicking the button (what the words inside it now stand for), changes the old hint rather
+        // than starting another.
+        let button = AXElementInfo(role: "AXButton", title: "Import from spreadsheet", frame: NSRect(x: 100, y: 770, width: 200, height: 30))
+        #expect(WandController.belongs(old, to: button))
+        #expect(!WandController.belongs(old, to: AXElementInfo(role: "AXTextField", title: "Import from spreadsheet", frame: nil)))
+        // A new hint there is the button's, with where it was in the window kept beside its name.
+        let controller = WandController()
+        let target = WandTarget(screenPoint: .zero, element: button, windowOwner: "Chrome", windowTitle: "Items", ownerBundleID: "com.google.Chrome",
+                                windowFrame: NSRect(x: 0, y: 0, width: 1_000, height: 800))
+        let anchor = try #require(controller.anchor(for: target))
+        #expect(anchor.role == "AXButton" && anchor.label == "Import from spreadsheet" && anchor.rect == [0.1, 0, 0.2, 0.0375])
+        // A named control that isn't on the page is left out, not drawn at its spot.
+        var kept = old
+        kept.anchor = anchor
+        result = WandController.place([kept], page: page([element("AXButton", "New item", 200)]), primaryMaxY: 1_000)
+        #expect(result.placed.isEmpty && result.missing.map(\.id) == ["w"])
+        // Plain text is anchored by its own words, as the reader lists it, when they can be a name; a price is not.
+        #expect(AXElementInfo(role: "AXStaticText", value: "In stock").anchorLabel == "In stock")
+        #expect(AXElementInfo(role: "AXStaticText", value: "$4.98", description: "Price").anchorLabel == nil)
+        #expect(AXElementInfo(role: "AXButton", description: "Add to cart").anchorLabel == "Add to cart")
+        // The log names what a miss looked for.
+        #expect(WandController.shortfall([old], of: 1, on: "portal.example.test/items")
+                == "hints: 1 of 1 not found on portal.example.test/items: static text “Import from spreadsheet”")
+        #expect(WandController.shortfall([], of: 1, on: "x") == nil)
+    }
+
     @Test func aControlWithNoNameIsFoundBesideItsNamedNeighbour() throws {
         func element(_ role: String, _ label: String?, _ frame: CGRect, visible: Bool = true) -> PageElement {
             PageElement(kind: "thing", role: role, label: label, frame: frame, visible: visible, enabled: true, document: 0)

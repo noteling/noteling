@@ -210,6 +210,29 @@ struct PageReaderTests {
         #expect(PageKey.of("https://docs.example.test/guide#install") == PageKey.of("https://docs.example.test/guide"))
     }
 
+    @Test func theWordsInsideAControlStandForIt() {
+        // The chain of roles from what is under the point up towards the page, and which of them the hint is about:
+        // the text inside a button is the button's.
+        #expect(PageWalk.control(holding: ["AXStaticText", "AXButton", "AXGroup"]) == 1)
+        // Through a group inside the button, and a picture as much as words; a link inside a heading is the link.
+        #expect(PageWalk.control(holding: ["AXImage", "AXGroup", "AXButton"]) == 2)
+        #expect(PageWalk.control(holding: ["AXStaticText", "AXLink", "AXHeading"]) == 1)
+        for role in ["AXTab", "AXMenuItem", "AXCheckBox", "AXRadioButton", "AXHeading", "AXPopUpButton", "AXMenuButton", "AXDisclosureTriangle"] {
+            #expect(PageWalk.control(holding: ["AXStaticText", "AXGroup", role]) == 2, "\(role)")
+        }
+        // A control of its own is itself, whatever is around it; so is plain text with no such control around it.
+        #expect(PageWalk.control(holding: ["AXCheckBox", "AXGroup", "AXButton"]) == 0)
+        #expect(PageWalk.control(holding: ["AXTextField", "AXGroup"]) == 0)
+        #expect(PageWalk.control(holding: ["AXStaticText", "AXGroup", "AXGroup"]) == 0)
+        #expect(PageWalk.control(holding: []) == nil)
+        // The pen and the reader go by the one list of controls whose words are their name.
+        #expect(PageWalk.atomic.contains("AXButton") && !PageWalk.atomic.contains("AXTextField") && PageWalk.inside.contains("AXStaticText"))
+        // Words that are a name; and the words of plain text a hint can go by.
+        #expect(PageWalk.isAName("Import from spreadsheet") && !PageWalk.isAName("$4.98") && !PageWalk.isAName("3 items") && !PageWalk.isAName("→"))
+        #expect(PageWalk.nameOfText("  In stock ") == "In stock" && PageWalk.nameOfText("$4.98") == nil && PageWalk.nameOfText(nil) == nil)
+        #expect(PageWalk.nameOfText(String(repeating: "a", count: 121)) == nil && PageWalk.nameOfText("sk-abcdefghijklmnopqrstuvwxyz") == nil)
+    }
+
     @Test func theMainFrameNamesThePageButAnAdDoesNot() {
         let top = PageDocument(url: "https://example.service-now.com/navpage.do", frame: CGRect(x: 0, y: 0, width: 1_000, height: 800))
         let form = PageDocument(url: "https://example.service-now.com/sc_cat_item.do?sys_id=abc123", frame: CGRect(x: 200, y: 60, width: 800, height: 740))

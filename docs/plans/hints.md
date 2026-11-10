@@ -81,6 +81,35 @@ Verified: PagePatternTests, HintScopeTests, the store's tests (pages of a kind, 
 hints' (a team hint for pages of a kind met on another of them), the pen render with the menu. Not run live: the Mac
 at the lock screen again. UAT step 10 below is the first on-page run.
 
+## This round (0.10.2): the words inside a control (#123)
+
+The second UAT, on 0.10.0: a hint left by right-clicking the words on a button ("Import from spreadsheet") was never
+drawn; every visit logged `hints {placed: 0, of: 1}`. The pen's hit test took the deepest element under the pointer,
+the text inside the button, and kept the text's role with the button's name (borrowed from its parent); the page
+reader never lists the text inside a button, link, heading, tab, menu item or checkbox, only the control, with that
+text as its name; and placing needs the same role. So the pen kept one description and the reader only ever listed
+another, for most of the labelled things on a page.
+
+- **The words stand for the control.** The pen's hit test climbs from the words or the picture under the pointer to
+  the control around them (`ScreenHitTester.hitTest(toControl:)`, `PageWalk.control(holding:)`), named as the reader
+  names it; the one list of such controls, `PageWalk.atomic`, serves both, so they cannot drift apart again. Watch Me
+  already did this on its own path and is unchanged.
+- **Old files still work.** A hint kept as the text's role with a control's name (`NoteAnchor.roleAgrees`) is placed
+  on a control of such a kind by that name, on plain text by that name first when the page shows some; the pen's
+  right-click on the control changes that hint rather than starting another. Hints in `~/.noteling/notes/` and the
+  teams' `hints/` folders start working without being left again.
+- **Plain text by its words.** Text outside any control is anchored by its own words when they can be a name (some
+  letters, no digit or price, not long, not a secret), as the reader lists it; a price or a count keeps the spot and
+  the named neighbour of 0.10.1.
+- **The spot beside the name, and a sign why.** Where the control was in the window is kept with its name (`rect`),
+  as the file's record, not to draw at: a named control that isn't on the page is still left out rather than stuck
+  somewhere wrong. A miss is logged: `hints: 1 of 1 not found on <page>: static text “Import from spreadsheet”`.
+
+Verified: PageReaderTests (the climb over a made-up chain, the names), NotesStoreTests (the old shape placed on a
+button, a link, a tab, a heading, a menu item; plain text preferred when shown; a hint on a button never on text;
+further down; the pen's right-click; the kept spot; the log line), HintsTests (a miss told). Not run live: the Mac at
+the lock screen. UAT step 11 below.
+
 ## UAT: one journey
 
 Any page with a harmless control works; the issues list of Noteling's own repository has a **Filters** button that
@@ -113,6 +142,11 @@ does nothing until you choose something:
     paper's menu is on **Pages like this** with `/ip/*/*` beside it. Write "The per-unit price counts the whole
     pack", Return. Open another item: within a beat, a tag beside that item's price, and the hint on hover. Pen,
     right-click the tag, choose **This page**, Return: on a third item, no tag.
+11. **The words on a button** (0.10.2). On any page, pen, right-click the words inside a button, not its edge: the
+    paper says `button “…”` and the sticker frames the whole button. Return, Esc, go to another page and back: the
+    tag is at the button's corner, and `~/.noteling/usage/notes.jsonl` has `hints {placed: 1, of: 1}`. A hint left
+    this way in 0.10.0 shows the same without being left again. Right-click plain text (a status, a caption): the
+    paper says `static text “…”`, and the tag follows those words on the next visit.
 
 What to expect and not mind: the first marks land a beat after the page does (Chrome builds its accessibility tree
 when asked); the tags vanish while the page scrolls and return when it settles; a page that changes itself without a
