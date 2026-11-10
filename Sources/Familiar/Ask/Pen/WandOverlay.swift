@@ -227,6 +227,7 @@ final class WandController {
                     self.shown.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }?.wandView?.showNotice(notice)
                 }
                 Log.info("notes: placed \(result.placed.count) of \(notes.count) on the page")
+                if let line = Self.shortfall(result.missing, of: notes.count, on: page?.key?.description ?? "the page") { Log.info(line) }
                 self.onPlaced?(self.placed.count, self.unplaced.count, self.isShowingNotes)
             }
         } else {
@@ -263,6 +264,14 @@ final class WandController {
         return out
     }
 
+    /// What the log says when some hints found nothing on the page: how many, and what each looked for, so a miss
+    /// has a sign why. Nil when none is missing.
+    static func shortfall(_ missing: [StickyNote], of count: Int, on place: String) -> String? {
+        guard !missing.isEmpty else { return nil }
+        let wanted = missing.prefix(5).map { $0.anchor.controlSummary + ($0.anchor.domID.map { " (id \($0))" } ?? "") }
+        return "hints: \(missing.count) of \(count) not found on \(place): " + wanted.joined(separator: ", ") + (missing.count > 5 ? ", …" : "")
+    }
+
     /// What the overlay says when some notes have nothing on screen to stick to.
     static func notice(unplaced count: Int) -> String? {
         guard count > 0 else { return nil }
@@ -285,7 +294,10 @@ final class WandController {
                 if named.count == 1, anchor.role == nil || named[0].role == anchor.role, named[0].visible { found = named[0].frame }
             }
             if found == nil, anchor.label != nil {
-                found = page.elements.first { $0.visible && anchor.matchesElement(role: $0.role, label: $0.label) }?.frame
+                // Its own role first: a hint an older pen kept on the words inside a button goes on plain text by
+                // that name when the page shows some, else on the button.
+                let named = page.elements.filter { $0.visible && anchor.matchesElement(role: $0.role, label: $0.label) }
+                found = (named.first { $0.role == anchor.role } ?? named.first)?.frame
                     // On another page of the kind the name may carry the item's own: "Add to cart - Bananas".
                     ?? page.elements.first { $0.visible && anchor.isLikeElement(role: $0.role, label: $0.label) }?.frame
             }
@@ -301,7 +313,9 @@ final class WandController {
                 found = control?.frame ?? expected
                 predicted = control == nil
             }
-            if found == nil, let window = page.windowFrame, let rect = anchor.rect, rect.count == 4 {
+            // A named control that isn't on the page is left out, not drawn where it was: the spot kept beside a
+            // name says where it was, nothing more.
+            if found == nil, anchor.label == nil, let window = page.windowFrame, let rect = anchor.rect, rect.count == 4 {
                 found = CGRect(x: window.minX + window.width * rect[0], y: window.minY + window.height * rect[1],
                                width: window.width * rect[2], height: window.height * rect[3])
                 predicted = true
@@ -491,10 +505,11 @@ final class WandController {
             if NoteAnchor.isSteadyID(e.domID) { a.domID = e.domID }
             a.classes = e.classes
         }
+        // Where it was in the window goes with it either way: a control with no name is found by it, and a named
+        // one's file says where it was.
+        if let f = e.frame, let wf = target.windowFrame { a.rect = NoteAnchor.fractions(of: f, in: wf) }
         if let label = e.anchorLabel { a.label = String(label.prefix(120)); return a }
-        guard let f = e.frame, let wf = target.windowFrame else { return nil }
-        a.rect = NoteAnchor.fractions(of: f, in: wf)
-        return a
+        return a.rect == nil ? nil : a
     }
 
     /// Keeps a note: on the scene, on screen as a sticker, and through `onNoteSave` into its pack.
@@ -544,8 +559,9 @@ final class WandController {
         return target
     }
 
+    /// What is under the pen: the words or the icon inside a button stand for the button.
     func hitTest(at point: NSPoint) -> WandTarget {
-        let hit = ScreenHitTester.hitTest(at: point)
+        let hit = ScreenHitTester.hitTest(at: point, toControl: true)
         return WandTarget(screenPoint: hit.screenPoint, element: hit.element,
                           windowOwner: hit.windowOwner, windowTitle: hit.windowTitle,
                           ownerBundleID: hit.ownerBundleID, windowFrame: hit.windowFrame)

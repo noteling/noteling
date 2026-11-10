@@ -127,6 +127,32 @@ enum PageWalk {
                                       "AXPopUpButton", "AXMenuButton", "AXTab", "AXDisclosureTriangle"]
     /// Fields whose value a person typed, so a secret can be in them.
     static let editable: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
+    /// Roles that are part of a control rather than controls of their own: the words and the picture inside a button.
+    static let inside: Set<String> = ["AXStaticText", "AXImage", "AXGroup", "AXUnknown"]
+
+    /// Of the chain of roles from what is under a point up through its ancestors, which element a hint is about:
+    /// the first when it is a control of its own; for the words or the picture inside a control, the control around
+    /// them, the nearest ancestor whose text is its name, which is what the reader lists (it never lists the text
+    /// inside one). Plain text with no such control around it stands for itself. Nil for an empty chain.
+    static func control(holding roles: [String]) -> Int? {
+        guard let hit = roles.first else { return nil }
+        guard inside.contains(hit) else { return 0 }
+        return roles.dropFirst().firstIndex(where: atomic.contains) ?? 0
+    }
+
+    /// Words that name something, as against a price, a count or a date, which say what it is today: some letters,
+    /// no digit, no currency sign.
+    static func isAName(_ text: String) -> Bool {
+        text.contains(where: \.isLetter) && !text.contains(where: { $0.isNumber || "$€£¥".contains($0) })
+    }
+
+    /// The words of plain text that can stand as its name, for a hint to be found by: not long, a name rather than a
+    /// price or a count, not a secret. Nil when they are none of those: such text is known by where it is.
+    static func nameOfText(_ value: String?) -> String? {
+        guard let words = value?.trimmingCharacters(in: .whitespacesAndNewlines), !words.isEmpty, words.count <= 120,
+              isAName(words), !looksLikeSecretValue(words) else { return nil }
+        return words
+    }
 
     /// The page under a browser window, or nil when the window shows none. `viewport` is the window's frame; what is
     /// on screen is what falls inside both it and the page.

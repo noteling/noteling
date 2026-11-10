@@ -22,8 +22,12 @@ struct AXElementInfo {
         return s
     }
 
-    /// The name a note is anchored by: title, else description, else placeholder.
-    var anchorLabel: String? { [title, description, placeholder].compactMap { $0 }.first { !$0.isEmpty } }
+    /// The name a hint is anchored by: a control's title, else its description, else its placeholder. Plain text goes
+    /// by its own words when they can be a name, as the page reader lists it; else by where it is.
+    var anchorLabel: String? {
+        if role == "AXStaticText" { return PageWalk.nameOfText(value) }
+        return [title, description, placeholder].compactMap { $0 }.first { !$0.isEmpty }
+    }
     var isSecure: Bool { subrole == "AXSecureTextField" || role == "AXSecureTextField" }
 
     /// Of a page's class names for a control, the ones a page gives by hand rather than generates (`css-1x2y3z`,
@@ -48,7 +52,10 @@ struct ScreenHit {
 
 @MainActor
 enum ScreenHitTester {
-    static func hitTest(at point: NSPoint) -> ScreenHit {
+    /// The window and the element under the point. With `toControl`, the words or the picture under it stand for
+    /// the control around them, named as the page reader names it: for the pen, whose hint on the text inside a
+    /// button is the button's. Watch Me keeps the element itself and climbs on its own.
+    static func hitTest(at point: NSPoint, toControl: Bool = false) -> ScreenHit {
         let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
         let cgPoint = CGPoint(x: point.x, y: primaryMaxY - point.y)
         let myPID = ProcessInfo.processInfo.processIdentifier
@@ -75,9 +82,11 @@ enum ScreenHitTester {
         if let pid = ownerPID, Permissions.accessibilityGranted {
             let app = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(app, 0.3)
-            var el: AXUIElement?
-            if AXUIElementCopyElementAtPosition(app, Float(cgPoint.x), Float(cgPoint.y), &el) == .success, let el {
-                info = AXElementInfo(role: AX.string(el, kAXRoleAttribute) ?? "AXUnknown",
+            var hit: AXUIElement?
+            if AXUIElementCopyElementAtPosition(app, Float(cgPoint.x), Float(cgPoint.y), &hit) == .success, let hit {
+                let el = toControl ? control(holding: hit) : hit
+                let role = AX.string(el, kAXRoleAttribute) ?? "AXUnknown"
+                info = AXElementInfo(role: role,
                                      title: AX.string(el, kAXTitleAttribute),
                                      value: AX.string(el, kAXValueAttribute),
                                      description: AX.string(el, kAXDescriptionAttribute),
@@ -86,15 +95,38 @@ enum ScreenHitTester {
                                      placeholder: AX.string(el, kAXPlaceholderValueAttribute),
                                      domID: AX.string(el, "AXDOMIdentifier").flatMap { $0.isEmpty ? nil : $0 },
                                      classes: AXElementInfo.steadyClasses(AX.strings(el, "AXDOMClassList")))
-                if (info?.title ?? "").isEmpty, (info?.description ?? "").isEmpty,
-                   let parent = AX.element(el, kAXParentAttribute), let pt = AX.string(parent, kAXTitleAttribute), !pt.isEmpty {
-                    info?.description = pt
+                if (info?.title ?? "").isEmpty, (info?.description ?? "").isEmpty {
+                    // A control named by nothing but the text inside it is called by that text, as the reader calls it.
+                    if toControl, PageWalk.atomic.contains(role), let name = PageWalk.contentName(AXPageNode(element: el)) {
+                        info?.description = name
+                    } else if let parent = AX.element(el, kAXParentAttribute), let pt = AX.string(parent, kAXTitleAttribute), !pt.isEmpty {
+                        info?.description = pt
+                    }
                 }
             }
         }
         let bundle = ownerPID.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier }
         return ScreenHit(screenPoint: point, element: info, windowOwner: owner, windowTitle: title, ownerBundleID: bundle, windowFrame: windowFrame,
                          ownerPID: ownerPID)
+    }
+
+    /// The control the element is part of: the chain from it up to its page or window, as far as the first control
+    /// whose words are its name, and on it the one a hint is about (`PageWalk.control`); the element itself when it
+    /// is a control of its own, or nothing around it is one.
+    private static func control(holding el: AXUIElement) -> AXUIElement {
+        var chain = [el], roles = [AX.string(el, kAXRoleAttribute) ?? "AXUnknown"]
+        guard PageWalk.inside.contains(roles[0]) else { return el }
+        var current = el
+        for _ in 0..<8 {
+            guard let parent = AX.element(current, kAXParentAttribute) else { break }
+            let role = AX.string(parent, kAXRoleAttribute) ?? ""
+            if role == kAXApplicationRole || role == kAXWindowRole || role == "AXWebArea" { break }
+            chain.append(parent)
+            roles.append(role)
+            current = parent
+            if PageWalk.atomic.contains(role) { break }
+        }
+        return PageWalk.control(holding: roles).map { chain[$0] } ?? el
     }
 
     /// An element's frame in AppKit global coordinates.

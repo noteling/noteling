@@ -47,6 +47,17 @@ struct HintsTests {
         #expect(!hints.isShowing)
     }
 
+    @Test func aMissIsToldWithWhatItLookedFor() async {
+        let hints = controller { _, notes in .init(marks: [], missing: notes.count, notFound: notes) }
+        var told: [(Int, Int)] = []
+        hints.onPlaced = { told.append(($0, $1)) }
+        hints.arrive(scene(), notes: [note("a", label: "Import from spreadsheet")])
+        await hints.settle()
+        #expect(told.first.map { $0 == (0, 1) } == true)
+        #expect(WandController.shortfall(hints.notes, of: 1, on: "portal.example.test/submission?id=7")
+                == "hints: 1 of 1 not found on portal.example.test/submission?id=7: button “Import from spreadsheet”")
+    }
+
     @Test func noHintsOrHintsOffMeansNothingComesUp() async {
         let hints = controller { _, _ in .init(marks: []) }
         hints.arrive(scene(), notes: [])

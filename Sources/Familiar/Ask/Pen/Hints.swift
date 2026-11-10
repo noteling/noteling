@@ -18,6 +18,8 @@ final class HintsController {
         var marks: [Mark]
         var pageURL: String? = nil
         var missing: Int = 0
+        /// The hints with nothing on the page to stick to, so the log can say what each looked for.
+        var notFound: [StickyNote] = []
     }
 
     /// Hints show by themselves (Settings, and Noteling's menu).
@@ -164,7 +166,11 @@ final class HintsController {
             return
         }
         let marks = reading?.marks ?? []
-        if marks.count != self.marks.count || !reported { onPlaced?(marks.count, notes.count) }
+        if marks.count != self.marks.count || !reported {
+            onPlaced?(marks.count, notes.count)
+            let place = scene.url.flatMap(PageKey.of)?.description ?? scene.appName
+            if let line = WandController.shortfall(reading?.notFound ?? [], of: notes.count, on: place) { Log.info(line) }
+        }
         reported = true
         if marks != self.marks {
             self.marks = marks
@@ -322,12 +328,14 @@ final class HintsController {
                 // A hint on a control with no name, placed by where the control should be: the live page says what is there.
                 marks = await Task.detached(priority: .utility, operation: { WandController.snapped(marks, bundleID: bundle, primaryMaxY: primaryMaxY) }).value
             }
-            return Reading(marks: marks.map { Mark(note: $0.note, frame: $0.frame) }, pageURL: page.url, missing: placed.missing.count)
+            return Reading(marks: marks.map { Mark(note: $0.note, frame: $0.frame) }, pageURL: page.url, missing: placed.missing.count,
+                           notFound: placed.missing)
         }
         let scan = await Task.detached(priority: .utility, operation: { AXScan.frontmostWindow() }).value
         guard scan.bundleID == bundle else { return nil }
         let placed = WandController.place(notes, scan: scan)
-        return Reading(marks: placed.map { Mark(note: $0.note, frame: $0.frame) }, pageURL: nil, missing: notes.count - placed.count)
+        let notFound = notes.filter { note in !placed.contains { $0.note.id == note.id } }
+        return Reading(marks: placed.map { Mark(note: $0.note, frame: $0.frame) }, pageURL: nil, missing: notFound.count, notFound: notFound)
     }
 }
 
