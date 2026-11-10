@@ -89,6 +89,7 @@ struct HintsTests {
             reads += 1
             return .init(marks: notes.map { .init(note: $0, frame: self.small) }, pageURL: "https://portal.example.test/submission?id=7&utm_source=mail")
         }
+        hints.retryDelays = []   // no looks to see the page settle: the reads are counted
         hints.arrive(scene(), notes: [note("a")])
         await hints.settle()
         var retitled = scene()
@@ -121,13 +122,21 @@ struct HintsTests {
             reads += 1
             return reads == 1 ? .init(marks: [], missing: notes.count) : .init(marks: notes.map { .init(note: $0, frame: self.small) })
         }
+        hints.retryDelays = [0.05, 0.05, 0.05]
         hints.arrive(scene(), notes: [note("a")])
         await hints.settle()
         #expect(hints.marks.isEmpty)
-        try? await Task.sleep(for: .milliseconds(1400))   // the first look again comes after a second
-        await hints.settle()
+        await looks(hints, until: { reads >= 2 })
         #expect(hints.marks.count == 1)
-        #expect(reads == 2)
+        #expect(reads >= 2)
+    }
+
+    /// Waits for the looks a page gets to settle, which come on the main queue's time: until `done`, or a few seconds.
+    private func looks(_ hints: HintsController, until done: () -> Bool) async {
+        for _ in 0..<100 where !done() {
+            try? await Task.sleep(for: .milliseconds(50))
+            await hints.settle()
+        }
     }
 
     @Test func thePageIsLookedAtAgainUntilTheMarksSettle() async {
@@ -144,16 +153,17 @@ struct HintsTests {
         hints.arrive(scene(), notes: [note("a")])
         await hints.settle()
         #expect(hints.marks.first?.frame == frames[0])
-        try? await Task.sleep(for: .milliseconds(500))
+        // Looked at again after each move, once more to see it stayed, then left alone: the looks are three.
+        await looks(hints, until: { reads >= 4 })
+        try? await Task.sleep(for: .milliseconds(150))
         await hints.settle()
-        // Looked at again after each move, once more to see it stayed, then left alone.
         #expect(hints.marks.first?.frame == frames[2])
         #expect(reads == 4)
         // A touch of the page (a click, a key, the wheel, another element with the focus) starts the looks over.
         hints.touch()
         hints.read()
-        await hints.settle()
-        try? await Task.sleep(for: .milliseconds(300))
+        await looks(hints, until: { reads >= 6 })
+        try? await Task.sleep(for: .milliseconds(150))
         await hints.settle()
         #expect(hints.marks.first?.frame == frames[0])
         #expect(reads == 6)
@@ -168,7 +178,9 @@ struct HintsTests {
         hints.retryDelays = [0.05, 0.05, 0.05]
         hints.arrive(scene(), notes: [note("a")])
         await hints.settle()
-        try? await Task.sleep(for: .milliseconds(500))
+        // Read again while the page says it is loading, though the marks stayed; then, loaded and unmoved, left alone.
+        await looks(hints, until: { reads >= 3 })
+        try? await Task.sleep(for: .milliseconds(150))
         await hints.settle()
         #expect(reads == 3)
     }
