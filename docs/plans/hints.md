@@ -110,6 +110,36 @@ button, a link, a tab, a heading, a menu item; plain text preferred when shown; 
 further down; the pen's right-click; the kept spot; the log line), HintsTests (a miss told). Not run live: the Mac at
 the lock screen. UAT step 11 below.
 
+## This round (0.10.3): a tag at the page's corner after a reload (UAT)
+
+The third UAT, on 0.10.2: a hint that showed on its block went to the top-right corner of the page after a reload, or
+when the page was opened in a new tab, and stayed there. Two things met. A page just reloaded or opened is read while
+it is still laying itself out, and a hint on a nameless block is placed by where the block should be and then by one
+hit-test of the live page at that spot, climbing to the nearest element of the hint's role, whatever its size: for a
+moment that spot is over the column or the page itself, a group or a line as wide as the page, and a tag at its
+top-right corner is a tag at the page's corner. And once every hint counted as placed, nothing read the page again
+until it was scrolled or clicked, so the wrong place stayed.
+
+- **About the size it was.** A control taken for the hint's, on the live page (`ControlSnap`, now choosing among the
+  elements of the role from the innermost out by the hint's class names and then by nearness in size) or in the
+  read (`WandController.control(like:)`), is at most three times as wide or as tall as the hint's control; nothing
+  that fits keeps the spot, to be looked at again. The anchor's `rect`, kept since 0.10.2 for every hint, gives the
+  size through the predicted spot.
+- **The nearest of several by one name.** A page's own "Add to list" and the ones in its carousels, or two buttons
+  called alike: the one that puts the hint nearest where it was left in the window (`NoteAnchor.spot(in:)`,
+  `WandController.nearest`, `neighbour`); the first in reading order only for a hint with no spot kept.
+- **Looked at again until it settles.** The page is read again after 1, 2 and 4 s while something is still missing,
+  the page says it is still loading (`PageSnapshot.loading`, from the web area's `AXLoadingProgress` in Chromium
+  browsers and `AXLoaded` in Safari), or the marks moved since the last read; every touch of the page (a key, a
+  click, the wheel, a Space change) starts those looks over (`HintsController.touch`). The heartbeat also reads again
+  when another element has the focus, which is what a reload leaves behind when its new document came after the
+  look that followed the keystroke.
+
+Verified: PageReaderTests (the loading state from either attribute), NotesStoreTests (the choice on the live page by
+size and class, never a section; the box in the read; the nearest of two by one name, for a neighbour and for the
+hint's own control), HintsTests (reads until the marks settle, a touch starts over, a page still loading with every
+hint placed is read again). Not run live: the Mac at the lock screen. UAT step 12 below.
+
 ## UAT: one journey
 
 Any page with a harmless control works; the issues list of Noteling's own repository has a **Filters** button that
@@ -147,6 +177,11 @@ does nothing until you choose something:
     tag is at the button's corner, and `~/.noteling/usage/notes.jsonl` has `hints {placed: 1, of: 1}`. A hint left
     this way in 0.10.0 shows the same without being left again. Right-click plain text (a status, a caption): the
     paper says `static text “…”`, and the tag follows those words on the next visit.
+12. **Reload, and a new tab** (0.10.3). With the hint from step 10 on an item's price: reload the page (⌘R) five
+    times, and open the same item in a new tab (⌘T, paste the address). Each time, within a few seconds of the page
+    settling, the tag is beside the price, never at the page's top-right corner; a tag that lands early on the wrong
+    spot moves to the price by itself. Scroll down to the carousels with their own "Add to cart" buttons and back
+    up: the tag returns to the price.
 
 What to expect and not mind: the first marks land a beat after the page does (Chrome builds its accessibility tree
 when asked); the tags vanish while the page scrolls and return when it settles; a page that changes itself without a

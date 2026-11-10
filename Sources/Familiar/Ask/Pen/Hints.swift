@@ -3,7 +3,8 @@ import AppKit
 /// Hints on the page in front, shown as you arrive and following the page: a small tag at each control someone left a
 /// hint on, and the whole hint when the mouse comes to it. No model and no pixels: the page's own Accessibility tree
 /// says where its controls are, and is read again when the page is scrolled, clicked or typed in, when its window
-/// moves, and while a page is still loading. The pen's own stickers take over while it is up.
+/// moves, and while a page is still settling after it came or was reloaded. The pen's own stickers take over while it
+/// is up.
 @MainActor
 final class HintsController {
     struct Mark: Equatable {
@@ -20,6 +21,8 @@ final class HintsController {
         var missing: Int = 0
         /// The hints with nothing on the page to stick to, so the log can say what each looked for.
         var notFound: [StickyNote] = []
+        /// The page said it was still loading: its controls may not all be there yet, or where they will be.
+        var loading = false
     }
 
     /// Hints show by themselves (Settings, and Noteling's menu).
@@ -52,6 +55,7 @@ final class HintsController {
     private var reported = false
     private var lastHover = Date.distantPast
     private var windowFrame: NSRect?
+    private var focus: AXUIElement?
 
     /// After the last turn of the wheel, before the page is read again.
     static let settle: TimeInterval = 0.25
@@ -59,8 +63,11 @@ final class HintsController {
     static let afterInput: TimeInterval = 0.6
     /// How often the page is read again when something happened to it, or its window moved.
     static let heartbeatSeconds: TimeInterval = 3
-    /// A page still loading is looked at again, a few times, until its controls are there.
+    /// A page still settling is looked at again, a few times: one still loading, one whose controls aren't all there
+    /// yet, one on which the marks moved since the last look (a page laying itself out after a reload or in a new
+    /// tab). Every touch of the page starts the looks over.
     static let retryDelays: [TimeInterval] = [1, 2, 4]
+    var retryDelays = HintsController.retryDelays
 
     var isShowing: Bool { scene != nil }
 
@@ -98,6 +105,7 @@ final class HintsController {
         marks = []
         hovered = nil
         windowFrame = nil
+        focus = nil
         for panel in panels { panel.orderOut(nil) }
         panels = []
     }
@@ -166,24 +174,33 @@ final class HintsController {
             return
         }
         let marks = reading?.marks ?? []
+        let moved = marks != self.marks
         if marks.count != self.marks.count || !reported {
             onPlaced?(marks.count, notes.count)
             let place = scene.url.flatMap(PageKey.of)?.description ?? scene.appName
             if let line = WandController.shortfall(reading?.notFound ?? [], of: notes.count, on: place) { Log.info(line) }
         }
         reported = true
-        if marks != self.marks {
+        if moved {
             self.marks = marks
             if let hovered, !marks.contains(where: { $0.note.id == hovered }) { self.hovered = nil }
             draw()
         }
-        // A page still loading has nothing to stick to yet: look again in a moment, a few times.
+        // A page still settling is looked at again in a moment, a few times: some hint has nothing to stick to yet,
+        // the page says it is still loading, or the marks moved since the last look.
         let missing = reading?.missing ?? notes.count
-        if missing > 0, retries < Self.retryDelays.count {
-            let delay = Self.retryDelays[retries]
+        if missing > 0 || reading?.loading == true || moved, retries < retryDelays.count {
+            let delay = retryDelays[retries]
             retries += 1
             schedule(after: delay)
         }
+    }
+
+    /// Something happened to the page (a key, a click, the wheel, a Space change, another element with the focus):
+    /// it is read again, and gets its few looks to settle over again.
+    func touch() {
+        touched = true
+        retries = 0
     }
 
     /// A read of the page after a pause, replacing one already waiting.
@@ -207,7 +224,7 @@ final class HintsController {
         }) { monitors.append(monitor) }
         if let monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp, .keyDown], handler: { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.touched = true
+                self?.touch()
                 self?.schedule(after: Self.afterInput)
             }
         }) { monitors.append(monitor) }
@@ -216,7 +233,7 @@ final class HintsController {
         }) { monitors.append(monitor) }
         observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.touched = true
+                self?.touch()
                 self?.schedule(after: 0.5)
             }
         })
@@ -232,7 +249,7 @@ final class HintsController {
     }
 
     private func scrolled() {
-        touched = true
+        touch()
         if !marks.isEmpty {   // stale at once: off until the page settles
             marks = []
             hovered = nil
@@ -241,12 +258,16 @@ final class HintsController {
         schedule(after: Self.settle)
     }
 
-    /// Every few seconds: the page is read again if anything happened to it, or its window moved.
+    /// Every few seconds: the page is read again if anything happened to it, its window moved, or another element
+    /// has the focus, as when a reload brings a new document: the keystroke or click that asked for it was seen, but
+    /// the page it brought may have come after the look that followed, and then nothing else would look again.
     private func beat() {
         guard let scene else { return }
-        let frame = Self.frontWindowFrame(bundleID: scene.bundleID)
-        let moved = windowFrame != nil && frame != windowFrame
-        windowFrame = frame
+        let front = Self.front(bundleID: scene.bundleID)
+        let moved = windowFrame != nil && front.frame != windowFrame
+        if let was = focus, let now = front.focus, !CFEqual(was, now) { touch() }
+        windowFrame = front.frame
+        focus = front.focus
         if touched || moved { read() }
     }
 
@@ -256,13 +277,15 @@ final class HintsController {
         draw()
     }
 
-    /// The scene's front window, by two attributes rather than a walk of the page: enough to notice it moved.
-    nonisolated static func frontWindowFrame(bundleID: String) -> NSRect? {
-        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else { return nil }
+    /// The scene's front window's frame and the element with the focus, by a few attributes rather than a walk of
+    /// the page: enough to notice the window moved, or that another document came.
+    nonisolated static func front(bundleID: String) -> (frame: NSRect?, focus: AXUIElement?) {
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else { return (nil, nil) }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(axApp, 0.2)
-        guard let window = AX.element(axApp, kAXFocusedWindowAttribute) ?? AX.element(axApp, kAXMainWindowAttribute) else { return nil }
-        return ScreenHitTester.axFrame(of: window, primaryMaxY: NSScreen.screens.first?.frame.maxY ?? 0)
+        let window = AX.element(axApp, kAXFocusedWindowAttribute) ?? AX.element(axApp, kAXMainWindowAttribute)
+        let frame = window.flatMap { ScreenHitTester.axFrame(of: $0, primaryMaxY: NSScreen.screens.first?.frame.maxY ?? 0) }
+        return (frame, AX.element(axApp, kAXFocusedUIElementAttribute))
     }
 
     // MARK: the mouse
@@ -329,7 +352,7 @@ final class HintsController {
                 marks = await Task.detached(priority: .utility, operation: { WandController.snapped(marks, bundleID: bundle, primaryMaxY: primaryMaxY) }).value
             }
             return Reading(marks: marks.map { Mark(note: $0.note, frame: $0.frame) }, pageURL: page.url, missing: placed.missing.count,
-                           notFound: placed.missing)
+                           notFound: placed.missing, loading: page.loading)
         }
         let scan = await Task.detached(priority: .utility, operation: { AXScan.frontmostWindow() }).value
         guard scan.bundleID == bundle else { return nil }

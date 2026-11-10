@@ -50,6 +50,9 @@ struct PageSnapshot {
     var windowFrame: CGRect? = nil
     /// A budget ran out before the whole page was read.
     var truncated: Bool
+    /// The page says it is still loading (Chromium gives how far, Safari whether it has): its controls may not all be
+    /// there yet, or where they will be, so whoever placed something by this read may want to read again.
+    var loading = false
     var elapsed: TimeInterval
 
     var url: String? { documents.first?.url }
@@ -112,6 +115,8 @@ enum PageWalk {
         var elements: [PageElement]
         var tabs: [String]
         var truncated: Bool
+        /// The page says it is still loading: its controls may not all be there yet, or where they will be.
+        var loading = false
     }
 
     static let kinds: [String: String] = [
@@ -160,6 +165,7 @@ enum PageWalk {
         let deadline = now().addingTimeInterval(budget.seconds)
         let (found, tabs) = webAreas(under: window, limit: budget.chrome)
         guard let top = page(among: found) else { return nil }
+        let loading = top.flag("AXLoaded") == false || (top.number("AXLoadingProgress").map { $0 < 1 } ?? false)
         var documents = [PageDocument(url: top.string("AXURL") ?? "", frame: top.frame)]
         var elements: [PageElement] = []
         var visited = 0, truncated = false, hint: String?
@@ -193,7 +199,7 @@ enum PageWalk {
             }
             stack.append(contentsOf: node.children.reversed().map { ($0, document, visibleArea, inAtomic) })
         }
-        return Result(documents: documents, elements: elements, tabs: tabs, truncated: truncated)
+        return Result(documents: documents, elements: elements, tabs: tabs, truncated: truncated, loading: loading)
     }
 
     /// The pages in a window, found breadth first through the browser's tabs and toolbars without going into them,
@@ -446,7 +452,7 @@ enum PageReader {
             .map { ScreenText.dumpWindow($0, appName: app.localizedName ?? bundle, maxNodes: 400, maxChars: 3_000) }
         return PageSnapshot(appName: app.localizedName ?? bundle, bundleID: bundle, windowTitle: AX.string(window, kAXTitleAttribute) ?? "",
                             documents: result.documents, elements: result.elements, selectedText: selectedText(axApp),
-                            tabs: result.tabs, sheet: sheet, windowFrame: node.frame, truncated: result.truncated,
+                            tabs: result.tabs, sheet: sheet, windowFrame: node.frame, truncated: result.truncated, loading: result.loading,
                             elapsed: Date().timeIntervalSince(started))
     }
 

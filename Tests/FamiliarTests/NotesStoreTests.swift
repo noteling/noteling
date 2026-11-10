@@ -378,6 +378,75 @@ struct NotesStoreTests {
         #expect(AXElementInfo.steadyClasses(["css-1x2y3z"]) == nil && AXElementInfo.steadyClasses(nil) == nil)
     }
 
+    @Test func aNamelessControlIsNeverTakenForTheSectionAroundIt() throws {
+        func element(_ role: String, _ label: String?, _ frame: CGRect, visible: Bool = true) -> PageElement {
+            PageElement(kind: "thing", role: role, label: label, frame: frame, visible: visible, enabled: true, document: 0)
+        }
+        let window = CGRect(x: 0, y: 0, width: 1_200, height: 900)
+        func page(_ elements: [PageElement]) -> PageSnapshot {
+            PageSnapshot(appName: "Chrome", bundleID: "com.google.Chrome", windowTitle: "Item",
+                         documents: [PageDocument(url: "https://www.walmart.com/ip/Bananas-each/44390948", frame: window)],
+                         elements: elements, selectedText: nil, windowFrame: window, truncated: false, elapsed: 0)
+        }
+        // The live page hit-tested where a price block should be, from the innermost element out: the block's own
+        // words, the box around them, the column, the page. The block was 120 by 50.
+        let words = ControlSnap.Candidate(frame: CGRect(x: 600, y: 250, width: 110, height: 40))
+        let box = ControlSnap.Candidate(frame: CGRect(x: 590, y: 240, width: 200, height: 90))
+        let column = ControlSnap.Candidate(frame: CGRect(x: 580, y: 100, width: 420, height: 800))
+        let whole = ControlSnap.Candidate(frame: CGRect(x: 0, y: 0, width: 1_200, height: 3_000))
+        let size = CGSize(width: 120, height: 50)
+        #expect(ControlSnap.choose([words, box, column, whole], like: size) == words.frame)
+        #expect(ControlSnap.choose([box, column, whole], like: size) == box.frame)
+        // The hint's class names win on a control about the right size, not on a section that carries them.
+        var named = box
+        named.byClass = true
+        #expect(ControlSnap.choose([words, named, column, whole], like: size) == box.frame)
+        var section = column
+        section.byClass = true
+        #expect(ControlSnap.choose([words, section, whole], like: size) == words.frame)
+        // Nothing about its size there: nothing, and the spot keeps its place rather than the page's corner.
+        #expect(ControlSnap.choose([column, whole], like: size) == nil)
+        #expect(ControlSnap.choose([], like: size) == nil)
+        // With no size to go by, the innermost, or the one with the class names.
+        #expect(ControlSnap.choose([column, whole], like: nil) == column.frame)
+        #expect(ControlSnap.choose([words, named], like: nil) == box.frame)
+        #expect(ControlSnap.fits(CGRect(x: 0, y: 0, width: 384, height: 174), like: size) && !ControlSnap.fits(CGRect(x: 0, y: 0, width: 385, height: 50), like: size))
+        #expect(!ControlSnap.fits(CGRect(x: 0, y: 0, width: 0, height: 50), like: nil))
+
+        // On the page as the reader lists it: a hint on the words of a price, kept beside "Add to list" and where it
+        // was in the window. Of the text whose middle falls where the block should be, a page-wide line is not the
+        // block; the price is.
+        var anchor = NoteStore.sceneAnchor(bundleID: "com.google.Chrome", windowTitle: "Milk", url: "https://www.walmart.com/ip/Milk/1")
+        anchor.pattern = "www.walmart.com/ip/*/*"
+        anchor.role = "AXStaticText"
+        anchor.near = NoteNear(role: "AXButton", label: "Add to list", dx: -220, dy: -110, width: 120, height: 50)
+        anchor.rect = [0.5, 0.2111, 0.1, 0.0556]
+        let hint = StickyNote(id: "price", anchor: anchor, kind: "tip", text: "The per-unit price counts the whole pack", by: "F", at: "2026-11-10", confirmed: "2026-11-10")
+        let list = element("AXButton", "Add to list", CGRect(x: 820, y: 300, width: 100, height: 40))   // so the block should be at (600, 190)
+        let banner = element("AXStaticText", "Free shipping, arrives tomorrow", CGRect(x: 0, y: 190, width: 1_200, height: 50))
+        let price = element("AXStaticText", "$4.40", CGRect(x: 602, y: 196, width: 60, height: 36))
+        let onPrice = WandController.place([hint], page: page([banner, price, list]), primaryMaxY: 1_000)
+        #expect(onPrice.placed.map(\.predicted) == [false] && onPrice.placed[0].frame == NSRect(x: 602, y: 768, width: 60, height: 36))
+        // The page still laying itself out, the words not there yet: the spot, to be looked at again, never the line.
+        let early = WandController.place([hint], page: page([banner, list]), primaryMaxY: 1_000)
+        #expect(early.placed.map(\.predicted) == [true] && early.placed[0].frame == NSRect(x: 600, y: 760, width: 120, height: 50))
+        // Two "Add to list" on the page, one in a carousel up at the corner: the one that puts the hint where it was.
+        let corner = element("AXButton", "Add to list", CGRect(x: 1_080, y: 20, width: 100, height: 40))
+        let twice = WandController.place([hint], page: page([corner, banner, price, list]), primaryMaxY: 1_000)
+        #expect(twice.placed.map(\.predicted) == [false] && twice.placed[0].frame == NSRect(x: 602, y: 768, width: 60, height: 36))
+        // Two buttons by one name and a hint on one of them: the nearer to where it was; with no spot kept, the first.
+        var onButton = anchor
+        onButton.near = nil
+        onButton.role = "AXButton"
+        onButton.label = "Add to list"
+        onButton.rect = [0.6833, 0.3333, 0.0833, 0.0444]
+        let button = StickyNote(id: "list", anchor: onButton, kind: "tip", text: "Lists are shared with the household", by: "F", at: "2026-11-10", confirmed: "2026-11-10")
+        #expect(WandController.place([button], page: page([corner, list]), primaryMaxY: 1_000).placed[0].frame == NSRect(x: 820, y: 660, width: 100, height: 40))
+        var first = button
+        first.anchor.rect = nil
+        #expect(WandController.place([first], page: page([corner, list]), primaryMaxY: 1_000).placed[0].frame == NSRect(x: 1_080, y: 940, width: 100, height: 40))
+    }
+
     struct Fixture {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("notes-store-\(UUID())")
         var notes: URL { root.appendingPathComponent("notes") }
