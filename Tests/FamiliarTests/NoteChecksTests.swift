@@ -160,7 +160,7 @@ struct NoteChecksTests {
         let editor = NoteEditor(existing: nil, place: "button “Request onboarding”", checks: choices)
         #expect(editor.frame.height == NoteEditor.height(withChecks: true) && editor.chosenCheck == nil)
         var committed: NoteCheck?
-        editor.onCommit = { _, _, check in committed = check }
+        editor.onCommit = { _, _, check, _ in committed = check }
         editor.textView.string = "You need role Y"
         editor.selectCheck(at: 0)
         editor.commit()

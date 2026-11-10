@@ -231,6 +231,93 @@ struct NotesStoreTests {
 
     // MARK: - Fixtures
 
+    // MARK: - Pages like this
+
+    @Test func aHintForPagesOfAKindIsOnEveryPageOfTheKind() throws {
+        let fixture = Fixture()
+        defer { fixture.remove() }
+        let store = NotesStore(directory: fixture.notes)
+        var kind = fixture.note("kind", page: "https://www.walmart.com/ip/Great-Value-Whole-Milk/10450114", text: "The per-unit price counts the whole pack")
+        kind.anchor.pattern = PagePattern.of(kind.anchor.page!).description
+        #expect(kind.anchor.pattern == "www.walmart.com/ip/*/*" && kind.anchor.scope == .pages("/ip/*/*"))
+        #expect(kind.anchor.summary == "button “Submit” on www.walmart.com/ip/*/*")
+        try store.save(kind)
+        try store.save(fixture.note("one", page: "https://www.walmart.com/ip/Great-Value-Whole-Milk/10450114", text: "This milk only"))
+        var site = fixture.note("site", page: "https://www.walmart.com/", text: "Everywhere here")
+        site.anchor.page = nil
+        site.anchor.path = nil
+        #expect(site.anchor.scope == .site)
+        try store.save(site)
+        #expect(store.notes(for: fixture.scene("https://www.walmart.com/ip/Great-Value-Whole-Milk/10450114?from=search")).map(\.id) == ["kind", "one", "site"])
+        #expect(store.notes(for: fixture.scene("https://www.walmart.com/ip/Bananas-each/44390948")).map(\.id) == ["kind", "site"])
+        #expect(store.notes(for: fixture.scene("https://www.walmart.com/cart")).map(\.id) == ["site"])
+        #expect(store.notes(for: fixture.scene("https://www.target.com/ip/Bananas/1")).isEmpty)
+        // A file from before patterns means its page only, and so does a pattern that can't be read.
+        let old = try JSONDecoder().decode(StickyNote.self, from: Data(#"{"id":"o","anchor":{"host":"shop.example","path":"/item/1","page":{"host":"shop.example","path":"/item/1","query":{}},"role":"AXButton","label":"Buy"},"kind":"tip","text":"x","by":"y","at":"2026-01-01","confirmed":"2026-01-01"}"#.utf8))
+        #expect(old.anchor.scope == .page && old.anchor.matchesScene(fixture.scene("https://shop.example/item/1")) && !old.anchor.matchesScene(fixture.scene("https://shop.example/item/2")))
+        var odd = kind
+        odd.anchor.pattern = "   "
+        #expect(odd.anchor.matchesScene(fixture.scene("https://www.walmart.com/ip/Great-Value-Whole-Milk/10450114")))
+        #expect(!odd.anchor.matchesScene(fixture.scene("https://www.walmart.com/ip/Bananas-each/44390948")))
+    }
+
+    @Test func aControlWithNoNameIsFoundBesideItsNamedNeighbour() throws {
+        func element(_ role: String, _ label: String?, _ frame: CGRect, visible: Bool = true) -> PageElement {
+            PageElement(kind: "thing", role: role, label: label, frame: frame, visible: visible, enabled: true, document: 0)
+        }
+        let window = CGRect(x: 0, y: 0, width: 1_200, height: 900)
+        func page(_ elements: [PageElement], url: String = "https://www.walmart.com/ip/Bananas-each/44390948") -> PageSnapshot {
+            PageSnapshot(appName: "Chrome", bundleID: "com.google.Chrome", windowTitle: "Item", documents: [PageDocument(url: url, frame: window)],
+                         elements: elements, selectedText: nil, windowFrame: window, truncated: false, elapsed: 0)
+        }
+        // The page the hint was left on: the price block, an unnamed group, above "Add to cart".
+        let milk = page([element("AXHeading", "Great Value Whole Milk", CGRect(x: 600, y: 100, width: 300, height: 40)),
+                         element("AXStaticText", "$4.40", CGRect(x: 600, y: 200, width: 60, height: 30)),
+                         element("AXButton", "Add to cart - Great Value Whole Milk", CGRect(x: 600, y: 300, width: 200, height: 40)),
+                         element("AXButton", "Add to list", CGRect(x: 820, y: 300, width: 100, height: 40))], url: "https://www.walmart.com/ip/Milk/1")
+        let block = CGRect(x: 600, y: 190, width: 120, height: 50)
+        let near = try #require(NoteNear.of(control: block, in: milk))
+        #expect(near == NoteNear(role: "AXButton", label: "Add to cart - Great Value Whole Milk", dx: 0, dy: -110, width: 120, height: 50))
+        // A price is no name to go by; a heading is, when no control is within reach; nothing within reach, nothing.
+        #expect(NoteNear.of(control: block, in: page([element("AXStaticText", "$4.40", CGRect(x: 600, y: 200, width: 60, height: 30)),
+                                                        element("AXHeading", "Great Value Whole Milk", CGRect(x: 600, y: 100, width: 300, height: 40))]))?.role == "AXHeading")
+        #expect(NoteNear.of(control: CGRect(x: 600, y: 850, width: 10, height: 10), in: milk) == nil)
+
+        var anchor = NoteStore.sceneAnchor(bundleID: "com.google.Chrome", windowTitle: "Milk", url: "https://www.walmart.com/ip/Milk/1")
+        anchor.pattern = "www.walmart.com/ip/*/*"
+        anchor.role = "AXGroup"
+        anchor.near = near
+        anchor.rect = [0.5, 0.2111, 0.1, 0.0556]
+        let hint = StickyNote(id: "price", anchor: anchor, kind: "tip", text: "The per-unit price counts the whole pack", by: "F", at: "2026-11-10", confirmed: "2026-11-10")
+        // On another item's page the block sits lower, under a longer name, and "Add to cart" carries that item's name.
+        let title = element("AXHeading", "Bananas, each", CGRect(x: 600, y: 100, width: 300, height: 80))
+        let price = element("AXStaticText", "$0.58", CGRect(x: 600, y: 260, width: 60, height: 30))
+        let cart = element("AXButton", "Add to cart - Bananas, each", CGRect(x: 600, y: 360, width: 200, height: 40))
+        let guessed = WandController.place([hint], page: page([title, price, cart]), primaryMaxY: 1_000)
+        #expect(guessed.placed.map(\.predicted) == [true] && guessed.placed[0].frame == NSRect(x: 600, y: 700, width: 120, height: 50))
+        // A control of the hint's role where the block should be: that control, no guessing.
+        let group = element("AXGroup", nil, CGRect(x: 598, y: 248, width: 124, height: 52))
+        let found = WandController.place([hint], page: page([title, price, group, cart]), primaryMaxY: 1_000)
+        #expect(found.placed.map(\.predicted) == [false] && found.placed[0].frame == NSRect(x: 598, y: 700, width: 124, height: 52))
+        // "Add to cart" scrolled out of view: the hint is further down the page.
+        var below = cart
+        below.visible = false
+        #expect(WandController.place([hint], page: page([title, price, below]), primaryMaxY: 1_000).below.map(\.id) == ["price"])
+        // A hint on the button itself follows the button whose name is alike.
+        var onButton = anchor
+        onButton.near = nil
+        onButton.rect = nil
+        onButton.role = "AXButton"
+        onButton.label = "Add to cart - Great Value Whole Milk"
+        let button = StickyNote(id: "cart", anchor: onButton, kind: "tip", text: "Adds one; the quantity is on the next page", by: "F", at: "2026-11-10", confirmed: "2026-11-10")
+        let alike = WandController.place([button], page: page([title, price, cart]), primaryMaxY: 1_000)
+        #expect(alike.placed.map(\.predicted) == [false] && alike.placed[0].frame == NSRect(x: 600, y: 600, width: 200, height: 40))
+        #expect(NoteAnchor.alike("Add to cart - Great Value Milk", "Add to cart - Bananas") && NoteAnchor.alike("Delete this item", "Delete this item now"))
+        #expect(!NoteAnchor.alike("Save changes", "Save draft") && !NoteAnchor.alike("Pickup", "Pickup today") && !NoteAnchor.alike("Add to cart - Milk", "Add to list - Milk"))
+        #expect(AXElementInfo.steadyClasses(["price-wrap", "css-1x2y3z", "b", "sc-AbCdE", "", "ember412"]) == ["price-wrap", "b"])
+        #expect(AXElementInfo.steadyClasses(["css-1x2y3z"]) == nil && AXElementInfo.steadyClasses(nil) == nil)
+    }
+
     struct Fixture {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("notes-store-\(UUID())")
         var notes: URL { root.appendingPathComponent("notes") }

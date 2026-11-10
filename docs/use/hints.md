@@ -16,6 +16,13 @@ with yourself.
    two. Tick **⚠︎ Warning** when it is one. **Return** keeps it, **Esc** drops it.
 3. **Right-drag** to circle a part of the screen that isn't a control; the hint sticks to that spot.
 
+Where the next person meets it is the paper's small menu: **This page**, **Pages like this** or **Whole site**. On a
+page whose address names one item, as a shop's item pages do (`walmart.com/ip/<name>/<id>`), the menu starts on
+**Pages like this** and shows beside it the pattern those pages share, `/ip/*/*`, where `*` stands for a part that
+names one item. Read it; change it if it takes in too much or too little (`/products/*` for a shop that names its
+items by word alone). A hint about this one record, not about the kind of page, goes on **This page**. Which pages
+are of the kind is a comparison of addresses: no model, nothing leaves your Mac.
+
 A hint says who left it and when. A page in a browser or a window in any app can carry one. Nothing goes to a model
 when you leave a hint, and nothing goes anywhere but your own Mac until you share it.
 
@@ -33,6 +40,8 @@ when you leave a hint, and nothing goes anywhere but your own Mac until you shar
   or a scroll puts them away too.
 - **Noteling's glance.** Arriving where there are hints, Noteling holds up a small badge for a moment with their
   count. Click it to show them.
+- **Something with no name.** A hint on a block the page gives no name to, such as a price, is found on the next page
+  of its kind beside the named control it sits next to ("Add to cart"), where that control is now.
 
 Turn the tags off with **Hints on pages** in Noteling's right-click menu, or in Settings. Hints then show only with
 the pen or ⌥ Option twice.
@@ -65,7 +74,8 @@ changed it, wins on your Mac. [Keeping a team's tools](../team/README.md) has th
 
 ## The files
 
-A hint is a JSON file in `~/.noteling/notes/`, named by its id: where it is stuck (the page's key, the control's role
-and the label it shows, the page's own steady id for it when there is one, or a spot in the window), its kind, its
-words, who left it, when, and when it was last confirmed. They are read with the tools: after changing them by hand,
+A hint is a JSON file in `~/.noteling/notes/`, named by its id: where it is stuck (the page's key, or the pattern of
+the pages it is for, such as `www.walmart.com/ip/*/*`; the control's role and the label it shows, the page's own
+steady id for it when there is one, or a spot in the window; for a control with no name, the named control beside it
+and where it sits from that one), its kind, its words, who left it, when, and when it was last confirmed. They are read with the tools: after changing them by hand,
 choose **Reload** under Tool packs in Settings.

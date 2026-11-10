@@ -10,6 +10,7 @@ struct AXElementInfo {
     var subrole: String? = nil       // AXSecureTextField marks a password field
     var placeholder: String? = nil
     var domID: String? = nil         // a web page's own id for it (AXDOMIdentifier)
+    var classes: [String]? = nil     // a web page's class names for it (AXDOMClassList), the steady ones
 
     /// e.g. `button “Submit”` or `text field “Cost Center” = “”`
     var label: String {
@@ -24,6 +25,14 @@ struct AXElementInfo {
     /// The name a note is anchored by: title, else description, else placeholder.
     var anchorLabel: String? { [title, description, placeholder].compactMap { $0 }.first { !$0.isEmpty } }
     var isSecure: Bool { subrole == "AXSecureTextField" || role == "AXSecureTextField" }
+
+    /// Of a page's class names for a control, the ones a page gives by hand rather than generates (`css-1x2y3z`,
+    /// `sc-AbCdE`, `jsx-123`), at most six; nil when none.
+    static func steadyClasses(_ names: [String]?) -> [String]? {
+        guard let names else { return nil }
+        let kept = names.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && GeneratedID.isSteadyClass($0) }
+        return kept.isEmpty ? nil : Array(kept.prefix(6))
+    }
 }
 
 /// The native window and accessibility element under a screen point.
@@ -75,7 +84,8 @@ enum ScreenHitTester {
                                      frame: Self.axFrame(of: el, primaryMaxY: primaryMaxY),
                                      subrole: AX.string(el, kAXSubroleAttribute),
                                      placeholder: AX.string(el, kAXPlaceholderValueAttribute),
-                                     domID: AX.string(el, "AXDOMIdentifier").flatMap { $0.isEmpty ? nil : $0 })
+                                     domID: AX.string(el, "AXDOMIdentifier").flatMap { $0.isEmpty ? nil : $0 },
+                                     classes: AXElementInfo.steadyClasses(AX.strings(el, "AXDOMClassList")))
                 if (info?.title ?? "").isEmpty, (info?.description ?? "").isEmpty,
                    let parent = AX.element(el, kAXParentAttribute), let pt = AX.string(parent, kAXTitleAttribute), !pt.isEmpty {
                     info?.description = pt

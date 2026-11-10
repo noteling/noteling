@@ -51,6 +51,36 @@ addresses with `+`, `&` and a branch with a slash, the setting's default) and th
 the Mac sat at the lock screen, where Chrome serves an empty accessibility tree, so the first on-page run is the UAT
 below.
 
+## This round (0.10.1): pages like this (#121)
+
+The first UAT, on two item pages of a shop: a hint on the price block of one item showed on none of the others. A
+hint made in a browser was stuck to its page's key, and an item page's key holds the item's id (`/ip/<name>/<id>`),
+so every item was its own page; and the price block, a group the page gives no name to, was kept as a spot in the
+window, which drifts with whatever sits above it.
+
+- **Pages like this.** `PagePattern` (Shared/Screen): a page's key with `*` for a segment that names one thing
+  (digits, hex, a UUID, a run of three digits, a hyphenated word beside such an id, a title made into an address) and
+  without a parameter whose value names one record (a sys_id). Worked out from the address by code, matched by
+  comparing strings: no model, nothing leaves the Mac, nothing costs on arrival. The anchor carries it as text
+  (`pattern`), so it travels in the team's `hints/` file; a hint without one means its page, as before, and an older
+  Noteling, which knows nothing of patterns, reads the page alone.
+- **The paper's menu.** This page, pages like this (the pattern beside it, to read and change), the whole site. A new
+  hint starts on pages like this when the address names one item, else on this page; a hint being changed starts from
+  where it is. "Whole site" is the host alone, the shape hints had before page keys.
+- **A control with no name.** `NoteNear`: the named control nearest to it (buttons, links and fields within 320
+  points first, then headings and text within 200; never a name with a number or a price in it) and the offset, from
+  a read of the page while the hint is written. On the next page of the kind the hint is placed from where that
+  control is now, then snapped to a control of its role there: one in the read, or by one Accessibility call to the
+  live page (`ControlSnap`), checked against the page's class names for the control when the browser gives them
+  (`AXDOMClassList`). A name that carries the item's own ("Add to cart - Bananas") is matched by its first words
+  (`NoteAnchor.alike`), for the neighbour and for a hint on such a button itself.
+- **Not done:** the control's place in the page's structure as a further anchor, for a page whose named neighbours
+  move about; a hint on a control whose name changes wholesale between items.
+
+Verified: PagePatternTests, HintScopeTests, the store's tests (pages of a kind, the named neighbour, names alike), the
+hints' (a team hint for pages of a kind met on another of them), the pen render with the menu. Not run live: the Mac
+at the lock screen again. UAT step 10 below is the first on-page run.
+
 ## UAT: one journey
 
 Any page with a harmless control works; the issues list of Noteling's own repository has a **Filters** button that
@@ -79,6 +109,10 @@ does nothing until you choose something:
    other Mac, linked to the same tools, the same page shows the tag.
 9. **A native app** (optional). In Finder or Mail, pen, right-click a toolbar button, leave a hint, Esc, click another
    window and back: the tag is on the button.
+10. **Pages like this** (0.10.1). Open an item page of a shop (any Walmart item). Pen, right-click the price: the
+    paper's menu is on **Pages like this** with `/ip/*/*` beside it. Write "The per-unit price counts the whole
+    pack", Return. Open another item: within a beat, a tag beside that item's price, and the hint on hover. Pen,
+    right-click the tag, choose **This page**, Return: on a third item, no tag.
 
 What to expect and not mind: the first marks land a beat after the page does (Chrome builds its accessibility tree
 when asked); the tags vanish while the page scrolls and return when it settles; a page that changes itself without a
@@ -95,3 +129,5 @@ click or a scroll is caught at the next click, scroll or window move, or when th
   hint fades.
 - **B2C.** No free text, a consequence vocabulary and reactions, and "only on a control you clicked"; the same files,
   another tenant. Not before the B2B loop has run at the user's work.
+- **Steadier anchors.** The control's place in the page's structure, for a page whose named neighbours move about;
+  a hint on a control named wholly for its item.

@@ -15,12 +15,27 @@ struct NoteAnchor: Codable, Equatable {
     var role: String? = nil       // "AXButton"
     var label: String? = nil      // the control's title / description / placeholder as shown
     var rect: [Double]? = nil     // x, y, w, h as fractions of the window frame, top-left origin
+    /// Pages like the one it was left on, as `PagePattern` text ("www.walmart.com/ip/*/*"): the hint is met on every
+    /// page of the kind. Without it, a note with a page is on that page only.
+    var pattern: String? = nil
+    /// For a control with no name of its own: a named control near it, and where it sits from that one.
+    var near: NoteNear? = nil
+    /// The page's class names for the control, the steady ones, to tell it from its neighbours on the next page.
+    var classes: [String]? = nil
 
     var isRegion: Bool { label == nil && rect != nil }
 
+    /// Where a hint on a page is met: this page, pages like it, or the whole site. Nil for a window in an app.
+    var scope: HintScope? {
+        if let pattern { return .pages(PagePattern(pattern, host: host)?.pathAndQuery ?? pattern) }
+        if page != nil { return .page }
+        if host != nil { return path == nil || path == "/" ? .site : .page }
+        return nil
+    }
+
     /// `button “Save page” on 127.0.0.1:4310`, or `a spot in “Untitled” (com.apple.TextEdit)`.
     var summary: String {
-        let place = page?.description ?? host.map { $0 + (path.map { $0 == "/" ? "" : $0 } ?? "") } ?? window.map { "“\($0)”" } ?? bundle ?? "?"
+        let place = pattern ?? page?.description ?? host.map { $0 + (path.map { $0 == "/" ? "" : $0 } ?? "") } ?? window.map { "“\($0)”" } ?? bundle ?? "?"
         if let label { return "\(Self.roleWord(role)) “\(label)” on \(place)" }
         return "a circled spot on \(place)"
     }
@@ -62,9 +77,10 @@ struct NoteAnchor: Codable, Equatable {
 
     func matchesScene(_ ctx: ScreenContext) -> Bool { matchesScene(ctx, page: ctx.url.flatMap(PageKey.of)) }
 
-    /// On this scene: a note with a page key is on that page only, so a site that serves every page from one path
-    /// no longer shows every page's notes everywhere.
+    /// On this scene: a note for pages of a kind is on every page of the kind; one with a page key is on that page
+    /// only, so a site that serves every page from one path no longer shows every page's notes everywhere.
     func matchesScene(_ ctx: ScreenContext, page current: PageKey?) -> Bool {
+        if let pattern, let kind = PagePattern(pattern, host: host) { return current.map(kind.matches) ?? false }
         if let page { return page == current }
         if let host {
             guard Self.hostKey(ctx.url) == host.lowercased() else { return false }
@@ -81,15 +97,29 @@ struct NoteAnchor: Codable, Equatable {
 
     /// An id a page generates as it loads (ember412, :r5:, ext-gen12, mat-input-3, ui-id-4, long hex), which can name
     /// another control on the next load, so a note is never stuck by one.
-    static func isSteadyID(_ id: String?) -> Bool {
-        guard let id, !id.isEmpty else { return false }
-        return id.range(of: #"\d{3,}|^:r|«r|^(ember|ext-|mat-|ui-id-|gwt-uid|react-|radix-|headlessui-)|[0-9a-f]{8,}|^[0-9]"#,
-                        options: [.regularExpression, .caseInsensitive]) == nil
-    }
+    static func isSteadyID(_ id: String?) -> Bool { GeneratedID.isSteady(id) }
 
     func matchesElement(role r: String?, label l: String?) -> Bool {
         guard let role, let label, let r, role == r, let want = Self.norm(label), let have = Self.norm(l) else { return false }
         return want == have
+    }
+
+    /// The same control on another page of the kind, where its name carries the item's own ("Add to cart - Great
+    /// Value Milk" there, "Add to cart - Bananas" here): the same role, and the names share their first words.
+    func isLikeElement(role r: String?, label l: String?) -> Bool {
+        guard let role, let label, let r, role == r else { return false }
+        return Self.alike(label, l)
+    }
+
+    /// Two names of one control across pages: equal, or sharing at least ten characters of whole words at the start.
+    static func alike(_ a: String?, _ b: String?) -> Bool {
+        guard let a = norm(a), let b = norm(b) else { return false }
+        if a == b { return true }
+        let shared = String(zip(a, b).prefix { $0 == $1 }.map(\.0))
+        if shared.count == min(a.count, b.count) { return shared.count >= 10 }   // one is the other's start
+        // Back to the last whole word, so "save changes" and "save draft" share only "save".
+        let words = shared.split(separator: " ", omittingEmptySubsequences: false).dropLast().joined(separator: " ")
+        return words.count >= 10
     }
 
     /// The rect anchor as a screen rect inside `windowFrame` (AppKit coordinates).
@@ -115,6 +145,65 @@ struct NoteAnchor: Codable, Equatable {
 struct NoteCheck: Codable, Equatable {
     var script: String                    // the tool id, "pack__script"
     var args: [String: String]? = nil
+}
+
+/// A named control near one that has no name of its own (a price block), and where the unnamed one sits from it: how
+/// a hint on the block finds it on the next page of the kind, where the block's place in the window differs but its
+/// place beside "Add to cart" does not. Offsets and sizes are points, in Accessibility's top-left coordinates.
+struct NoteNear: Codable, Equatable {
+    var role: String
+    var label: String
+    var dx: Double
+    var dy: Double
+    var width: Double
+    var height: Double
+
+    /// Where the control is, from where the named one is now.
+    func rect(from named: CGRect) -> CGRect { CGRect(x: named.minX + dx, y: named.minY + dy, width: width, height: height) }
+
+    /// Named controls whose name is steady across pages of a kind: short, no number, no price; buttons, links and
+    /// fields first, headings and text (which may be the item's own name) only when nothing else is near.
+    static func tier(of element: PageElement) -> Int? {
+        guard let label = element.label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty, label.count <= 40,
+              !label.contains(where: { $0.isNumber || "$€£¥".contains($0) }) else { return nil }
+        switch element.role {
+        case "AXButton", "AXLink", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXMenuButton", "AXTab", "AXTextField", "AXComboBox": return 1
+        case "AXHeading", "AXStaticText": return 2
+        default: return nil
+        }
+    }
+
+    /// The best named neighbour of a control on the page, in the control's document, within reach: by the gap
+    /// between them, controls within 320 points before text within 200.
+    static func of(control: CGRect, in page: PageSnapshot, reach: (CGFloat, CGFloat) = (320, 200)) -> NoteNear? {
+        var best: (PageElement, CGRect, Int, CGFloat)?
+        for element in page.elements {
+            guard let tier = tier(of: element), let frame = element.frame, frame.width > 0, frame.height > 0, frame != control else { continue }
+            let gap = Self.gap(control, frame)
+            guard gap <= (tier == 1 ? reach.0 : reach.1) else { continue }
+            if let b = best, (b.2, b.3) <= (tier, gap) { continue }
+            best = (element, frame, tier, gap)
+        }
+        guard let (element, frame, _, _) = best, let label = element.label else { return nil }
+        return NoteNear(role: element.role, label: String(label.prefix(80)), dx: control.minX - frame.minX, dy: control.minY - frame.minY,
+                        width: control.width, height: control.height)
+    }
+
+    /// The distance between two rectangles' edges; zero when they touch or overlap.
+    static func gap(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        let dx = max(0, max(a.minX, b.minX) - min(a.maxX, b.maxX)), dy = max(0, max(a.minY, b.minY) - min(a.maxY, b.maxY))
+        return (dx * dx + dy * dy).squareRoot()
+    }
+}
+
+/// Where a hint on a page is met, as the paper offers it.
+enum HintScope: Equatable {
+    /// This page only, by its key.
+    case page
+    /// Pages like this: a `PagePattern`'s part after the host, as the paper shows it ("/ip/*/*").
+    case pages(String)
+    /// Every page of the site.
+    case site
 }
 
 /// One sticky note, kept one file each in the notes store (once in a pack's `notes.json`).

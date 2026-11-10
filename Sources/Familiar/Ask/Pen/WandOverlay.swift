@@ -57,7 +57,18 @@ final class WandController {
     var canShare: () -> Bool = { false }
     var onShare: ((StickyNote) -> Void)?
 
-    struct PlacedNote { let note: StickyNote; let frame: NSRect }
+    struct PlacedNote {
+        let note: StickyNote
+        let frame: NSRect
+        /// Placed by where its control should be (beside a named neighbour, or at a spot in the window) rather than
+        /// by the control's name or id: the live page can say what is there.
+        let predicted: Bool
+        init(note: StickyNote, frame: NSRect, predicted: Bool = false) {
+            self.note = note
+            self.frame = frame
+            self.predicted = predicted
+        }
+    }
 
     private var panels: [WandPanel] = []
     private var lastHit: (Date, NSPoint, WandTarget)?
@@ -196,8 +207,13 @@ final class WandController {
             Task { [weak self] in
                 let page = await Task.detached(priority: .userInitiated) { PageReader.read(bundleID: bundle) }.value
                 guard let self, self.isActive || self.isShowingNotes else { return }
-                let result: (placed: [PlacedNote], missing: [StickyNote], below: [StickyNote]) =
+                var result: (placed: [PlacedNote], missing: [StickyNote], below: [StickyNote]) =
                     page.map { Self.place(notes, page: $0, primaryMaxY: primaryMaxY) } ?? ([], notes, [])
+                if result.placed.contains(where: \.predicted) {
+                    let marks = result.placed
+                    result.placed = await Task.detached(priority: .userInitiated) { Self.snapped(marks, bundleID: bundle, primaryMaxY: primaryMaxY) }.value
+                    guard self.isActive || self.isShowingNotes else { return }
+                }
                 // Notes saved while the page was read keep where they were put; ones removed meanwhile stay gone.
                 let current = Set(self.sceneNotes.map(\.id)), savedMeanwhile = Set(self.placed.map(\.note.id))
                 self.placed = result.placed.filter { current.contains($0.note.id) && !savedMeanwhile.contains($0.note.id) }
@@ -270,19 +286,47 @@ final class WandController {
             }
             if found == nil, anchor.label != nil {
                 found = page.elements.first { $0.visible && anchor.matchesElement(role: $0.role, label: $0.label) }?.frame
+                    // On another page of the kind the name may carry the item's own: "Add to cart - Bananas".
+                    ?? page.elements.first { $0.visible && anchor.isLikeElement(role: $0.role, label: $0.label) }?.frame
+            }
+            var predicted = false
+            // A control with no name: beside the named one it was next to, where that one is now.
+            if found == nil, let near = anchor.near,
+               let named = page.elements.filter({ $0.role == near.role && $0.frame != nil && NoteAnchor.alike(near.label, $0.label) }).sorted(by: { $0.visible && !$1.visible }).first,
+               let there = named.frame {
+                guard named.visible else { below.append(note); continue }
+                let expected = near.rect(from: there)
+                let box = expected.insetBy(dx: -expected.width * 0.25, dy: -expected.height * 0.25)
+                let control = page.elements.first { $0.visible && $0.role == anchor.role && $0.frame.map { box.contains(CGPoint(x: $0.midX, y: $0.midY)) } == true }
+                found = control?.frame ?? expected
+                predicted = control == nil
             }
             if found == nil, let window = page.windowFrame, let rect = anchor.rect, rect.count == 4 {
                 found = CGRect(x: window.minX + window.width * rect[0], y: window.minY + window.height * rect[1],
                                width: window.width * rect[2], height: window.height * rect[3])
+                predicted = true
             }
-            if let found, found.width > 0 || found.height > 0 { placed.append(PlacedNote(note: note, frame: appKit(found))) }
-            else if page.elements.contains(where: { !$0.visible && (anchor.label != nil && anchor.matchesElement(role: $0.role, label: $0.label)
+            if let found, found.width > 0 || found.height > 0 { placed.append(PlacedNote(note: note, frame: appKit(found), predicted: predicted)) }
+            else if page.elements.contains(where: { !$0.visible && (anchor.label != nil && anchor.isLikeElement(role: $0.role, label: $0.label)
                                                                       || (anchor.domID != nil && $0.domID == anchor.domID)) }) {
                 below.append(note)   // its control is on the page, scrolled out of view
             }
             else { missing.append(note) }
         }
         return (placed, missing, below)
+    }
+
+    /// Marks placed by where their control should be, moved onto the control that is there on the live page: a hint
+    /// on a price block lands on the block as the page has it now, not where the block was on the page it was left
+    /// on. One Accessibility call per such mark; a spot with no control of the hint's role keeps its place.
+    nonisolated static func snapped(_ placed: [PlacedNote], bundleID: String, primaryMaxY: CGFloat) -> [PlacedNote] {
+        placed.map { mark in
+            guard mark.predicted, let role = mark.note.anchor.role else { return mark }
+            let centre = CGPoint(x: mark.frame.midX, y: primaryMaxY - mark.frame.midY)
+            guard let frame = ControlSnap.frame(bundleID: bundleID, at: centre, role: role, classes: mark.note.anchor.classes),
+                  frame.width > 0, frame.height > 0 else { return mark }
+            return PlacedNote(note: mark.note, frame: NSRect(x: frame.minX, y: primaryMaxY - frame.maxY, width: frame.width, height: frame.height))
+        }
     }
 
     func cancel() {
@@ -417,6 +461,8 @@ final class WandController {
             return id == mine && (anchor.role == nil || anchor.role == element.role)
         }
         return anchor.matchesElement(role: element.role, label: element.anchorLabel)
+            // The same control on another page of the kind, named for that page's item.
+            || (anchor.pattern != nil && anchor.isLikeElement(role: element.role, label: element.anchorLabel))
     }
 
     /// What was pointed at sits inside the noted control (its text, its icon), and isn't a container holding it: one
@@ -441,7 +487,10 @@ final class WandController {
         }
         guard let e = target.element, !e.isSecure else { return nil }
         a.role = e.role
-        if a.page != nil, NoteAnchor.isSteadyID(e.domID) { a.domID = e.domID }
+        if a.page != nil {
+            if NoteAnchor.isSteadyID(e.domID) { a.domID = e.domID }
+            a.classes = e.classes
+        }
         if let label = e.anchorLabel { a.label = String(label.prefix(120)); return a }
         guard let f = e.frame, let wf = target.windowFrame else { return nil }
         a.rect = NoteAnchor.fractions(of: f, in: wf)
@@ -537,6 +586,9 @@ final class WandView: NSView {
     private var stickers: [StickerLayer] = []
     private var editor: NoteEditor?
     private var editing: (anchor: NoteAnchor, frame: NSRect, existing: StickyNote?)?
+    /// The page as read when the paper opened on a control with no name of its own, for its named neighbour.
+    private var pageForPaper: PageSnapshot?
+    private var paperReads = 0
     private var stroke: [NSPoint] = []        // the stroke in progress, global points
     private var strokeIsNote = false          // drawn with the right button: it ends in a note, not a question
 
@@ -718,6 +770,9 @@ final class WandView: NSView {
         present(anchor: anchor, at: region, existing: nil)
     }
 
+    /// The paper open for a hint, if one is.
+    var openPaper: NoteEditor? { editor }
+
     /// Render mode: open or close a sticker by note id.
     func setExpanded(_ id: String, _ on: Bool) {
         let mode: StickerLayer.Mode = on ? .open : .brief
@@ -726,11 +781,13 @@ final class WandView: NSView {
 
     func present(anchor: NoteAnchor, at frame: NSRect, existing: StickyNote?) {
         editor?.removeFromSuperview()
-        let ed = NoteEditor(existing: existing, place: anchor.controlSummary, checks: controller.checksProvider(controller.scene), canShare: controller.canShare())
+        let ed = NoteEditor(existing: existing, place: anchor.controlSummary, checks: controller.checksProvider(controller.scene),
+                            canShare: controller.canShare(), scope: Self.scopes(for: anchor, existing: existing))
         let o = StickerPaper.origin(for: ed.frame.size, control: local(frame), in: bounds)
         ed.frame = NSRect(origin: o, size: ed.frame.size)
-        ed.onCommit = { [weak self] text, kind, check in self?.finishEditor(text: text, kind: kind, check: check) }
-        ed.onShare = { [weak self] text, kind, check in self?.finishEditor(text: text, kind: kind, check: check, share: true) }
+        ed.onCommit = { [weak self] text, kind, check, scope in self?.finishEditor(text: text, kind: kind, check: check, scope: scope) }
+        ed.onShare = { [weak self] text, kind, check, scope in self?.finishEditor(text: text, kind: kind, check: check, scope: scope, share: true) }
+        readPageForPaper(anchor: anchor, existing: existing)
         ed.onCancel = { [weak self] in self?.closeEditor() }
         ed.onDelete = { [weak self] in
             guard let self, let ex = self.editing?.existing else { return }
@@ -746,13 +803,51 @@ final class WandView: NSView {
         window?.makeFirstResponder(ed.textView)
     }
 
-    private func finishEditor(text: String, kind: String, check: NoteCheck?, share: Bool = false) {
+    /// What the paper offers for where a hint on this page is met: the page, pages like it as the address suggests,
+    /// the site. A hint being changed starts from where it is; a new one from pages like this when the address names
+    /// one item, else from this page. Nothing for a window in an app.
+    static func scopes(for anchor: NoteAnchor, existing: StickyNote?) -> NoteEditor.ScopeChoices? {
+        guard let key = anchor.page else { return nil }
+        let suggested = PagePattern.of(key)
+        let initial = existing?.anchor.scope ?? (suggested.isWide ? .pages(suggested.pathAndQuery) : .page)
+        return NoteEditor.ScopeChoices(host: key.host, page: PagePattern.exact(key).pathAndQuery, pages: suggested.pathAndQuery, initial: initial)
+    }
+
+    /// A control with no name of its own, on a page: the page is read while the hint is written, so the hint can be
+    /// stuck beside the named control nearest to it.
+    private func readPageForPaper(anchor: NoteAnchor, existing: StickyNote?) {
+        pageForPaper = nil
+        guard anchor.page != nil, anchor.label == nil, anchor.domID == nil, existing?.anchor.near == nil,
+              let bundle = controller.scene?.bundleID else { return }
+        paperReads += 1
+        let read = paperReads
+        Task { [weak self] in
+            let page = await Task.detached(priority: .userInitiated) { PageReader.read(bundleID: bundle) }.value
+            guard let self, self.paperReads == read, self.editor != nil else { return }
+            self.pageForPaper = page
+        }
+    }
+
+    private func finishEditor(text: String, kind: String, check: NoteCheck?, scope: HintScope?, share: Bool = false) {
         guard let e = editing else { closeEditor(); return }
         var anchor = e.anchor
-        if let existing = e.existing?.anchor {
-            // Editing a note keeps the page or site it was stuck to, so a note for a whole site doesn't shrink to one page.
-            anchor.page = existing.page; anchor.host = existing.host; anchor.path = existing.path
+        if let scope {
+            // Where the hint is met, as the paper's menu has it; the control's half of the anchor is as picked now.
+            switch scope {
+            case .page: anchor.pattern = nil
+            case .pages(let typed):
+                anchor.pattern = PagePattern(typed, host: anchor.host ?? "")?.description ?? anchor.page.map { PagePattern.of($0).description }
+            case .site: anchor.pattern = nil; anchor.page = nil; anchor.path = nil
+            }
+        } else if let existing = e.existing?.anchor {
+            // Editing a note in an app keeps the window it was stuck to.
             anchor.bundle = existing.bundle; anchor.window = existing.window
+        }
+        if let existing = e.existing?.anchor, anchor.near == nil { anchor.near = existing.near }
+        if anchor.label == nil, anchor.domID == nil, anchor.near == nil, anchor.page != nil, let page = pageForPaper {
+            let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
+            let control = CGRect(x: e.frame.minX, y: primaryMaxY - e.frame.maxY, width: e.frame.width, height: e.frame.height)
+            anchor.near = NoteNear.of(control: control, in: page)
         }
         let draft = NoteDraft(existingID: e.existing?.id, anchor: anchor, kind: kind, text: text, frame: e.frame, check: check)
         let note = controller.save(draft)
@@ -769,6 +864,7 @@ final class WandView: NSView {
         editor?.removeFromSuperview()
         editor = nil
         editing = nil
+        pageForPaper = nil
         clearInk()
         window?.makeFirstResponder(self)
         WandCursor.cursor.set()
@@ -873,11 +969,14 @@ final class NoteEditor: NSView, NSTextViewDelegate {
     private let placeholder = NSTextField(labelWithString: "What should the next person know?")
     private let hint = NSTextField(labelWithString: "⏎ keep · ⇧⏎ line · esc drop")
     private let checkMenu = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let scopeMenu = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let scopeField = NSTextField(string: "")
     private var checks: [CheckChoice] = []
     private var kept: NoteCheck?
-    var onCommit: ((String, String, NoteCheck?) -> Void)?
+    private var scopes: ScopeChoices?
+    var onCommit: ((String, String, NoteCheck?, HintScope?) -> Void)?
     /// Keep it, and send it to the team's tools as well.
-    var onShare: ((String, String, NoteCheck?) -> Void)?
+    var onShare: ((String, String, NoteCheck?, HintScope?) -> Void)?
 
     /// A script that can check a note: its tool id and how the menu names it.
     struct CheckChoice: Equatable {
@@ -885,8 +984,40 @@ final class NoteEditor: NSView, NSTextViewDelegate {
         var title: String
     }
 
-    /// The editor's height: one more row when there are scripts to check the note with.
-    static func height(withChecks: Bool) -> CGFloat { size.height + (withChecks ? 26 : 0) }
+    /// Where a hint on a page can be met, as the paper's menu offers it, and what each choice shows beside the menu:
+    /// this page's address after the host, the pattern pages like it share, the host for the whole site.
+    struct ScopeChoices: Equatable {
+        var host: String
+        var page: String
+        var pages: String
+        var initial: HintScope
+    }
+
+    /// The editor's height: one more row when there are scripts to check the note with, one more for where a hint on
+    /// a page is met.
+    static func height(withChecks: Bool, scope: Bool = false) -> CGFloat { size.height + (withChecks ? 26 : 0) + (scope ? 26 : 0) }
+
+    /// Where the hint is met, as the menu and the pattern beside it say; nil for a window in an app.
+    var chosenScope: HintScope? {
+        guard scopes != nil else { return nil }
+        switch scopeMenu.indexOfSelectedItem {
+        case 1: return .pages(scopeField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+        case 2: return .site
+        default: return .page
+        }
+    }
+
+    /// Chooses where the hint is met, as the menu does: 0 this page, 1 pages like this, 2 the whole site.
+    func selectScope(at index: Int) {
+        scopeMenu.selectItem(at: index)
+        scopeChanged()
+    }
+
+    /// The pattern as typed beside the menu, for pages like this.
+    var typedPattern: String {
+        get { scopeField.stringValue }
+        set { scopeField.stringValue = newValue }
+    }
 
     /// Chooses a check by its place in the list, as the menu does.
     func selectCheck(at index: Int) { checkMenu.selectItem(at: index + 1) }
@@ -902,7 +1033,7 @@ final class NoteEditor: NSView, NSTextViewDelegate {
     var onCancel: (() -> Void)?
     var onDelete: (() -> Void)?
 
-    init(existing: StickyNote?, place: String, checks: [CheckChoice] = [], canShare: Bool = false) {
+    init(existing: StickyNote?, place: String, checks: [CheckChoice] = [], canShare: Bool = false, scope: ScopeChoices? = nil) {
         // A note linked to a script that isn't offered here keeps it as a choice, so editing the text never drops it.
         var choices = checks
         if let current = existing?.check, !choices.contains(where: { $0.script == current.script }) {
@@ -910,14 +1041,15 @@ final class NoteEditor: NSView, NSTextViewDelegate {
         }
         self.checks = choices
         self.kept = existing?.check
-        super.init(frame: NSRect(origin: .zero, size: NSSize(width: Self.size.width, height: Self.height(withChecks: !choices.isEmpty))))
+        self.scopes = scope
+        super.init(frame: NSRect(origin: .zero, size: NSSize(width: Self.size.width, height: Self.height(withChecks: !choices.isEmpty, scope: scope != nil))))
         wantsLayer = true
         layer?.backgroundColor = existing?.isWarning == true ? StickerPaper.warning : StickerPaper.tip
         layer?.cornerRadius = 3
         layer?.borderWidth = 0.5
         layer?.borderColor = StickerPaper.edge
         layer?.shadowOpacity = 0.35; layer?.shadowRadius = 5; layer?.shadowOffset = CGSize(width: 0, height: -3)
-        let w = Self.size.width, h = frame.height, bottom: CGFloat = self.checks.isEmpty ? 0 : 26
+        let w = Self.size.width, h = frame.height, bottom: CGFloat = (self.checks.isEmpty ? 0 : 26) + (scope == nil ? 0 : 26)
 
         placeLabel.stringValue = (existing == nil ? "Hint on " : "Your hint on ") + place
         placeLabel.font = NSFont.systemFont(ofSize: 10.5, weight: .medium)
@@ -978,6 +1110,37 @@ final class NoteEditor: NSView, NSTextViewDelegate {
         placeholder.isHidden = !(existing?.text ?? "").isEmpty
         addSubview(placeholder)
 
+        var row: CGFloat = 32
+        if let scope {
+            // Where the hint is met: this page, pages like it (the pattern beside the menu, to read and change), the site.
+            scopeMenu.addItems(withTitles: ["This page", "Pages like this", "Whole site"])
+            scopeMenu.controlSize = .small
+            scopeMenu.font = NSFont.systemFont(ofSize: 11)
+            scopeMenu.frame = NSRect(x: 8, y: row, width: 118, height: 22)
+            scopeMenu.target = self
+            scopeMenu.action = #selector(scopeChanged)
+            scopeMenu.toolTip = "Where the next person meets this hint: on this page only, on every page like it (the address pattern beside the menu, which you can change), or anywhere on the site"
+            addSubview(scopeMenu)
+            scopeField.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular)
+            scopeField.controlSize = .small
+            scopeField.lineBreakMode = .byTruncatingMiddle
+            scopeField.cell?.usesSingleLineMode = true
+            scopeField.cell?.wraps = false
+            scopeField.cell?.isScrollable = true
+            scopeField.frame = NSRect(x: 130, y: row + 1, width: w - 138, height: 20)
+            scopeField.target = self
+            scopeField.action = #selector(commitFromField)
+            scopeField.toolTip = "The address pattern pages like this share: * stands for a part that names one item. Change it if it takes in too much or too little."
+            addSubview(scopeField)
+            switch scope.initial {
+            case .page: scopeMenu.selectItem(at: 0)
+            case .pages(let text): scopeMenu.selectItem(at: 1); scopeField.stringValue = text
+            case .site: scopeMenu.selectItem(at: 2)
+            }
+            scopeChanged()
+            row += 26
+        }
+
         if !self.checks.isEmpty {
             // Link the note to a script that tests it, run as whoever reads the note.
             checkMenu.addItem(withTitle: "No check")
@@ -987,7 +1150,7 @@ final class NoteEditor: NSView, NSTextViewDelegate {
             }
             checkMenu.controlSize = .small
             checkMenu.font = NSFont.systemFont(ofSize: 11)
-            checkMenu.frame = NSRect(x: 8, y: 32, width: w - 16, height: 22)
+            checkMenu.frame = NSRect(x: 8, y: row, width: w - 16, height: 22)
             checkMenu.toolTip = "When someone points at this with the pen, the script runs as them and its answer shows beside the note"
             addSubview(checkMenu)
         }
@@ -1015,12 +1178,36 @@ final class NoteEditor: NSView, NSTextViewDelegate {
 
     func commit() {
         let t = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.isEmpty { onCancel?() } else { onCommit?(String(t.prefix(600)), warning.state == .on ? "warning" : "tip", chosenCheck) }
+        if t.isEmpty { onCancel?() } else { onCommit?(String(t.prefix(600)), warning.state == .on ? "warning" : "tip", chosenCheck, chosenScope) }
     }
+
+    /// Return in the pattern field keeps the hint, as Return in the text does.
+    @objc private func commitFromField() { commit() }
 
     @objc private func kindChanged() {
         layer?.backgroundColor = warning.state == .on ? StickerPaper.warning : StickerPaper.tip
         window?.makeFirstResponder(textView)
+    }
+
+    /// The menu's choice shows beside it: the pattern to change for pages like this; the page or the host, to read,
+    /// for the other two.
+    @objc private func scopeChanged() {
+        guard let scopes else { return }
+        let editable = scopeMenu.indexOfSelectedItem == 1
+        if editable {
+            if scopeField.stringValue.trimmingCharacters(in: .whitespaces).isEmpty || scopeField.stringValue == scopes.page || scopeField.stringValue == scopes.host {
+                scopeField.stringValue = scopes.pages
+            }
+        } else {
+            scopeField.stringValue = scopeMenu.indexOfSelectedItem == 2 ? scopes.host : scopes.page
+        }
+        scopeField.isEditable = editable
+        scopeField.isSelectable = editable
+        scopeField.isBezeled = editable
+        scopeField.drawsBackground = editable
+        scopeField.backgroundColor = NSColor.white.withAlphaComponent(0.55)
+        scopeField.textColor = editable ? StickerPaper.ink : StickerPaper.inkSoft
+        if !editable, window?.firstResponder === scopeField.currentEditor() { window?.makeFirstResponder(textView) }
     }
 
     @objc private func deleteTapped() { onDelete?() }
@@ -1028,7 +1215,7 @@ final class NoteEditor: NSView, NSTextViewDelegate {
     @objc private func shareTapped() {
         let t = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { window?.makeFirstResponder(textView); return }   // nothing written yet: nothing to share
-        onShare?(String(t.prefix(600)), warning.state == .on ? "warning" : "tip", chosenCheck)
+        onShare?(String(t.prefix(600)), warning.state == .on ? "warning" : "tip", chosenCheck, chosenScope)
     }
 
     func textDidChange(_ notification: Notification) { placeholder.isHidden = !textView.string.isEmpty }

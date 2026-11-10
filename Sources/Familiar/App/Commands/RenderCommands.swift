@@ -387,7 +387,10 @@ func runRenderPen() {
     let n3 = StickyNote(id: "n3", anchor: a3, kind: "tip", text: "Filters up top apply to this table only, the totals below ignore them.", by: "david", at: "2026-09-24", confirmed: "2026-09-24")
     view.showStickers([.init(note: n1, frame: controls[2].1), .init(note: n2, frame: controls[4].1), .init(note: n3, frame: table.frame)])
     view.setExpanded("n1", true)
-    view.present(anchor: a2, at: controls[1].1, existing: nil)   // the editor open on "Update"
+    // The editor open on "Update", on a report's own page: the paper offers pages like this one.
+    var a4 = NoteStore.sceneAnchor(bundleID: "com.google.Chrome", windowTitle: "Concur", url: "https://expenses.internal.example.com/reports/4471/review")
+    a4.role = "AXButton"; a4.label = "Update"
+    view.present(anchor: a4, at: controls[1].1, existing: nil)
     view.layoutSubtreeIfNeeded()
     RunLoop.main.run(until: Date().addingTimeInterval(0.3))
 
