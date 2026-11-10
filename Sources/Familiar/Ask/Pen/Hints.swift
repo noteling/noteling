@@ -317,7 +317,12 @@ final class HintsController {
         if ContextWatcher.browserBundles.contains(bundle) {
             guard let page = await Task.detached(priority: .utility, operation: { PageReader.read(bundleID: bundle) }).value else { return nil }
             let placed = WandController.place(notes, page: page, primaryMaxY: primaryMaxY)
-            return Reading(marks: placed.placed.map { Mark(note: $0.note, frame: $0.frame) }, pageURL: page.url, missing: placed.missing.count)
+            var marks = placed.placed
+            if marks.contains(where: \.predicted) {
+                // A hint on a control with no name, placed by where the control should be: the live page says what is there.
+                marks = await Task.detached(priority: .utility, operation: { WandController.snapped(marks, bundleID: bundle, primaryMaxY: primaryMaxY) }).value
+            }
+            return Reading(marks: marks.map { Mark(note: $0.note, frame: $0.frame) }, pageURL: page.url, missing: placed.missing.count)
         }
         let scan = await Task.detached(priority: .utility, operation: { AXScan.frontmostWindow() }).value
         guard scan.bundleID == bundle else { return nil }

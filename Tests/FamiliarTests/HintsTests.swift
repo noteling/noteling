@@ -202,6 +202,32 @@ struct HintsTests {
         #expect(registry.notes(for: scene()).isEmpty)
     }
 
+    @Test func aTeamHintForPagesOfAKindIsMetOnEachOfThem() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("hints-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let linked = root.appendingPathComponent("linked")
+        let folder = linked.appendingPathComponent(TeamHints.folder)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var shared = note("t2", url: "https://www.walmart.com/ip/Great-Value-Whole-Milk/10450114", text: "The per-unit price counts the whole pack")
+        shared.anchor.pattern = "www.walmart.com/ip/*/*"
+        let (name, json) = try TeamHints.file(for: shared)
+        // The pattern travels as text; an older Noteling, which knows nothing of it, reads the page alone.
+        #expect(try JSONDecoder().decode(StickyNote.self, from: Data(json.utf8)).anchor.pattern == "www.walmart.com/ip/*/*")
+        try json.write(to: folder.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        let registry = ToolRegistry(root: root.appendingPathComponent("tools"), runner: ScriptRunner(config: Config()))
+        registry.linkedRoot = linked
+        registry.notesStore = NotesStore(directory: root.appendingPathComponent("notes"))
+        await registry.reload()
+        let bananas = scene("https://www.walmart.com/ip/Bananas-each/44390948?from=search")
+        #expect(registry.notes(for: bananas).map(\.id) == ["t2"])
+        #expect(registry.notes(for: scene("https://www.walmart.com/cart")).isEmpty)
+        // Met as the person arrives there, from a read of the page alone.
+        let hints = controller { _, notes in .init(marks: notes.map { .init(note: $0, frame: self.small) }) }
+        hints.arrive(bananas, notes: registry.notes(for: bananas))
+        await hints.settle()
+        #expect(hints.marks.map(\.note.id) == ["t2"])
+    }
+
     @Test func sharingOpensGitHubWithTheFileReadyToAdd() throws {
         let repo = try RepoAddress.parse("https://github.com/acme/tools")
         let hint = note("t1", text: "C++ builds & tests = slow; ask abc+ops@example.com")

@@ -37,6 +37,15 @@ enum AX {
         return nil
     }
 
+    /// A list of strings, such as a page's class names for a control.
+    static func strings(_ el: AXUIElement, _ attr: String) -> [String]? {
+        var v: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success, let v else { return nil }
+        if let list = v as? [String] { return list }
+        if let s = v as? String { return s.split(separator: " ").map(String.init) }
+        return nil
+    }
+
     static func element(_ el: AXUIElement, _ attr: String) -> AXUIElement? {
         var v: CFTypeRef?
         guard AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success, let v else { return nil }
