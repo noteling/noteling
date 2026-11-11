@@ -3,7 +3,8 @@ import Foundation
 import Testing
 @testable import Familiar
 
-/// Hints shown by themselves: placed from a read of the page as it comes up, kept with the page, gone with it; the
+/// Hints shown by themselves: placed from reads of the page as it comes up, shown once it holds still, kept with the
+/// page, gone with it; the
 /// tag's place on a control; which hint the pointer is on; the team's hints read from their folder and shared through
 /// GitHub; and the setting.
 @Suite @MainActor
@@ -24,6 +25,7 @@ struct HintsTests {
         let controller = HintsController()
         controller.shows = false
         controller.reader = reading
+        controller.retryDelays = []   // no looks to see the page settle: the marks go on at the first read; the tests of the looks set their own
         return controller
     }
 
@@ -89,7 +91,6 @@ struct HintsTests {
             reads += 1
             return .init(marks: notes.map { .init(note: $0, frame: self.small) }, pageURL: "https://portal.example.test/submission?id=7&utm_source=mail")
         }
-        hints.retryDelays = []   // no looks to see the page settle: the reads are counted
         hints.arrive(scene(), notes: [note("a")])
         await hints.settle()
         var retitled = scene()
@@ -126,9 +127,101 @@ struct HintsTests {
         hints.arrive(scene(), notes: [note("a")])
         await hints.settle()
         #expect(hints.marks.isEmpty)
-        await looks(hints, until: { reads >= 2 })
+        // Placed at the second look, shown once the third finds it in the same place.
+        await looks(hints, until: { !hints.marks.isEmpty })
         #expect(hints.marks.count == 1)
-        #expect(reads >= 2)
+        #expect(reads == 3)
+    }
+
+    @Test func aFreshPageShowsItsMarksOnceTwoLooksAgree() async {
+        // A page just come: its first look is kept, not shown; the marks go on when the next look puts them in the
+        // same place (a second later in the app), so a page still laying itself out shows no tag on the wrong spot.
+        let frames = [NSRect(x: 100, y: 500, width: 120, height: 30), NSRect(x: 100, y: 420, width: 120, height: 30)]
+        var reads = 0
+        let hints = controller { _, notes in
+            reads += 1
+            return .init(marks: notes.map { .init(note: $0, frame: frames[min(reads, 2) - 1]) })
+        }
+        hints.retryDelays = [0.05, 0.05, 0.05]
+        hints.arrive(scene(), notes: [note("a")])
+        await hints.settle()
+        #expect(hints.marks.isEmpty)
+        #expect(hints.isShowing)
+        await looks(hints, until: { !hints.marks.isEmpty })
+        #expect(hints.marks.first?.frame == frames[1])
+        #expect(reads == 3)   // moved at the second look, stayed at the third
+        try? await Task.sleep(for: .milliseconds(150))
+        await hints.settle()
+        #expect(reads == 3)   // and nothing more to see
+    }
+
+    @Test func aMarkThatHeldStillGoesOnWhileAnotherStillMoves() async {
+        // Two hints on a page laying itself out: the control that stayed gets its tag; the one still moving waits.
+        let still = NSRect(x: 100, y: 500, width: 120, height: 30)
+        let moving = [NSRect(x: 100, y: 300, width: 120, height: 30), NSRect(x: 100, y: 240, width: 120, height: 30)]
+        var reads = 0
+        let hints = controller { _, notes in
+            reads += 1
+            return .init(marks: notes.map { .init(note: $0, frame: $0.id == "a" ? still : moving[min(reads, 2) - 1]) })
+        }
+        hints.retryDelays = [0.05, 0.05, 0.05]
+        hints.arrive(scene(), notes: [note("a"), note("b", label: "Validate")])
+        await hints.settle()
+        #expect(hints.marks.isEmpty)
+        await looks(hints, until: { !hints.marks.isEmpty })
+        #expect(hints.marks.map(\.note.id) == ["a"])   // the second look: a stayed, b moved
+        await looks(hints, until: { hints.marks.count == 2 })
+        #expect(hints.marks.map(\.note.id) == ["a", "b"])
+        #expect(hints.marks.last?.frame == moving[1])
+        #expect(reads == 3)
+    }
+
+    @Test func theLooksRunningOutShowTheLastLook() async {
+        // A page that never holds still (a carousel turning under the hint): after the last look the marks go on
+        // where it found them, rather than never.
+        var reads = 0
+        let hints = controller { _, notes in
+            reads += 1
+            return .init(marks: notes.map { .init(note: $0, frame: NSRect(x: 100, y: 500 - 10 * reads, width: 120, height: 30)) })
+        }
+        hints.retryDelays = [0.05, 0.05, 0.05]
+        hints.arrive(scene(), notes: [note("a")])
+        await looks(hints, until: { !hints.marks.isEmpty })
+        #expect(reads == 4)   // the first look and the three after it
+        #expect(hints.marks.first?.frame.minY == 460)
+        try? await Task.sleep(for: .milliseconds(150))
+        await hints.settle()
+        #expect(reads == 4)
+    }
+
+    @Test func aPageLoadingAgainHoldsItsMarksUntilItHoldsStill() async {
+        // A reload: the page says it is loading where it had finished, so the marks go until two looks agree again.
+        let frames = [NSRect(x: 100, y: 500, width: 120, height: 30), NSRect(x: 100, y: 380, width: 120, height: 30)]
+        var reads = 0
+        var reloading = false
+        let hints = controller { _, notes in
+            reads += 1
+            return .init(marks: notes.map { .init(note: $0, frame: frames[reloading ? 1 : 0]) }, loading: reloading && reads < 5)
+        }
+        hints.retryDelays = [0.05, 0.05, 0.05]
+        hints.arrive(scene(), notes: [note("a")])
+        await looks(hints, until: { !hints.marks.isEmpty })
+        #expect(hints.marks.first?.frame == frames[0])
+        #expect(reads == 2)
+        reloading = true
+        hints.touch()   // the ⌘R was seen
+        hints.read()
+        await hints.settle()
+        #expect(hints.marks.isEmpty)   // the new document's first look is held
+        await looks(hints, until: { !hints.marks.isEmpty })
+        #expect(hints.marks.first?.frame == frames[1])
+        #expect(reads == 4)
+        // Still loading, it is looked at once more; loaded and unmoved, left alone.
+        await looks(hints, until: { reads >= 5 })
+        try? await Task.sleep(for: .milliseconds(150))
+        await hints.settle()
+        #expect(reads == 5)
+        #expect(hints.marks.first?.frame == frames[1])
     }
 
     /// Waits for the looks a page gets to settle, which come on the main queue's time: until `done`, or a few seconds.
@@ -152,7 +245,7 @@ struct HintsTests {
         hints.retryDelays = [0.05, 0.05, 0.05]
         hints.arrive(scene(), notes: [note("a")])
         await hints.settle()
-        #expect(hints.marks.first?.frame == frames[0])
+        #expect(hints.marks.isEmpty)   // the first look alone shows nothing
         // Looked at again after each move, once more to see it stayed, then left alone: the looks are three.
         await looks(hints, until: { reads >= 4 })
         try? await Task.sleep(for: .milliseconds(150))
