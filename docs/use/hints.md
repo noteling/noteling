@@ -33,8 +33,10 @@ when you leave a hint, and nothing goes anywhere but your own Mac until you shar
   yellow for a tip, orange with a **!** for a warning. Move the mouse to the control, or to the tag, and the hint
   opens, with who left it and when. Move away and it folds back to the tag. The tags follow the page: scroll, click or
   type, and they go and come back where the controls are now. They catch nothing: the page underneath works as it
-  always did, clicks included. A page still laying itself out, after a reload or in a new tab, is looked at again for
-  a few seconds, so the tags settle where the controls do.
+  always did, clicks included. The tags come once the page holds still: a page you have just come to, or just
+  reloaded, is looked at twice a second apart, and a tag goes on when both looks find its control in the same place,
+  so a page still laying itself out shows no tag on a spot it would then leave. A page that won't hold still gets
+  its tags after seven seconds, where they were last seen.
 - **With the pen.** Pick up the pen and every hint on the page shows where it sits; point at a hint's control and it
   opens wide. Click a hint to ask the chat about it, right-click it to change it. A hint whose control isn't on your
   screen (a button you don't have, a field further down) shows down the window's right edge, saying what it is for.

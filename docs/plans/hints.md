@@ -110,7 +110,7 @@ button, a link, a tab, a heading, a menu item; plain text preferred when shown; 
 further down; the pen's right-click; the kept spot; the log line), HintsTests (a miss told). Not run live: the Mac at
 the lock screen. UAT step 11 below.
 
-## This round (0.10.3): a tag at the page's corner after a reload (UAT)
+## This round (0.10.3, 0.10.4): a tag at the page's corner after a reload (UAT)
 
 The third UAT, on 0.10.2: a hint that showed on its block went to the top-right corner of the page after a reload, or
 when the page was opened in a new tab, and stayed there. Two things met. A page just reloaded or opened is read while
@@ -134,11 +134,25 @@ until it was scrolled or clicked, so the wrong place stayed.
   click, the wheel, a Space change) starts those looks over (`HintsController.touch`). The heartbeat also reads again
   when another element has the focus, which is what a reload leaves behind when its new document came after the
   look that followed the keystroke.
+- **Shown once it holds still (0.10.4).** 0.10.3 drew the first look and corrected it, so a tag could still land on a
+  wrong spot for a second. The user asked why the stickers aren't shown only once everything has loaded well. The
+  browser's own loaded flag is the wrong clock for it: it fires when the images and trackers are in, after the
+  layout has long been final on a quiet page and before it is on one that fills itself in by script, and Chrome's
+  is read from its source rather than probed. What can be seen is stillness. A fresh page's marks are held
+  (`HintsController.settling`), as are those of a page that says it is loading where it had finished (a reload, or
+  another document at the address): a mark goes on once two looks, one and then the next a second later, put it in
+  the same place, each mark on its own; the looks are the 1, 2 and 4 s ones, so a page that never holds still gets
+  its marks from the last look, seven seconds in. A page already shown redraws at once on a scroll, a click or a
+  key, as before: a scroll moves the controls without laying the page out again, and a hold there would bring the
+  tags back a second late after every scroll. The cost on a quiet page: the tags come about a second later than
+  they did.
 
 Verified: PageReaderTests (the loading state from either attribute), NotesStoreTests (the choice on the live page by
 size and class, never a section; the box in the read; the nearest of two by one name, for a neighbour and for the
 hint's own control), HintsTests (reads until the marks settle, a touch starts over, a page still loading with every
-hint placed is read again). Not run live: the Mac at the lock screen. UAT step 12 below.
+hint placed is read again; a fresh page shows its marks once two looks agree, one mark at a time, the last look when
+the looks run out, a page loading again holds them until it holds still). Not run live: the Mac at the lock screen.
+UAT step 12 below.
 
 ## UAT: one journey
 
@@ -177,14 +191,14 @@ does nothing until you choose something:
     tag is at the button's corner, and `~/.noteling/usage/notes.jsonl` has `hints {placed: 1, of: 1}`. A hint left
     this way in 0.10.0 shows the same without being left again. Right-click plain text (a status, a caption): the
     paper says `static text “…”`, and the tag follows those words on the next visit.
-12. **Reload, and a new tab** (0.10.3). With the hint from step 10 on an item's price: reload the page (⌘R) five
-    times, and open the same item in a new tab (⌘T, paste the address). Each time, within a few seconds of the page
-    settling, the tag is beside the price, never at the page's top-right corner; a tag that lands early on the wrong
-    spot moves to the price by itself. Scroll down to the carousels with their own "Add to cart" buttons and back
-    up: the tag returns to the price.
+12. **Reload, and a new tab** (0.10.4). With the hint from step 10 on an item's price: reload the page (⌘R) five
+    times, and open the same item in a new tab (⌘T, paste the address). Each time, no tag shows while the page lays
+    itself out; about a second after it holds still, the tag is beside the price, never at the page's top-right
+    corner, and never on a spot it then leaves. Scroll down to the carousels with their own "Add to cart" buttons
+    and back up: the tag returns to the price at once.
 
-What to expect and not mind: the first marks land a beat after the page does (Chrome builds its accessibility tree
-when asked); the tags vanish while the page scrolls and return when it settles; a page that changes itself without a
+What to expect and not mind: the first marks land about a second after the page holds still (two looks have to
+agree); the tags vanish while the page scrolls and return when it settles; a page that changes itself without a
 click or a scroll is caught at the next click, scroll or window move, or when the watcher sees a new address.
 
 ## Next

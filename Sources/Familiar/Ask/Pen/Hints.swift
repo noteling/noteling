@@ -1,10 +1,10 @@
 import AppKit
 
-/// Hints on the page in front, shown as you arrive and following the page: a small tag at each control someone left a
-/// hint on, and the whole hint when the mouse comes to it. No model and no pixels: the page's own Accessibility tree
-/// says where its controls are, and is read again when the page is scrolled, clicked or typed in, when its window
-/// moves, and while a page is still settling after it came or was reloaded. The pen's own stickers take over while it
-/// is up.
+/// Hints on the page in front, shown once the page holds still and following it: a small tag at each control someone
+/// left a hint on, and the whole hint when the mouse comes to it. No model and no pixels: the page's own Accessibility
+/// tree says where its controls are, and is read again when the page is scrolled, clicked or typed in, when its window
+/// moves, and while a page is still settling after it came or was reloaded; a fresh page's marks go on only when two
+/// looks a second apart put them in the same place. The pen's own stickers take over while it is up.
 @MainActor
 final class HintsController {
     struct Mark: Equatable {
@@ -51,8 +51,13 @@ final class HintsController {
     private var generation = 0
     private var touched = false
     private var retries = 0
-    /// Whether this page's placing was told once; after that only a change in the count is.
-    private var reported = false
+    /// While a fresh page is still settling, the marks of the last look, not yet shown; nil once the page held still.
+    /// A page just come, or loading again where it had finished, holds its marks until two looks agree.
+    private var settling: [Mark]?
+    /// The last reading said the page was still loading.
+    private var loading = false
+    /// How many marks the last report said were placed; nil before the first.
+    private var reported: Int?
     private var lastHover = Date.distantPast
     private var windowFrame: NSRect?
     private var focus: AXUIElement?
@@ -65,7 +70,8 @@ final class HintsController {
     static let heartbeatSeconds: TimeInterval = 3
     /// A page still settling is looked at again, a few times: one still loading, one whose controls aren't all there
     /// yet, one on which the marks moved since the last look (a page laying itself out after a reload or in a new
-    /// tab). Every touch of the page starts the looks over.
+    /// tab). A fresh page's marks go on only once two looks agree, or when these looks run out. Every touch of the
+    /// page starts the looks over.
     static let retryDelays: [TimeInterval] = [1, 2, 4]
     var retryDelays = HintsController.retryDelays
 
@@ -84,7 +90,8 @@ final class HintsController {
         self.scene = scene
         self.notes = notes
         retries = 0
-        reported = false
+        reported = nil
+        settling = []   // nothing shown until two looks agree
         listen()
         read()
     }
@@ -106,6 +113,8 @@ final class HintsController {
         hovered = nil
         windowFrame = nil
         focus = nil
+        settling = nil
+        loading = false
         for panel in panels { panel.orderOut(nil) }
         panels = []
     }
@@ -174,26 +183,49 @@ final class HintsController {
             return
         }
         let marks = reading?.marks ?? []
-        let moved = marks != self.marks
-        if marks.count != self.marks.count || !reported {
+        let loading = reading?.loading == true
+        if reported != marks.count {
             onPlaced?(marks.count, notes.count)
             let place = scene.url.flatMap(PageKey.of)?.description ?? scene.appName
             if let line = WandController.shortfall(reading?.notFound ?? [], of: notes.count, on: place) { Log.info(line) }
+            reported = marks.count
         }
-        reported = true
-        if moved {
-            self.marks = marks
-            if let hovered, !marks.contains(where: { $0.note.id == hovered }) { self.hovered = nil }
-            draw()
+        // A page loading again where it had finished is a new document, a reload or another page at the address:
+        // its marks are held like a fresh page's.
+        if settling == nil, loading, !self.loading { settling = [] }
+        self.loading = loading
+        let before = settling ?? self.marks   // the last look: the one held while the page settles, else the one shown
+        let moved = marks != before
+        if let previous = settling {
+            // A fresh page: a mark goes on once it is where the last look had it; all of them, where the last look
+            // had them, once the looks run out.
+            let steady = marks.filter { previous.contains($0) }
+            if retries >= retryDelays.count || (!marks.isEmpty && steady.count == marks.count) {
+                settling = nil
+                show(marks)
+            } else {
+                settling = marks
+                show(steady)
+            }
+        } else {
+            show(marks)
         }
         // A page still settling is looked at again in a moment, a few times: some hint has nothing to stick to yet,
-        // the page says it is still loading, or the marks moved since the last look.
+        // the page says it is still loading, the marks moved since the last look, or they are held until they stay.
         let missing = reading?.missing ?? notes.count
-        if missing > 0 || reading?.loading == true || moved, retries < retryDelays.count {
+        if settling != nil || missing > 0 || loading || moved, retries < retryDelays.count {
             let delay = retryDelays[retries]
             retries += 1
             schedule(after: delay)
         }
+    }
+
+    /// These marks on the screen, when they are not the ones there.
+    private func show(_ marks: [Mark]) {
+        guard marks != self.marks else { return }
+        self.marks = marks
+        if let hovered, !marks.contains(where: { $0.note.id == hovered }) { self.hovered = nil }
+        draw()
     }
 
     /// Something happened to the page (a key, a click, the wheel, a Space change, another element with the focus):
