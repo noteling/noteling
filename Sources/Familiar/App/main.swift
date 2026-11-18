@@ -87,29 +87,10 @@ if CommandLine.arguments.contains("--record-synthetic") {
     }
     RunLoop.main.run()
 } else if CommandLine.arguments.contains("--read-page") {
-    // What the page reader sees in the browser window nearest the front. By default only counts, so a check run by
-    // anyone, or by an agent, never copies what a page says or which company's site it is; `--full` prints the page.
+    // What the page reader sees in the browser window nearest the front (ReadPageCommand). Off the main actor, which
+    // the browser hold needs free, so the main run loop below must be running.
     Task.detached {
-        if let page = PageReader.readFrontBrowser() {
-            if CommandLine.arguments.contains("--full") {
-                print(page.text(limit: 60_000))
-            } else {
-                let kinds = Dictionary(grouping: page.elements, by: \.kind).mapValues(\.count).sorted { $0.key < $1.key }
-                let host = page.key?.host ?? ""
-                let site = host.isEmpty ? "none" : host.hasPrefix("127.0.0.1") || host.hasPrefix("localhost") ? "local"
-                    : host.contains("service-now") || page.key?.path.hasSuffix(".do") == true ? "servicenow" : "other"
-                print("\(page.appName): \(page.documents.count) document(s), \(page.tabs.count) tab(s), site: \(site)"
-                      + (page.sheet != nil ? ", a sheet is open" : ""))
-                print(kinds.map { "\($0.key) \($0.value)" }.joined(separator: " · "))
-                print("with the page's own id: \(page.elements.filter { $0.domID != nil }.count)")
-            }
-            let visible = page.elements.filter(\.visible).count
-            print("\(page.elements.count) things read (\(visible) on screen) in \(Int(page.elapsed * 1_000)) ms"
-                  + (page.truncated ? ", stopped at the budget" : ""))
-        } else {
-            print("No browser window with a page was found, or Accessibility permission isn't granted to the app running this.")
-        }
-        exit(0)
+        exit(ReadPageCommand.run(CommandLine.arguments))
     }
     RunLoop.main.run()
 } else if CommandLine.arguments.contains("--selftest") {
