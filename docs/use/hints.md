@@ -48,6 +48,8 @@ when you leave a hint, and nothing goes anywhere but your own Mac until you shar
   of its kind beside the named control it sits next to ("Add to cart"), where that control is now, and about the
   size it was: a section of the page around that spot is never taken for it. Of several controls by one name, the
   one nearest where the hint was left.
+- **The item's own name.** A hint for pages like this on the item's title or picture, whose name is that item's
+  alone, is found on the next item's page the same way: beside the control it sat next to, else where it was.
 
 Turn the tags off with **Hints on pages** in Noteling's right-click menu, or in Settings. Hints then show only with
 the pen or ⌥ Option twice.
