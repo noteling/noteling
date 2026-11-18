@@ -71,7 +71,9 @@ struct InputLooksTests {
         assistant.toggleLook(for: assistant.question)
         assistant.ask()
         #expect(assistant.lookOverride == nil)
-        let end = Date().addingTimeInterval(3)
+        // The answer comes on the main actor's time, which the whole suite shares: under its load that took 2-3.3 s.
+        // Waiting longer costs nothing when it comes at once.
+        let end = Date().addingTimeInterval(30)
         while Date() < end, assistant.chatBusy { try? await Task.sleep(for: .milliseconds(20)) }
 
         #expect(fixture.captures == 0)
