@@ -46,6 +46,29 @@ struct PageBriefsTests {
         #expect(await briefs.brief(for: scene(nil), wait: 1) == nil)
     }
 
+    /// An app that routes by "#/…" shows a different page for each route, as hints already count it (PageKey); a
+    /// brief kept for one order must not answer for the next. A "#place" in the page is still the same page.
+    @Test func eachHashRouteIsItsOwnPage() async throws {
+        let (registry, root) = try await registry()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let briefs = PageBriefs(registry: registry)
+        var runs = 0
+        briefs.run = { script, pack, ctx in
+            runs += 1
+            return PageBriefs.Brief(pack: pack.name, script: script.id, page: PageBriefs.key(ctx) ?? "", text: ctx.url ?? "", at: Date())
+        }
+        let first = try #require(await briefs.brief(for: scene("https://shop.example.com/item/#/orders/4417"), wait: 5))
+        let second = try #require(await briefs.brief(for: scene("https://shop.example.com/item/#/orders/4418"), wait: 5))
+        let again = try #require(await briefs.brief(for: scene("https://shop.example.com/item/#/orders/4417"), wait: 5))
+
+        #expect(first.text.hasSuffix("4417") && second.text.hasSuffix("4418"))
+        #expect(again == first)
+        #expect(runs == 2)
+        #expect(PageBriefs.key(scene("https://shop.example.com/item/#/orders/4417")) == "https://shop.example.com/item/#/orders/4417")
+        #expect(PageBriefs.key(scene("https://shop.example.com/item/123#reviews")) == "https://shop.example.com/item/123")
+        #expect(PageBriefs.key(scene("https://shop.example.com/item/123#")) == "https://shop.example.com/item/123")
+    }
+
     @Test func anOldBriefIsReadAgainAndAFailureIsKeptOnlyBriefly() async throws {
         let (registry, root) = try await registry()
         defer { try? FileManager.default.removeItem(at: root) }
