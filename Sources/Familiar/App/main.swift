@@ -86,6 +86,11 @@ if CommandLine.arguments.contains("--record-synthetic") {
         NSApp.run()
     }
     RunLoop.main.run()
+} else if CommandLine.arguments.contains("--click") {
+    // For a program that already has a person's approval (Synthetics screen_click): one named control on the front
+    // browser page, `--prepare` (presses nothing) or `--fire` (AXPress at most once). One JSON object and an exit code.
+    Task.detached { exit(HeadlessClick.run(CommandLine.arguments)) }
+    RunLoop.main.run()
 } else if CommandLine.arguments.contains("--find")
             || (CommandLine.arguments.contains("--read-page") && CommandLine.arguments.contains("--json")) {
     // For a program: one JSON object and an exit code (HeadlessRead.Exit). Counts and the named control only, unless
