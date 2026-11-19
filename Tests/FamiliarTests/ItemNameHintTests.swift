@@ -54,6 +54,17 @@ struct ItemNameHintTests {
         #expect(!NoteAnchor.namesTheItem(nil, page: a))
     }
 
+    /// A digit or a price is not the item's name by itself: options, counts, ratings and prices are controls of the
+    /// kind's pages, left out where they are not, as before.
+    @Test func aCountOrAPriceIsNotTheItemsName() throws {
+        let a = PageKey.of(Self.urlA)
+        for label in ["Size 10", "Qty 1", "4.5 out of 5 stars", "$24.97", "13 in", "Now $19.88"] {
+            #expect(!NoteAnchor.namesTheItem(label, page: a), "\(label)")
+        }
+        // Without a page there is no slug to tell by.
+        #expect(!NoteAnchor.namesTheItem(Self.titleA, page: nil))
+    }
+
     /// Page B: a different title, the same "Add to cart" button, roughly where A's were.
     static let pageB = page(urlB, [
         element("AXHeading", titleB, CGRect(x: 500, y: 160, width: 400, height: 40)),

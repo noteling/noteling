@@ -49,7 +49,9 @@ when you leave a hint, and nothing goes anywhere but your own Mac until you shar
   size it was: a section of the page around that spot is never taken for it. Of several controls by one name, the
   one nearest where the hint was left.
 - **The item's own name.** A hint for pages like this on the item's title or picture, whose name is that item's
-  alone, is found on the next item's page the same way: beside the control it sat next to, else where it was.
+  alone (most of its words are in the page's address), is found on the next item's page the same way: beside the
+  control it sat next to, else where it was. A size, count, rating or price is not the item's name: like any named
+  control, it is left out on a page that doesn't have it.
 
 Turn the tags off with **Hints on pages** in Noteling's right-click menu, or in Settings. Hints then show only with
 the pen or ⌥ Option twice.

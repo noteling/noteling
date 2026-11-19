@@ -119,14 +119,13 @@ struct NoteAnchor: Codable, Equatable {
         return role == r || (role == "AXStaticText" && PageWalk.atomic.contains(r))
     }
 
-    /// A name that is the item's own (its title, its picture, its brand): not a name by the page reader's rule (a
-    /// digit, a price), or most of its words are in a part of the address the pattern made `*` (the slug
-    /// `better-homes-gardens-13-in-green-velvet-…`). Such a name is not met again on another page of the kind, so a
-    /// hint on it is found there by the control beside it, or where it was.
+    /// A name that is the item's own (its title, its picture, its brand): most of its words are in a part of the
+    /// address the pattern made `*` (the slug `better-homes-gardens-13-in-green-velvet-…`). Such a name is not met
+    /// again on another page of the kind, so a hint on it is found there by the control beside it, or where it was.
+    /// A digit or a price alone does not make a name the item's: "Size 10", "Qty 1" or "4.5 out of 5 stars" is a
+    /// control of the kind's pages, left out when it is not there, as any named control is.
     static func namesTheItem(_ label: String?, page: PageKey?) -> Bool {
-        guard let label = norm(label) else { return false }
-        if !PageWalk.isAName(label) { return true }
-        guard let page else { return false }
+        guard let label = norm(label), let page else { return false }
         let words = Set(label.split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { $0.count > 2 })
         guard words.count >= 2 else { return false }
         let slugWords = Set(PagePattern.segments(of: page.path).filter(PagePattern.looksLikeASlug)
