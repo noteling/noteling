@@ -177,6 +177,16 @@ struct HeadlessReadTests {
         #expect(out.count == 1)
     }
 
+    /// `--app` names the browser read through the shared seam; without it the one nearest the front is read.
+    @Test func theNamedBrowserIsTheOneRead() {
+        var asked: [String?] = []
+        var browser = Self.browser(Told(), pages: [Self.shop])
+        browser.app = { asked.append($0); return NSRunningApplication.current }
+        _ = HeadlessRead.run(["--read-page", "--json", "--app", "com.google.Chrome"], browser: browser) { _ in }
+        _ = HeadlessRead.run(["--read-page", "--json"], browser: browser) { _ in }
+        #expect(asked == ["com.google.Chrome", nil])
+    }
+
     @Test func itHoldsTheBrowserBeforeReading() {
         let told = Told()
         let browser = HeadlessRead.Browser(
@@ -206,7 +216,7 @@ struct HeadlessReadTests {
     @Test func anEmptyPageIsGivenUpOnInTime() {
         let told = Told()
         _ = HeadlessRead.run(["--read-page", "--json"], browser: Self.browser(told, pages: [Self.empty])) { _ in }
-        #expect(told.reads == 1 + HeadlessRead.buildTries && told.waits == HeadlessRead.buildTries)
+        #expect(told.reads == 1 + ReadPageCommand.buildTries && told.waits == ReadPageCommand.buildTries)
         #expect(told.settles == 1)
     }
 }

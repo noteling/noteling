@@ -424,11 +424,16 @@ enum PageReader {
 
     /// The page in the browser window nearest the front, whatever app is frontmost: for reading a page from Terminal.
     static func readFrontBrowser(budget: PageWalk.Budget = PageWalk.Budget()) -> PageSnapshot? {
+        frontBrowser().flatMap { read($0, budget: budget) }
+    }
+
+    /// The browser owning the on-screen window nearest the front, whatever app is frontmost.
+    static func frontBrowser() -> NSRunningApplication? {
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
         for window in windows where (window[kCGWindowLayer as String] as? Int) == 0 {
             guard let pid = window[kCGWindowOwnerPID as String] as? pid_t, let app = NSRunningApplication(processIdentifier: pid),
                   let bundle = app.bundleIdentifier, ContextWatcher.browserBundles.contains(bundle) else { continue }
-            return read(app, budget: budget)
+            return app
         }
         return nil
     }

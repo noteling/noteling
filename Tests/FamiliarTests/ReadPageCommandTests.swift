@@ -30,7 +30,7 @@ struct ReadPageCommandTests {
                         pages: [PageSnapshot?]) -> ReadPageCommand.Browser {
         ReadPageCommand.Browser(
             trusted: { trusted },
-            app: { app ? NSRunningApplication.current : nil },
+            app: { _ in app ? NSRunningApplication.current : nil },
             hold: { _ in told.holds += 1; told.order.append("hold"); return fresh },
             nudge: { _ in told.nudges += 1 },
             read: { _ in
@@ -39,6 +39,14 @@ struct ReadPageCommandTests {
             },
             settle: { told.settles += 1; told.order.append("settle") },
             wait: { _ in told.waits += 1 })
+    }
+
+    @Test func itAsksForTheBrowserNearestTheFront() {
+        var asked: [String?] = []
+        var browser = Self.browser(Told(), pages: [Self.shop])
+        browser.app = { asked.append($0); return NSRunningApplication.current }
+        _ = ReadPageCommand.run(["--read-page"], browser: browser, print: { _ in })
+        #expect(asked == [nil])
     }
 
     @Test func itHoldsTheBrowserBeforeReadingAndLetsItGoAfter() {
