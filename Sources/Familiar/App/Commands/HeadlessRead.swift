@@ -40,6 +40,8 @@ enum HeadlessRead {
 
     /// The page as the hint rules see a control's name: the same name ("exact"), the same control on another page of
     /// the kind ("alike", as `NoteAnchor.alike`), or none. Exact wins over alike, as in `WandController.place`.
+    /// An alike hit's `label` is the control's own name on this page, so it can carry words beyond the name asked
+    /// ("Add to cart – Bananas" for "Add to cart"): page words, even without `--full`.
     struct Found: Codable, Equatable {
         var name: String
         var role: String?
@@ -130,7 +132,8 @@ enum HeadlessRead {
         return .some(args[next])
     }
 
-    /// The browser with the window nearest the front (whatever app is frontmost), or `bundle`'s when given.
+    /// The browser with the window nearest the front (whatever app is frontmost), or `bundle`'s when given; `run`
+    /// lets through only a bundle in `ContextWatcher.browserBundles`.
     static func frontApp(bundle: String?) -> NSRunningApplication? {
         if let bundle { return NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first }
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
@@ -194,6 +197,13 @@ enum HeadlessRead {
         let find = value(after: "--find", in: args), role = value(after: "--role", in: args)
         for case .some(nil) in [contains, app, find, role] {
             say(json(Report(ok: false, exit: Exit.usage.rawValue, error: "A flag is missing its value.")))
+            return Exit.usage.rawValue
+        }
+        // Only a browser's page is read: the page walker reads web areas, and a native window would come back as
+        // "no browser window" with no word of why. Say so instead.
+        if let bundle = app ?? nil, !ContextWatcher.browserBundles.contains(bundle) {
+            say(json(Report(ok: false, exit: Exit.usage.rawValue,
+                            error: "--app takes a browser's bundle id (\(ContextWatcher.browserBundles.sorted().joined(separator: ", "))); \(bundle) isn't one.")))
             return Exit.usage.rawValue
         }
         let trusted = browser.trusted()

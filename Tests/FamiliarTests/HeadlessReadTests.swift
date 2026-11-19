@@ -163,6 +163,9 @@ struct HeadlessReadTests {
         (["--read-page", "--json"], true, true, [loading], .partial),
         (["--find", "Add to cart"], true, true, [shop], .ok),
         (["--read-page", "--json"], true, true, [shop], .ok),
+        (["--read-page", "--json", "--app", "com.apple.TextEdit"], true, true, [shop], .usage),
+        (["--find", "Add to cart", "--app", "com.apple.finder"], true, true, [shop], .usage),
+        (["--read-page", "--json", "--app", "com.google.Chrome"], true, true, [shop], .ok),
     ])
     func everyWayOutLetsTheBrowserGo(args: [String], trusted: Bool, app: Bool, pages: [PageSnapshot?],
                                      exit: HeadlessRead.Exit) {
