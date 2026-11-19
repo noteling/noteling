@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 import FamiliarContracts
@@ -25,16 +26,26 @@ struct PadWritingTests {
         defer { fixture.remove() }
         let assistant = fixture.assistant
 
+        // Every answer the pad shows while it writes, as it changes: not samples, which a busy main thread can miss.
+        var during: [String] = []
+        let watching = assistant.$transcript.sink { transcript in
+            if let answer = transcript.last(where: { $0.role == .assistant }) { during.append(answer.text) }
+        }
+        defer { watching.cancel() }
+        // The pad shows at most about twelve answers a second and skips any it had no time for, so the connection
+        // writes each piece only once the one before is on the pad.
+        fixture.client.shown = { piece in
+            assistant.transcript.last(where: { $0.role == .assistant })?.text == Assistant.writingText(piece)
+        }
+
         assistant.question = "whose offer wins here"
         assistant.ask()
 
-        // While it writes: one answer on the pad, growing, without the Suggestions line.
-        var during: [String] = []
-        let end = Date().addingTimeInterval(15)   // the loop ends as soon as the answer lands; the budget is for a suite running in parallel
+        let end = Date().addingTimeInterval(30)   // the loop ends as soon as the answer lands; the budget is for a suite running in parallel
         while Date() < end, assistant.chatBusy {
-            if let answer = assistant.transcript.last(where: { $0.role == .assistant }) { during.append(answer.text) }
             try await Task.sleep(for: .milliseconds(20))
         }
+        // While it writes: one answer on the pad, growing, without the Suggestions line.
         #expect(!assistant.chatBusy)
         #expect(during.contains("It's"))
         #expect(during.contains("It's ADS Inc's offer."))
@@ -50,6 +61,7 @@ struct PadWritingTests {
     private final class Fixture {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("pad-writing-\(UUID().uuidString)")
         let assistant: Assistant
+        let client = WritingClient()
 
         init() {
             var config = Config()
@@ -63,14 +75,16 @@ struct PadWritingTests {
             ))
             assistant = Assistant(config: config, watcher: ContextWatcher(), registry: registry, shell: ShellState(), learning: learning)
             assistant.captureDisplay = { _ in throw ScreenCaptureError.notPermitted }
-            assistant.useConnection(WritingClient())
+            assistant.useConnection(client)
         }
 
         func remove() { try? FileManager.default.removeItem(at: root) }
     }
 
-    /// Writes its answer in three pieces, a little apart, the way a streamed reply arrives.
+    /// Writes its answer in three pieces, a little apart, the way a streamed reply arrives: each once the pad shows
+    /// the one before, when the test says what showing is.
     final class WritingClient: ConversationClient, StreamsText {
+        var shown: (@MainActor (String) -> Bool)?
         var effort = "medium"
         var maxTokens = 1024
         var maxToolRounds = 8
@@ -83,6 +97,10 @@ struct PadWritingTests {
             for piece in ["It's", "It's ADS Inc's offer.", "It's ADS Inc's offer.\nSugg"] {
                 onText?(piece)
                 try await Task.sleep(for: .milliseconds(200))
+                if let shown {
+                    let end = Date().addingTimeInterval(30)
+                    while Date() < end, !(await MainActor.run { shown(piece) }) { try await Task.sleep(for: .milliseconds(20)) }
+                }
             }
             messages.append(["role": "assistant", "content": [["type": "text", "text": final]]])
             return ClaudeReply(text: final, inputTokens: 1, outputTokens: 1, cacheRead: 0, toolCalls: 0)
