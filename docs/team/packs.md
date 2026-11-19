@@ -109,7 +109,7 @@ def run(order_id: str, include_history: bool = False) -> dict:
 
 The `brief:` script runs with no arguments as soon as a matching page comes to the front, and reads the page from
 `NOTELING_CONTEXT`. Its result is kept for two minutes and goes with every question and pen pick on that page, so
-Noteling answers from it without calling tools. Each `#/…` route of an app is its own page; a `#place` in a page isn't. Make it the one call that gathers everything a question about this page
+Noteling answers from it without calling tools. Each `#/…` route of an app is its own page, and so is each query inside it (`#/orders?id=5`), although hints treat a route without its query as the page; a `#place` in a page isn't. Make it the one call that gathers everything a question about this page
 needs, and say where your sources disagree: that's usually the answer. The pen waits up to 10 seconds for it.
 
 Give it a `glance`, and the pen answers before Claude is asked at all: the glance shows on the pad the moment someone

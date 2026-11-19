@@ -7,10 +7,12 @@ import Foundation
 /// Chromium page read from Terminal with no screen reader running came back empty.
 enum ReadPageCommand {
     /// What `run` touches outside itself, so a test can stand in for the browser and count what it was told.
+    /// `--read-page --json` and `--find` (HeadlessRead) go through the same seam.
     struct Browser {
         /// Without Accessibility nothing can be read, so nothing is held or waited for.
         var trusted: () -> Bool
-        var app: () -> NSRunningApplication?
+        /// The browser with the window nearest the front, or `bundle`'s running copy when one is named.
+        var app: (_ bundle: String?) -> NSRunningApplication?
         /// Says an assistive app is listening; true when this call newly holds the browser.
         var hold: (NSRunningApplication) -> Bool
         var nudge: (NSRunningApplication) -> Void
@@ -26,7 +28,10 @@ enum ReadPageCommand {
 
         static let live = Browser(
             trusted: { Permissions.accessibilityGranted },
-            app: { frontBrowser() },
+            app: { bundle in
+                guard let bundle else { return PageReader.frontBrowser() }
+                return NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first
+            },
             hold: { app in onMain { BrowserAccessibility.hold(app) } },
             nudge: { app in onMain { BrowserAccessibility.nudge(app) } },
             read: { PageReader.read($0) },
@@ -34,15 +39,11 @@ enum ReadPageCommand {
             wait: { Thread.sleep(forTimeInterval: $0) })
     }
 
-    /// The browser owning the on-screen window nearest the front, whatever app is frontmost (as `readFrontBrowser`).
-    static func frontBrowser() -> NSRunningApplication? {
-        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-        for window in windows where (window[kCGWindowLayer as String] as? Int) == 0 {
-            guard let pid = window[kCGWindowOwnerPID as String] as? pid_t, let app = NSRunningApplication(processIdentifier: pid),
-                  let bundle = app.bundleIdentifier, ContextWatcher.browserBundles.contains(bundle) else { continue }
-            return app
-        }
-        return nil
+    /// The site, as the counts name it: never the host itself.
+    static func site(_ page: PageSnapshot) -> String {
+        let host = page.key?.host ?? ""
+        return host.isEmpty ? "none" : host.hasPrefix("127.0.0.1") || host.hasPrefix("localhost") ? "local"
+            : host.contains("service-now") || page.key?.path.hasSuffix(".do") == true ? "servicenow" : "other"
     }
 
     /// How long a browser held just now gets to build its page: `--find-step` looks for up to five seconds.
@@ -73,10 +74,7 @@ enum ReadPageCommand {
             out.append(page.text(limit: 60_000))
         } else {
             let kinds = Dictionary(grouping: page.elements, by: \.kind).mapValues(\.count).sorted { $0.key < $1.key }
-            let host = page.key?.host ?? ""
-            let site = host.isEmpty ? "none" : host.hasPrefix("127.0.0.1") || host.hasPrefix("localhost") ? "local"
-                : host.contains("service-now") || page.key?.path.hasSuffix(".do") == true ? "servicenow" : "other"
-            out.append("\(page.appName): \(page.documents.count) document(s), \(page.tabs.count) tab(s), site: \(site)"
+            out.append("\(page.appName): \(page.documents.count) document(s), \(page.tabs.count) tab(s), site: \(site(page))"
                        + (page.sheet != nil ? ", a sheet is open" : ""))
             out.append(kinds.map { "\($0.key) \($0.value)" }.joined(separator: " · "))
             out.append("with the page's own id: \(page.elements.filter { $0.domID != nil }.count)")
@@ -90,7 +88,7 @@ enum ReadPageCommand {
     /// Reads and prints; always exits 0, as it always has. Every way out lets the browser go.
     static func run(_ args: [String], browser: Browser = .live, print say: (String) -> Void = { print($0) }) -> Int32 {
         defer { browser.settle() }
-        let page = !browser.trusted() ? nil : browser.app().flatMap { read($0, with: browser) }
+        let page = !browser.trusted() ? nil : browser.app(nil).flatMap { read($0, with: browser) }
         lines(page, full: args.contains("--full")).forEach(say)
         return 0
     }

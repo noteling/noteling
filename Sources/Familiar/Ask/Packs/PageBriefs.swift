@@ -92,6 +92,8 @@ final class PageBriefs {
     /// A page is its address without the part after #, unless that part is a "#/…" route: an app that routes by it
     /// shows a different page for each route (as PageKey counts them for hints), so a brief kept for one order mustn't
     /// answer for the next. A "#place" in the page is the same page.
+    /// Unlike PageKey, a "?query" inside the route stays: `#/orders?id=5` and `#/orders?id=6` show different orders,
+    /// and a brief is cheap to gather again, while a hint is kept for the route's controls whatever the query says.
     static func key(_ ctx: ScreenContext) -> String? {
         guard let url = ctx.url, !url.isEmpty else { return nil }
         let parts = url.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)

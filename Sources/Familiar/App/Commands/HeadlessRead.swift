@@ -61,16 +61,9 @@ enum HeadlessRead {
         var text: String?
     }
 
-    /// The site, as the human output names it: never the host itself.
-    static func site(_ page: PageSnapshot) -> String {
-        let host = page.key?.host ?? ""
-        return host.isEmpty ? "none" : host.hasPrefix("127.0.0.1") || host.hasPrefix("localhost") ? "local"
-            : host.contains("service-now") || page.key?.path.hasSuffix(".do") == true ? "servicenow" : "other"
-    }
-
     static func counts(_ page: PageSnapshot, contains: String? = nil) -> Counts {
         let words = NoteAnchor.norm(contains)
-        return Counts(app: page.appName, bundle: page.bundleID, site: site(page), documents: page.documents.count,
+        return Counts(app: page.appName, bundle: page.bundleID, site: ReadPageCommand.site(page), documents: page.documents.count,
                       tabs: page.tabs.count, sheetOpen: page.sheet != nil,
                       kinds: Dictionary(grouping: page.elements, by: \.kind).mapValues(\.count),
                       withPageID: page.elements.filter { $0.domID != nil }.count,
@@ -132,62 +125,8 @@ enum HeadlessRead {
         return .some(args[next])
     }
 
-    /// The browser with the window nearest the front (whatever app is frontmost), or `bundle`'s when given; `run`
-    /// lets through only a bundle in `ContextWatcher.browserBundles`.
-    static func frontApp(bundle: String?) -> NSRunningApplication? {
-        if let bundle { return NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first }
-        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-        for window in windows where (window[kCGWindowLayer as String] as? Int) == 0 {
-            guard let pid = window[kCGWindowOwnerPID as String] as? pid_t, let app = NSRunningApplication(processIdentifier: pid),
-                  let id = app.bundleIdentifier, ContextWatcher.browserBundles.contains(id) else { continue }
-            return app
-        }
-        return nil
-    }
-
-    /// What `run` touches outside itself, so a test can stand in for the browser and count what it was told.
-    struct Browser {
-        var trusted: () -> Bool
-        var app: (_ bundle: String?) -> NSRunningApplication?
-        /// Says an assistive app is listening (Chromium builds its page tree only then); true when newly held.
-        var hold: (NSRunningApplication) -> Bool
-        var nudge: (NSRunningApplication) -> Void
-        var read: (NSRunningApplication) -> PageSnapshot?
-        /// Takes back every hold, at once: nothing is left running to do it later.
-        var settle: () -> Void
-        var wait: (TimeInterval) -> Void
-
-        /// BrowserAccessibility is the main actor's; `run` itself runs off it, so the main run loop must be running.
-        private static func onMain<T>(_ work: @MainActor () -> T) -> T {
-            Thread.isMainThread ? MainActor.assumeIsolated(work) : DispatchQueue.main.sync { MainActor.assumeIsolated(work) }
-        }
-
-        static let live = Browser(
-            trusted: { AXIsProcessTrusted() },
-            app: { frontApp(bundle: $0) },
-            hold: { app in onMain { BrowserAccessibility.hold(app) } },
-            nudge: { app in onMain { BrowserAccessibility.nudge(app) } },
-            read: { PageReader.read($0) },
-            settle: { onMain { BrowserAccessibility.settle() } },
-            wait: { Thread.sleep(forTimeInterval: $0) })
-    }
-
-    /// How long a browser told just now gets to build its page: `--find-step` looks for up to five seconds.
-    static let buildTries = 6, buildPause: TimeInterval = 0.5
-
-    /// The page in `app`, holding a Chromium browser's page tree on first. A browser held only now may still show an
-    /// empty page for a few seconds; it is told again and read again meanwhile, as a tour step does.
-    static func read(_ app: NSRunningApplication, with browser: Browser) -> PageSnapshot? {
-        let fresh = browser.hold(app)
-        var page = browser.read(app)
-        guard fresh else { return page }
-        for _ in 0..<buildTries where page?.elements.isEmpty != false {
-            browser.wait(buildPause)
-            browser.nudge(app)
-            page = browser.read(app)
-        }
-        return page
-    }
+    /// The same seam as the human `--read-page`: hold before reading, retry a freshly held empty page, settle on exit.
+    typealias Browser = ReadPageCommand.Browser
 
     /// `--read-page --json [--full] [--contains T] [--app BUNDLE]` and `--find NAME [--role R] [--app BUNDLE]`.
     /// Every way out settles the browser, so none is left in enhanced-UI mode after the process exits.
@@ -207,7 +146,7 @@ enum HeadlessRead {
             return Exit.usage.rawValue
         }
         let trusted = browser.trusted()
-        let page = trusted ? browser.app(app ?? nil).flatMap { read($0, with: browser) } : nil
+        let page = trusted ? browser.app(app ?? nil).flatMap { ReadPageCommand.read($0, with: browser) } : nil
         let report = report(page, trusted: trusted, full: args.contains("--full"), contains: contains ?? nil,
                             find: find ?? nil, role: role ?? nil)
         say(json(report))

@@ -69,6 +69,15 @@ struct PageBriefsTests {
         #expect(PageBriefs.key(scene("https://shop.example.com/item/123#")) == "https://shop.example.com/item/123")
     }
 
+    /// A query inside a route tells briefs apart, as each shows another record; hints keep to the route without it.
+    @Test func aQueryInsideARouteIsItsOwnBriefButNotItsOwnHintPage() {
+        let five = "https://app.example.com/#/orders?id=5", six = "https://app.example.com/#/orders?id=6"
+        #expect(PageBriefs.key(scene(five)) == five)
+        #expect(PageBriefs.key(scene(five)) != PageBriefs.key(scene(six)))
+        #expect(PageKey.of(five) == PageKey.of(six))
+        #expect(PageKey.of(five)?.description == "app.example.com/#/orders")
+    }
+
     @Test func anOldBriefIsReadAgainAndAFailureIsKeptOnlyBriefly() async throws {
         let (registry, root) = try await registry()
         defer { try? FileManager.default.removeItem(at: root) }
