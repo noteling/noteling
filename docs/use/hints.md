@@ -44,6 +44,11 @@ when you leave a hint, and nothing goes anywhere but your own Mac until you shar
   or a scroll puts them away too.
 - **Noteling's glance.** Arriving where there are hints, Noteling holds up a small badge for a moment with their
   count. Click it to show them.
+- **A name that carries the item's.** A button whose name ends with the item's own ("Add to cart - Bananas") is
+  called something else on the next item's page ("Add to cart - Great Value Milk"). When no control there has the
+  hint's name exactly, its hint goes on the control of the same kind whose name starts with the same whole words,
+  ten characters of them or more; of several, the one nearest where the hint was left. "Save changes" and "Save
+  draft" share only "Save", so they are never taken for each other.
 - **Something with no name.** A hint on a block the page gives no name to, such as a price, is found on the next page
   of its kind beside the named control it sits next to ("Add to cart"), where that control is now, and about the
   size it was: a section of the page around that spot is never taken for it. Of several controls by one name, the
