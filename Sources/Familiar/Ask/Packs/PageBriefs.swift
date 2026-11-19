@@ -89,10 +89,15 @@ final class PageBriefs {
         return age < (brief.failed ? failedLifetime : lifetime) ? brief : nil
     }
 
-    /// A page is its address without the part after #.
+    /// A page is its address without the part after #, unless that part is a "#/…" route: an app that routes by it
+    /// shows a different page for each route (as PageKey counts them for hints), so a brief kept for one order mustn't
+    /// answer for the next. A "#place" in the page is the same page.
     static func key(_ ctx: ScreenContext) -> String? {
         guard let url = ctx.url, !url.isEmpty else { return nil }
-        return url.components(separatedBy: "#").first
+        let parts = url.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+        let address = String(parts[0])
+        guard parts.count > 1, parts[1].hasPrefix("/"), parts[1].count > 1 else { return address }
+        return address + "#" + parts[1]
     }
 
     private static func execute(_ script: ScriptTool, pack: ToolPack, context: ScreenContext, registry: ToolRegistry) async -> Brief {
