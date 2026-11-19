@@ -199,10 +199,16 @@ struct HintsTests {
         let frames = [NSRect(x: 100, y: 500, width: 120, height: 30), NSRect(x: 100, y: 380, width: 120, height: 30)]
         var reads = 0
         var reloading = false
+        // Whether marks were showing as each look began: the count of looks alone races the still-loading look's
+        // own retry, which comes as soon as the test's wait does.
+        var showing: [Bool] = []
+        weak var watched: HintsController?
         let hints = controller { _, notes in
             reads += 1
+            showing.append(!(watched?.marks.isEmpty ?? true))
             return .init(marks: notes.map { .init(note: $0, frame: frames[reloading ? 1 : 0]) }, loading: reloading && reads < 5)
         }
+        watched = hints
         hints.retryDelays = [0.05, 0.05, 0.05]
         hints.arrive(scene(), notes: [note("a")])
         await looks(hints, until: { !hints.marks.isEmpty })
@@ -215,13 +221,15 @@ struct HintsTests {
         #expect(hints.marks.isEmpty)   // the new document's first look is held
         await looks(hints, until: { !hints.marks.isEmpty })
         #expect(hints.marks.first?.frame == frames[1])
-        #expect(reads == 4)
+        #expect(reads >= 4)   // the fifth look may already have come; `showing` below says which look put them on
         // Still loading, it is looked at once more; loaded and unmoved, left alone.
         await looks(hints, until: { reads >= 5 })
         try? await Task.sleep(for: .milliseconds(150))
         await hints.settle()
         #expect(reads == 5)
         #expect(hints.marks.first?.frame == frames[1])
+        // Held after the reload's first look; on at its second, the fourth look, and still on at the fifth.
+        #expect(showing == [false, false, true, false, true])
     }
 
     /// Waits for the looks a page gets to settle, which come on the main queue's time: until `done`, or a few seconds.
