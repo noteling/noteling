@@ -316,7 +316,9 @@ final class WandController {
             }
             // A named control that isn't on the page is left out, not drawn where it was: the spot kept beside a
             // name says where it was, nothing more.
-            if found == nil, anchor.label == nil, let spot {
+            // A hint on the item's own name (its title, its picture) on another page of the kind is the exception:
+            // no control by that name is here, so it goes where it was, checked as any predicted mark is.
+            if found == nil, anchor.label == nil || anchor.isOnTheItemsName, let spot {
                 found = spot
                 predicted = true
             }
@@ -872,7 +874,8 @@ final class WandView: NSView {
     /// stuck beside the named control nearest to it.
     private func readPageForPaper(anchor: NoteAnchor, existing: StickyNote?) {
         pageForPaper = nil
-        guard anchor.page != nil, anchor.label == nil, anchor.domID == nil, existing?.anchor.near == nil,
+        guard anchor.page != nil, anchor.label == nil || NoteAnchor.namesTheItem(anchor.label, page: anchor.page),
+              anchor.domID == nil, existing?.anchor.near == nil,
               let bundle = controller.scene?.bundleID else { return }
         paperReads += 1
         let read = paperReads
@@ -899,7 +902,9 @@ final class WandView: NSView {
             anchor.bundle = existing.bundle; anchor.window = existing.window
         }
         if let existing = e.existing?.anchor, anchor.near == nil { anchor.near = existing.near }
-        if anchor.label == nil, anchor.domID == nil, anchor.near == nil, anchor.page != nil, let page = pageForPaper {
+        // A control with no name, or one named by the item it is on (kept for pages of the kind): beside the
+        // nearest named control, which other pages of the kind have too.
+        if anchor.label == nil || anchor.isOnTheItemsName, anchor.domID == nil, anchor.near == nil, anchor.page != nil, let page = pageForPaper {
             let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
             let control = CGRect(x: e.frame.minX, y: primaryMaxY - e.frame.maxY, width: e.frame.width, height: e.frame.height)
             anchor.near = NoteNear.of(control: control, in: page)

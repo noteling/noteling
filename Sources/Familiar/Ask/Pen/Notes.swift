@@ -119,6 +119,24 @@ struct NoteAnchor: Codable, Equatable {
         return role == r || (role == "AXStaticText" && PageWalk.atomic.contains(r))
     }
 
+    /// A name that is the item's own (its title, its picture, its brand): most of its words are in a part of the
+    /// address the pattern made `*` (the slug `better-homes-gardens-13-in-green-velvet-…`). Such a name is not met
+    /// again on another page of the kind, so a hint on it is found there by the control beside it, or where it was.
+    /// A digit or a price alone does not make a name the item's: "Size 10", "Qty 1" or "4.5 out of 5 stars" is a
+    /// control of the kind's pages, left out when it is not there, as any named control is.
+    static func namesTheItem(_ label: String?, page: PageKey?) -> Bool {
+        guard let label = norm(label), let page else { return false }
+        let words = Set(label.split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { $0.count > 2 })
+        guard words.count >= 2 else { return false }
+        let slugWords = Set(PagePattern.segments(of: page.path).filter(PagePattern.looksLikeASlug)
+            .flatMap { $0.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init) })
+        return Double(words.intersection(slugWords).count) / Double(words.count) >= 0.6
+    }
+
+    /// A hint for pages of a kind on the item's own name: kept with a named neighbour and its spot, by which it is
+    /// found on the other pages of the kind.
+    var isOnTheItemsName: Bool { pattern != nil && Self.namesTheItem(label, page: page) }
+
     /// Two names of one control across pages: equal, or sharing at least ten characters of whole words at the start.
     static func alike(_ a: String?, _ b: String?) -> Bool {
         guard let a = norm(a), let b = norm(b) else { return false }
