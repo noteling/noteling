@@ -63,8 +63,12 @@ enum HeadlessClick {
         page.key.map { mac(key, "page|" + $0.description) }
     }
 
+    /// Covers everything the irreversible-action guard reads (role, label, value, DOM id) and the guard's own verdict,
+    /// so a control whose value gains a confirm word between `--prepare` and `--fire` is "control_changed", never pressed
+    /// on the strength of a `--named-approval` given for the safe control.
     static func hitToken(_ e: PageElement, key: String) -> String {
-        mac(key, ["hit", e.role, e.kind, NoteAnchor.norm(e.label) ?? "", e.domID ?? ""].joined(separator: "|"))
+        mac(key, ["hit", e.role, e.kind, NoteAnchor.norm(e.label) ?? "", e.domID ?? "", NoteAnchor.norm(e.value) ?? "",
+                  guardWord(e, inSheet: false).word].joined(separator: "|"))
     }
 
     // MARK: - Deciding (pure)
@@ -248,22 +252,36 @@ enum HeadlessClick {
     }
 }
 
-/// Keys of tokens `--fire` has pressed under, kept as one-way hashes, owner-only, for a week.
+/// Keys of tokens `--fire` has pressed under, kept as one-way hashes, owner-only, for a week. Spending is one
+/// read-modify-write under an exclusive flock on a sibling lock file, and a file that exists but can't be read or
+/// decoded refuses (fail closed) rather than counting as "nothing used".
 enum UsedTokens {
     static var file: URL { Config.dir.appendingPathComponent("click-used.json") }
 
     static func spend(_ key: String, at file: URL = UsedTokens.file, now: Date = Date()) -> Bool {
         let id = HeadlessClick.mac(key, "used")
-        var used = (try? JSONDecoder().decode([String: Double].self, from: Data(contentsOf: file))) ?? [:]
+        let fm = FileManager.default
+        try? fm.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let lockPath = file.appendingPathExtension("lock").path
+        let fd = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        guard flock(fd, LOCK_EX) == 0 else { return false }
+        defer { flock(fd, LOCK_UN) }
+        var used: [String: Double] = [:]
+        if fm.fileExists(atPath: file.path) {
+            guard let data = try? Data(contentsOf: file),
+                  let decoded = try? JSONDecoder().decode([String: Double].self, from: data) else { return false }
+            used = decoded
+        }
         used = used.filter { now.timeIntervalSince1970 - $0.value < 7 * 86_400 }
         guard used[id] == nil else { return false }
         used[id] = now.timeIntervalSince1970
         guard let data = try? JSONEncoder().encode(used) else { return false }
-        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         let tmp = file.appendingPathExtension("tmp-\(UUID().uuidString)")
-        guard FileManager.default.createFile(atPath: tmp.path, contents: data, attributes: [.posixPermissions: 0o600]),
-              (try? FileManager.default.replaceItemAt(file, withItemAt: tmp)) != nil || (try? FileManager.default.moveItem(at: tmp, to: file)) != nil
-        else { try? FileManager.default.removeItem(at: tmp); return false }
+        guard fm.createFile(atPath: tmp.path, contents: data, attributes: [.posixPermissions: 0o600]),
+              rename(tmp.path, file.path) == 0
+        else { try? fm.removeItem(at: tmp); return false }
         return true
     }
 }

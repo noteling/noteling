@@ -107,6 +107,20 @@ struct HeadlessClickTests {
         #expect(Self.fire(page, expect: tokens, name: "Buy now", named: "buy NOW").0.exit == 0)
     }
 
+    @Test func aValueThatTurnsTheControlConfirmBetweenPrepareAndFireIsControlChanged() {
+        // Vesper's #136 L1: the guard reads the AX value, so the hit token must cover it. Synthetics always passes
+        // --named-approval = the name, so without this a safe control that gains a confirm word would be pressed.
+        let tokens = expect(Self.shop())
+        var flipped = Self.cart
+        flipped.value = "Place order"
+        let r = Self.fire(Self.shop([flipped]), expect: tokens)
+        #expect(r.0.exit == 6 && r.0.reason == "control_changed" && r.1 == nil)
+        var plain = Self.cart
+        plain.value = "Two in basket"
+        #expect(Self.fire(Self.shop([plain]), expect: tokens).0.reason == "control_changed")
+        #expect(HeadlessClick.hitToken(flipped, key: Self.key) != HeadlessClick.hitToken(Self.cart, key: Self.key))
+    }
+
     // MARK: - Arguments and running
 
     static let prepareArgs = ["--click", "Add to cart", "--prepare", "--json", "--token", key]
@@ -188,5 +202,34 @@ struct HeadlessClickTests {
         let mode = try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int
         #expect(mode == 0o600)
         #expect(!(try String(contentsOf: file, encoding: .utf8)).contains(Self.key))
+    }
+
+    @Test func anUnreadableUsedFileRefusesInsteadOfForgetting() throws {
+        // Vesper's #136 L2: an unreadable or corrupt file must not decode as "nothing used" (fail closed).
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("click-used-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("click-used.json")
+        try Data("not json".utf8).write(to: file)
+        #expect(!UsedTokens.spend(Self.key, at: file))
+        #expect(try String(contentsOf: file, encoding: .utf8) == "not json")
+        try FileManager.default.removeItem(at: file)
+        #expect(UsedTokens.spend(Self.key, at: file))
+    }
+
+    @Test func concurrentSpendsOfOneTokenLetOnlyOneThrough() throws {
+        // Vesper's #136 L2: spend is read-modify-write on one file; without a lock two fires could both win.
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("click-used-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("click-used.json")
+        final class Wins: @unchecked Sendable { let lock = NSLock(); var n = 0 }
+        for round in 0..<8 {
+            let k = String(repeating: String(format: "%02x", round), count: 32)
+            let wins = Wins()
+            DispatchQueue.concurrentPerform(iterations: 16) { _ in
+                if UsedTokens.spend(k, at: file) { wins.lock.lock(); wins.n += 1; wins.lock.unlock() }
+            }
+            #expect(wins.n == 1, "round \(round)")
+        }
     }
 }
