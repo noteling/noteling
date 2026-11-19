@@ -86,6 +86,12 @@ if CommandLine.arguments.contains("--record-synthetic") {
         NSApp.run()
     }
     RunLoop.main.run()
+} else if CommandLine.arguments.contains("--find")
+            || (CommandLine.arguments.contains("--read-page") && CommandLine.arguments.contains("--json")) {
+    // For a program: one JSON object and an exit code (HeadlessRead.Exit). Counts and the named control only, unless
+    // `--full`; the human `--read-page` below is unchanged.
+    Task.detached { exit(HeadlessRead.run(CommandLine.arguments)) }
+    RunLoop.main.run()
 } else if CommandLine.arguments.contains("--read-page") {
     // What the page reader sees in the browser window nearest the front (ReadPageCommand). Off the main actor, which
     // the browser hold needs free, so the main run loop below must be running.
