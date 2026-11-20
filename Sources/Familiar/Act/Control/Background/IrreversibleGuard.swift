@@ -16,7 +16,11 @@ enum IrreversibleGuard {
 
     /// Whole-word matches in a label, value or DOM id that mean the press probably cannot be undone.
     static let confirmWords: [String] = ["send", "submit", "pay", "purchase", "buy", "checkout", "confirm", "delete", "remove", "discard",
-                                         "sign", "approve", "reject", "publish", "post", "transfer", "unsubscribe", "reply all"]
+                                         "sign", "approve", "reject", "publish", "post", "transfer", "unsubscribe", "reply all",
+                                         // Shops, bookings and giving: each commits money. "order" alone is left out so
+                                         // "Order history" and "Sort order" stay free; the committing phrases are listed.
+                                         "place order", "place your order", "order now", "complete order",
+                                         "book", "donate", "subscribe"]
 
     /// Forbidden combos keyed by canonical spelling ("cmd+shift+w": modifiers sorted, one spelling each).
     private static let forbiddenCombos: [String: String] = [
