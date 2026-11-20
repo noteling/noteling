@@ -73,10 +73,14 @@ import AppKit
     private var monitor: Any?
     private var activation: NSObjectProtocol?
     private var stopped = false
+    /// The time source for pauses and yields; tests pass a clock they move by hand so a busy main thread can't
+    /// make a pause run out early.
+    private let now: () -> Date
 
     init(target: TargetWindow, recordOutstanding: @escaping () -> Bool, expectingActivation: @escaping () -> Bool,
          onStop: @escaping (String) -> Void, onDirty: @escaping () -> Void, onYield: ((String) -> Void)? = nil,
-         onAbortRecord: @escaping () -> Void) {
+         onAbortRecord: @escaping () -> Void, now: @escaping () -> Date = Date.init) {
+        self.now = now
         targetPID = target.pid
         targetWindowID = target.cgWindowID
         appName = target.appName
@@ -130,9 +134,9 @@ import AppKit
 
     /// True when no pause is in effect (waits up to `timeout`, polling 50 ms); false on timeout.
     func waitUntilClear(timeout: TimeInterval) async -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
+        let deadline = now().addingTimeInterval(timeout)
         while paused {
-            if Date() >= deadline { return false }
+            if now() >= deadline { return false }
             try? await Task.sleep(nanoseconds: 50_000_000)
         }
         return true
@@ -141,7 +145,7 @@ import AppKit
     private var paused: Bool {
         // A missed mouseUp (the drag ended over Noteling's own window) must not pause forever: trust the hardware state.
         if mouseButtonHeld, NSEvent.pressedMouseButtons == 0 { mouseButtonHeld = false }
-        if let until = pausedUntil, until > Date() { return true }
+        if let until = pausedUntil, until > now() { return true }
         return mouseButtonHeld
     }
 
@@ -165,8 +169,8 @@ import AppKit
                 return
             }
             // Step aside rather than end: wait until they leave the window alone, and look again before acting.
-            let until = Date().addingTimeInterval(Self.yieldSeconds)
-            let fresh = yieldedUntil.map { $0 < Date() } ?? true
+            let until = now().addingTimeInterval(Self.yieldSeconds)
+            let fresh = yieldedUntil.map { $0 < now() } ?? true
             yieldedUntil = until
             if pausedUntil.map({ $0 < until }) ?? true { pausedUntil = until }
             onDirty()
@@ -176,11 +180,11 @@ import AppKit
             }
         case .pause(var seconds):
             // Typing into the window Noteling works in: wait for a real pause, not the gap between two keys.
-            if let yieldedUntil, yieldedUntil.addingTimeInterval(10) > Date(),
+            if let yieldedUntil, yieldedUntil.addingTimeInterval(10) > now(),
                NSWorkspace.shared.frontmostApplication?.processIdentifier == targetPID {
                 seconds = max(seconds, Self.yieldSeconds)
             }
-            let until = Date().addingTimeInterval(seconds)
+            let until = now().addingTimeInterval(seconds)
             if pausedUntil.map({ $0 < until }) ?? true { pausedUntil = until }
             // A human keystroke while the activation record is up would land in the target: drop the record first.
             if case .keyDown = e.kind, recordOutstanding() { onAbortRecord() }
