@@ -87,7 +87,7 @@ struct PenBriefFirstTests {
 
         fixture.assistant.wandPick(Fixture.circle)
         #expect(!fixture.assistant.transcript.contains { $0.role == .glance })
-        await fixture.settle(seconds: 2)
+        await fixture.wait(until: { fixture.assistant.transcript.contains { $0.role == .glance } })
         #expect(fixture.assistant.transcript.contains { $0.role == .glance })
     }
 
@@ -133,7 +133,7 @@ struct PenBriefFirstTests {
 
         fixture.assistant.wandPick(Fixture.circle)
         fixture.assistant.askSuggestion("Why is it like this?")
-        await fixture.settle(seconds: 3)
+        await fixture.turnDone()
 
         let call = try #require(fixture.client.calls.first)
         #expect(fixture.client.calls.count == 1)
@@ -157,7 +157,7 @@ struct PenBriefFirstTests {
 
         fixture.assistant.wandPick(Fixture.circle)
         fixture.assistant.ask()
-        await fixture.settle(seconds: 3)
+        await fixture.turnDone()
 
         let call = try #require(fixture.client.calls.first)
         #expect(call.model == "claude-haiku-4-5")
@@ -172,7 +172,7 @@ struct PenBriefFirstTests {
 
         fixture.assistant.wandPick(Fixture.circle)
         fixture.assistant.ask()
-        await fixture.settle(seconds: 3)
+        await fixture.turnDone()
 
         let call = try #require(fixture.client.calls.first)
         #expect(call.model == "fixture-model")
@@ -222,12 +222,20 @@ struct PenBriefFirstTests {
             assistant.useConnection(client)
         }
 
+        /// A short pause for tests that check nothing more happens; it ends early once a turn has run and finished.
         func settle(seconds: Double = 0.3) async {
+            await wait(until: { !self.assistant.chatBusy && !self.client.calls.isEmpty }, seconds: seconds)
+        }
+
+        /// Waits until the turn has run and finished.
+        func turnDone() async { await wait(until: { !self.assistant.chatBusy && !self.client.calls.isEmpty }) }
+
+        /// Waits for `condition`. The bound only stops a broken test from hanging: in the full suite the main actor is
+        /// shared by every @MainActor suite, and others' synchronous work holds it for seconds at a time, so a tight
+        /// wall-clock bound fails tests whose work is merely queued behind it.
+        func wait(until condition: () -> Bool, seconds: Double = 30) async {
             let end = Date().addingTimeInterval(seconds)
-            while Date() < end {
-                if !assistant.chatBusy, !client.calls.isEmpty { return }
-                try? await Task.sleep(for: .milliseconds(20))
-            }
+            while Date() < end, !condition() { try? await Task.sleep(for: .milliseconds(20)) }
         }
 
         func remove() { try? FileManager.default.removeItem(at: root) }

@@ -327,7 +327,7 @@ struct ExecutionCoordinatorTests {
             _ = await executor("notes__update", ["note_id": "42", "title": "Updated title"], nil)
             _ = await executor("inspect", ["document_id": 9], "documents")
             awaitingProvider.open()
-            try await Task.sleep(nanoseconds: 5_000_000_000)
+            try await Task.sleep(nanoseconds: Self.hangGuard)
             return response("Not reached")
         }
         client.historyBeforeBehavior = [["role": "assistant", "content": [
@@ -376,7 +376,7 @@ struct ExecutionCoordinatorTests {
             // Simulates an adapter with an outstanding tool call when its provider wait is cancelled.
             invocation = Task { await executor("save_record", ["record_id": "record-5"], nil) }
             try await toolEntered.wait()
-            try await Task.sleep(nanoseconds: 5_000_000_000)
+            try await Task.sleep(nanoseconds: Self.hangGuard)
             return response("Not reached")
         }
         let task = Task { @MainActor in
@@ -405,7 +405,7 @@ struct ExecutionCoordinatorTests {
         let entered = Gate()
         let client = FakeClient { _, _, _, _, _, _ in
             entered.open()
-            try await Task.sleep(nanoseconds: 5_000_000_000)
+            try await Task.sleep(nanoseconds: Self.hangGuard)
             return response("Not reached")
         }
         let task = Task { @MainActor in
@@ -436,6 +436,12 @@ struct ExecutionCoordinatorTests {
 
     private enum FixtureError: Error, Equatable { case preparation, provider, gateTimedOut }
 
+    /// How long a gate waits, or a provider that should never answer sleeps, before the test gives up. It only stops a
+    /// broken test from hanging: the order is fixed by the gates and by cancellation, which ends these sleeps at once.
+    /// In the full suite every @MainActor suite shares the main thread, and other suites' synchronous work has been
+    /// measured holding it for 2-3 s at a time, several times per run, so a 5 s guard was itself the failure.
+    nonisolated static let hangGuard: UInt64 = 60_000_000_000
+
     /// A deliberately non-cancelling native-style continuation. Stop must resolve it.
     @MainActor
     private final class Gate {
@@ -447,7 +453,7 @@ struct ExecutionCoordinatorTests {
             let id = UUID()
             try await withCheckedThrowingContinuation { continuation in
                 let timeout = Task { @MainActor [weak self] in
-                    do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
+                    do { try await Task.sleep(nanoseconds: ExecutionCoordinatorTests.hangGuard) } catch { return }
                     self?.waiters.removeValue(forKey: id)?.0.resume(throwing: FixtureError.gateTimedOut)
                 }
                 waiters[id] = (continuation, timeout)
