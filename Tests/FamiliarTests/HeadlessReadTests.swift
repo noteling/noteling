@@ -107,9 +107,13 @@ struct HeadlessReadTests {
             Self.page("https://shop.example/ip/link/4", [Self.element("AXLink", "Add to cart", Self.cart, kind: "link")]),
         ]
         let expected = ["exact", "alike", "none", "none"]
+        // "alike" is the same control on another page of the kind, so the hint is one for pages of the kind.
+        var hint = Self.hint(on: "Add to cart")
+        hint.anchor.pattern = hint.anchor.page.map { PagePattern.of($0).description }
+        #expect(hint.anchor.pattern != nil)
         for (page, match) in zip(pages, expected) {
             let found = HeadlessRead.find("Add to cart", role: "AXButton", in: page)
-            let placed = WandController.place([Self.hint(on: "Add to cart")], page: page, primaryMaxY: 800).placed
+            let placed = WandController.place([hint], page: page, primaryMaxY: 800).placed
             #expect(found.match == match, "\(page.url ?? "")")
             #expect((found.count > 0) == !placed.isEmpty, "\(page.url ?? "")")
             if let hit = found.hits.first, let note = placed.first {
