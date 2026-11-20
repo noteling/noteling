@@ -82,8 +82,15 @@ struct ItemNameHintTests {
         #expect(result.placed.first?.predicted == false)
     }
 
-    @Test func withNoNeighbourItGoesWhereItWas() {
+    @Test func withNoNeighbourItGoesOnThisItemsTitle() {
         let result = WandController.place([Self.titleNote(near: nil)], page: Self.pageB, primaryMaxY: 1_000)
+        #expect(result.missing.isEmpty && result.placed.first?.predicted == false)
+        #expect(result.placed.first?.frame == NSRect(x: 500, y: 1_000 - 200, width: 400, height: 40))
+    }
+
+    @Test func withNoNeighbourAndNoTitleItGoesWhereItWas() {
+        let noTitle = Self.page(Self.urlB, [Self.element("AXButton", "Add to cart", CGRect(x: 500, y: 400, width: 200, height: 44))])
+        let result = WandController.place([Self.titleNote(near: nil)], page: noTitle, primaryMaxY: 1_000)
         #expect(result.missing.isEmpty && result.placed.first?.predicted == true)
         #expect(result.placed.first?.frame == NSRect(x: 500, y: 1_000 - 200, width: 400, height: 40))
     }

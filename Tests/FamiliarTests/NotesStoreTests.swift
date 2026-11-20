@@ -372,7 +372,7 @@ struct NotesStoreTests {
         let button = StickyNote(id: "cart", anchor: onButton, kind: "tip", text: "Adds one; the quantity is on the next page", by: "F", at: "2026-11-10", confirmed: "2026-11-10")
         let alike = WandController.place([button], page: page([title, price, cart]), primaryMaxY: 1_000)
         #expect(alike.placed.map(\.predicted) == [false] && alike.placed[0].frame == NSRect(x: 600, y: 600, width: 200, height: 40))
-        #expect(NoteAnchor.alike("Add to cart - Great Value Milk", "Add to cart - Bananas") && NoteAnchor.alike("Delete this item", "Delete this item now"))
+        #expect(NoteAnchor.alike("Add to cart - Great Value Milk", "Add to cart - Bananas") && !NoteAnchor.alike("Delete this item", "Delete this item now"))
         #expect(!NoteAnchor.alike("Save changes", "Save draft") && !NoteAnchor.alike("Pickup", "Pickup today") && !NoteAnchor.alike("Add to cart - Milk", "Add to list - Milk"))
         #expect(AXElementInfo.steadyClasses(["price-wrap", "css-1x2y3z", "b", "sc-AbCdE", "", "ember412"]) == ["price-wrap", "b"])
         #expect(AXElementInfo.steadyClasses(["css-1x2y3z"]) == nil && AXElementInfo.steadyClasses(nil) == nil)
