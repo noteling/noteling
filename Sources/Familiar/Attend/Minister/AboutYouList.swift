@@ -5,8 +5,6 @@ import SwiftUI
 struct AboutYouList: View {
     @ObservedObject var profile: Profile
     var now: Date
-    /// Fix on the name also writes the author set in Settings, which signs pen notes first.
-    var saveName: ((String) -> Void)?
 
     static let title = "About you & your people"
     /// Checked against what Noteling does: the block goes into the minister's turns and the pen, chat and headless ask.
@@ -101,8 +99,7 @@ struct AboutYouList: View {
 
     private func keep(_ field: AboutMe.Field) {
         do {
-            try profile.keep(field, draft, from: .typed)
-            if field == .name { saveName?(profile.me.name?.text ?? "") }
+            try profile.keep(field, draft, from: .typed)   // the name also goes to the Settings author (Profile.onName)
             editing = nil
             problem = nil
         } catch { problem = error.localizedDescription }
@@ -110,10 +107,9 @@ struct AboutYouList: View {
 
     private func keepPerson(id: String?) {
         do {
-            // A fixed name is the same person: the old record goes, the new one keeps its place at the top.
-            if let id, let old = profile.people.first(where: { $0.id == id }), !old.goes(by: draft) {
-                try profile.keep(person: draft, relation: relation, words: words, aliases: old.aliases, from: .typed)
-                profile.forget(person: id)
+            // A fixed name is the same person; a name someone else goes by is refused, never merged.
+            if let id {
+                try profile.fix(person: id, name: draft, relation: relation, words: words, from: .typed)
             } else {
                 try profile.keep(person: draft, relation: relation, words: words, from: .typed)
             }

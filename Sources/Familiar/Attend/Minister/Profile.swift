@@ -119,6 +119,9 @@ final class Profile: ObservableObject {
     /// Where Fix and Forget are logged: ids and counts only, never a fact's text.
     var memory: MemoryLog?
     var clock: () -> Date = Date.init
+    /// The confirmed name changed: what it was and what it is now (nil once forgotten). The app keeps the Settings author
+    /// in step, so pen notes are never signed with a name the person took back (`author(_:was:now:)`).
+    var onName: ((_ was: String?, _ now: String?) -> Void)?
 
     static let folder = "profile"
     static let fileName = "about.json"
@@ -158,13 +161,24 @@ final class Profile: ObservableObject {
         me[field] = Fact(text: text, from: from, at: clock())
         write()
         memory?.append(["profile": was == nil ? "kept" : "fixed", "fact": "me." + field.rawValue])
+        if field == .name { onName?(was?.text, text) }
     }
 
     func forget(_ field: AboutMe.Field) {
-        guard me[field] != nil else { return }
+        guard let was = me[field] else { return }
         me[field] = nil
         write()
         memory?.append(["profile": "forgot", "fact": "me." + field.rawValue])
+        if field == .name { onName?(was.text, nil) }
+    }
+
+    /// The Settings author after the confirmed name changed from `was` to `now`: the new name when there is one; empty
+    /// (so notes fall back to the Mac's name) when the name forgotten is the one Settings held; otherwise unchanged.
+    static func author(_ current: String, was: String?, now: String?) -> String {
+        if let now { return now }
+        let held = current.trimmingCharacters(in: .whitespaces)
+        guard let was, !held.isEmpty, held.caseInsensitiveCompare(was) == .orderedSame else { return current }
+        return ""
     }
 
     /// Keeps a person, or fixes the one already kept by that name (or an alias of theirs). At most `peopleLimit`.
@@ -175,6 +189,11 @@ final class Profile: ObservableObject {
         let said = try words.flatMap { try Self.line($0, what: "description") }
         let others = try aliases.compactMap { try Self.line($0, what: "other name") }.filter { $0.caseInsensitiveCompare(clean) != .orderedSame }
         guard others.count <= Self.aliasLimit else { throw MinisterError("A person keeps \(Self.aliasLimit) other names at most.") }
+        let same = people.filter { $0.goes(by: clean) }
+        guard same.count <= 1 else {
+            throw MinisterError("More than one person goes by “\(clean)”: " + same.map(\.name).joined(separator: ", ") + ". Say which, by their name.")
+        }
+        try unclaimed(others, by: same.first?.id)
         if let index = people.firstIndex(where: { $0.goes(by: clean) }) {
             var person = people[index]
             person.name = clean
@@ -198,6 +217,38 @@ final class Profile: ObservableObject {
         write()
         memory?.append(["profile": "kept", "person": person.id, "people": people.count])
         return person
+    }
+
+    /// Fixes the person kept under this id: a new name replaces the old one (most renames mend a typo), the other names
+    /// stay. A name or other name another person already goes by is refused, never merged into them.
+    @discardableResult
+    func fix(person id: String, name: String, relation: Relation, words: String?, from: FactSource) throws -> Person {
+        try writable()
+        guard let index = people.firstIndex(where: { $0.id == id }) else { throw MinisterError("That person isn't kept any more.") }
+        guard let clean = try Self.line(name, what: "name") else { throw MinisterError("Say the person's name.") }
+        let said = try words.flatMap { try Self.line($0, what: "description") }
+        try unclaimed([clean], by: id)
+        var person = people[index]
+        person.name = clean
+        person.relation = relation
+        person.words = said
+        person.aliases = person.aliases.filter { $0.caseInsensitiveCompare(clean) != .orderedSame }
+        person.from = from
+        person.at = clock()
+        people.remove(at: index)
+        people.insert(person, at: 0)
+        write()
+        memory?.append(["profile": "fixed", "person": person.id, "people": people.count])
+        return person
+    }
+
+    /// Refuses names another person than `id` already goes by: two people never share one.
+    private func unclaimed(_ names: [String], by id: String?) throws {
+        for name in names {
+            if let other = people.first(where: { $0.id != id && $0.goes(by: name) }) {
+                throw MinisterError("\(other.name) already goes by “\(name)”. Fix or forget them first; Noteling doesn't merge two people.")
+            }
+        }
     }
 
     /// Forget: gone from the file, the page and the next prompt.
@@ -265,7 +316,7 @@ final class Profile: ObservableObject {
     // MARK: the file
 
     /// One line of words, trimmed; nil when empty; refused past `factLimit` characters.
-    private static func line(_ words: String, what: String) throws -> String? {
+    static func line(_ words: String, what: String) throws -> String? {
         let text = words.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
         guard !text.isEmpty else { return nil }
         guard text.count <= factLimit else { throw MinisterError("That \(what) is \(text.count) characters; Noteling keeps \(factLimit) at most.") }

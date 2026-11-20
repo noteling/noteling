@@ -15,11 +15,6 @@ extension AppDelegate {
         panel.matters = matters
         panel.lessons = lessons
         panel.profile = profile
-        panel.saveName = { [weak self] name in
-            guard let self else { return }
-            self.config.noteAuthor = name
-            self.config.save()
-        }
         panel.mine = { [weak self] id in
             guard let self, let taken = self.matters.take(id) else { return }
             self.mine(taken)
@@ -79,6 +74,15 @@ extension AppDelegate {
         minister.lessons = lessons
         profile = Profile(home: Config.dir, memory: memory)
         minister.profile = profile
+        // The confirmed name is the Settings author too, so the name has one source: kept from the page or the chat, it
+        // signs pen notes; forgotten, it no longer does.
+        profile.onName = { [weak self] was, now in
+            guard let self else { return }
+            let author = Profile.author(self.config.noteAuthor, was: was, now: now)
+            guard author != self.config.noteAuthor else { return }
+            self.config.noteAuthor = author
+            self.config.save()
+        }
         minister.notes = { [weak self] in self?.memos?.all ?? [] }   // the notes store comes a step later; read at each turn
         minister.onUrgent = { [weak notifier] matter in
             notifier?.post(matter: matter.id, title: matter.jobName, body: matter.view?.text ?? "")
@@ -93,6 +97,7 @@ extension AppDelegate {
         scans.onFindings = reported
         scans.takeTurn = { [weak self] in await self?.minister.flush() }
         scans.lessons = lessons
+        scans.profile = profile
         chatFindings = scans
         feature.buttons.record = { [weak self] job, row, action, press in
             guard let self else { return }

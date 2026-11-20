@@ -52,6 +52,60 @@ import Testing
         #expect(text.contains(lena.id))
     }
 
+    @Test func fixingAPersonToANameSomeoneElseGoesByIsRefusedNotMerged() throws {
+        let home = home()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let profile = profile(home)
+        let lena = try profile.keep(person: "Lena", relation: .manager, aliases: ["lena@acme.example"], from: .typed)
+        let bo = try profile.keep(person: "Bo", relation: .customer, words: "buys for Northwind", from: .typed)
+        for taken in ["lena", "LENA@acme.example"] {
+            #expect(throws: MinisterError("Lena already goes by “\(taken)”. Fix or forget them first; Noteling doesn't merge two people.")) {
+                try profile.fix(person: bo.id, name: taken, relation: .customer, words: nil, from: .typed)
+            }
+        }
+        let kept = Profile(home: home)
+        #expect(kept.people.count == 2 && kept.person(named: "Bo")?.words == "buys for Northwind" && kept.person(named: "Lena")?.aliases == ["lena@acme.example"])
+
+        // A rename is the same person: same id, new name, the old name gone (most renames mend a typo), other names kept.
+        let fixed = try profile.fix(person: lena.id, name: "Lena Park", relation: .teammate, words: "runs the warehouse", from: .typed)
+        #expect(fixed.id == lena.id && fixed.name == "Lena Park" && fixed.aliases == ["lena@acme.example"] && fixed.relation == .teammate)
+        #expect(Profile(home: home).person(named: "Lena") == nil && Profile(home: home).people.count == 2)
+        // Fixing a person to their own other name makes it the name.
+        #expect(try profile.fix(person: lena.id, name: "lena@acme.example", relation: .teammate, words: nil, from: .typed).aliases.isEmpty)
+        #expect(throws: MinisterError.self) { try profile.fix(person: "p-gone", name: "X", relation: .other, words: nil, from: .typed) }
+
+        // Keeping a person with another name someone else goes by is refused too.
+        try profile.keep(person: "Sam", relation: .vendor, aliases: ["S"], from: .typed)
+        try profile.keep(person: "Sue", relation: .vendor, from: .typed)
+        #expect(throws: MinisterError.self) { try profile.keep(person: "Sue", relation: .vendor, aliases: ["s"], from: .typed) }
+        #expect(profile.person(named: "Sue")?.aliases == [])
+    }
+
+    @Test func theConfirmedNameKeepsTheSettingsAuthorInStep() throws {
+        let home = home()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let profile = profile(home)
+        var author = "Sam Lee"
+        profile.onName = { was, now in author = Profile.author(author, was: was, now: now) }
+        try profile.keep(.company, "Acme", from: .typed)
+        profile.forget(.company)
+        #expect(author == "Sam Lee")   // only the name
+        try profile.keep(.name, "Sam", from: .told)
+        #expect(author == "Sam")
+        profile.forget(.name)
+        #expect(author == "")          // forgotten: pen notes go back to the Mac's name
+        var config = Config()
+        config.noteAuthor = author
+        #expect(NoteStore.author(config, confirmedName: profile.me.name?.text) != "Sam")
+
+        // A Settings author the person set to something else is theirs: forgetting the name leaves it.
+        try profile.keep(.name, "Sam", from: .typed)
+        author = "S. Lee"
+        profile.forget(.name)
+        #expect(author == "S. Lee")
+        #expect(Profile.author(" sam ", was: "Sam", now: nil) == "" && Profile.author("", was: "Sam", now: nil) == "" && Profile.author("x", was: nil, now: nil) == "x")
+    }
+
     @Test func theLimitsAreNamedAndKept() throws {
         let home = home()
         defer { try? FileManager.default.removeItem(at: home) }
