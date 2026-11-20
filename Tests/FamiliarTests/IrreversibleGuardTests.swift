@@ -94,12 +94,25 @@ struct IrreversibleGuardTests {
             #expect(press(el(title: title)) == .confirm(title), Comment(rawValue: title))
         }
         // Still words, not substrings, and "order" alone is not a commitment.
-        for title in ["Order history", "Sort order", "Orders", "Bookmark", "Address Book contacts", "Subscribed", "Donation history"] {
-            if title == "Address Book contacts" {
-                #expect(press(el(title: title)) == .confirm(title), "bias towards asking: 'Book' is a whole word here")
-            } else {
-                #expect(press(el(title: title)) == .safe, Comment(rawValue: title))
-            }
+        for title in ["Order history", "Sort order", "Orders", "Bookmark", "Subscribed", "Donation history"] {
+            #expect(press(el(title: title)) == .safe, Comment(rawValue: title))
+        }
+        // Bias towards asking: "Book" is a whole word here, so an extra question is the accepted cost.
+        #expect(press(el(title: "Address Book contacts")) == .confirm("Address Book contacts"))
+    }
+
+    @Test
+    func reserveRentPledgeTrialUpgradeRenewBidAndOfferButtonsAsk() {
+        // Rowan's #138 review (L2): these commit money, a booking or a recurring charge and were classified safe.
+        for title in ["Reserve", "Reserve a table", "Rent", "Rent HD $3.99", "Pledge", "Back this project: Pledge $10",
+                      "Give now", "Start free trial", "Start your free trial", "Start trial", "Upgrade", "Upgrade to Pro",
+                      "Renew", "Renew subscription", "Place bid", "Bid", "Make offer", "Make an offer", "Order it now"] {
+            #expect(press(el(title: title)) == .confirm(title), Comment(rawValue: title))
+        }
+        // Words, not substrings; bare "give" and "trial" are too common to ask about.
+        for title in ["Reserved seats", "All rights reserved", "Rental history", "Current plan", "Give feedback",
+                      "Clinical trial results", "Upgrades", "Renewal date", "Bidding history", "Offers", "Pledged"] {
+            #expect(press(el(title: title)) == .safe, Comment(rawValue: title))
         }
     }
 
