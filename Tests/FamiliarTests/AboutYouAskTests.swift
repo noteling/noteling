@@ -46,6 +46,7 @@ import Testing
         #expect(AboutYouDraft.tools([]) == nil)
         #expect(AboutYouDraft.tools([("Orders", 0), (" ", 4)]) == nil)
         #expect(AboutYouDraft.tools([("Stripe", 2)]) == "Stripe")
+        #expect(AboutYouDraft.tools([("Stripe", 3), ("stripe", 2), ("Linear", 1)]) == "Stripe and Linear")   // one pack, two spellings
         #expect(AboutYouDraft.tools([("stripe", 1), ("Shopify admin", 5), ("Stripe", 2), ("Zendesk", 2), ("Linear", 2)])
                 == "Shopify admin, Linear and Stripe")
         #expect(AboutYouDraft(name: "Sam Lee", tools: "Stripe").text == "You're Sam Lee, working in Stripe?")
