@@ -333,9 +333,12 @@ enum NoteStore {
         try enc.encode(File(notes: notes)).write(to: packDir.appendingPathComponent(fileName), options: .atomic)
     }
 
-    static func author(_ config: Config) -> String {
+    /// Who signs a pen note: the author set in Settings first, then the name the person confirmed on the About-you
+    /// page, then the macOS full name.
+    static func author(_ config: Config, confirmedName: String? = nil) -> String {
         let n = config.noteAuthor.trimmingCharacters(in: .whitespaces)
         if !n.isEmpty { return n }
+        if let name = confirmedName?.trimmingCharacters(in: .whitespaces), !name.isEmpty { return name }
         let full = NSFullUserName().trimmingCharacters(in: .whitespaces)
         return full.isEmpty ? NSUserName() : full
     }

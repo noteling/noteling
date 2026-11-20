@@ -17,6 +17,7 @@ The app stores its data in `~/.noteling`, or in `$NOTELING_HOME` if you set it. 
 | What jobs kept as folders left: the latest output of each job that ran (yours and the team's you turned on), with the findings it reported as a table (`findings.csv`) and the last run's rows (`findings.json`, so the next run can tell new, changed and gone apart), how its last run went, and which of the team's jobs you turned on | `job-results/` |
 | The memory log, one file a day: each job's runs (what it checked, how many it read and how many it found) and each finding that is new, changed or gone, as the row the job reported it, with anything that looks like a secret hidden; the minister's verdict on each finding and why; each sticker it wrote; what you put away or pressed | `memory/` |
 | The minister's matters, one folder each: which findings it is made of, its state (on a sticker, quiet, or over), the sticker's words, and the minister's notes on why | `matters/` |
+| About you & your people: what you confirmed about yourself (your name, company, role and tools) and the people you named (their name, other names they go by, how they stand to you and your words about them), each with where it came from and when. Only what you confirmed is kept, up to 50 people | `profile/about.json` |
 | The Morning folder earlier versions kept, with the notes and the Who's Who you kept there; this version neither reads nor writes it, and leaves it until you delete it (see Left from earlier versions below) | `morning/` |
 | Watch Me recordings, only while a draft is being written | `recordings/` |
 | The certificates this Mac trusts for everyone, copied from the system keychains so tool-pack scripts can use them behind a company proxy | `run/certificates.pem` |
@@ -24,7 +25,9 @@ The app stores its data in `~/.noteling`, or in `$NOTELING_HOME` if you set it. 
 | Freeze diagnostics: the steps chat goes through, and a record of each time the app stopped responding | `diagnostics/main-thread/` |
 | How you use notes: arriving where there are notes, showing them, pointing at things with the pen, checks run and what they found, notes kept or removed. Counts, kinds and note ids only, never a note's words, a page's address or anything on screen | `usage/` |
 
-Watch Me recordings, developer-build secrets, the memory log and the activity log can be read only by your macOS user account, and so can the freeze diagnostics.
+Watch Me recordings, developer-build secrets, the memory log, the activity log and About you & your people can be read only by your macOS user account, and so can the freeze diagnostics.
+
+**About you & your people.** The Jobs window's receipt lists everything kept there, one line a fact with where it came from, and Fix and Forget on each; Forget removes it from the file and from the next request. It is filled only from what you type there in this version. Fix and Forget are written to the memory log by the fact's id and a count, never its words. The file sits beside Noteling's folders, not in one Claude can read with its tools (see What Claude can read on your Mac below): Claude sees it only as the short block described under What a request can include.
 
 
 
@@ -46,6 +49,7 @@ Watch Me recordings, developer-build secrets, the memory log and the activity lo
 - a screenshot of your screen, or of the window a task is working in. This happens when a question is about the screen, and while a task runs. When a web browser is in front, a typed question about the screen sends the page's text and controls instead (described in the next item), and a screenshot only when the question is about how something looks or the page can't be read;
 - the text and control names that macOS Accessibility exposes in that window. In a web browser that is the page rather than the browser around it, including parts scrolled out of view: its text, headings and controls, what is typed in its fields, the address each link points to, the addresses of frames inside the page, the titles of the window's tabs, and any text you have selected. A password field's value, the value of a field named like a secret, and text that looks like a key or a card number are left out, and addresses lose their fragments and any parameter that can carry a credential, such as a token or a code;
 - the current app, window title and web address, and up to eight you used recently;
+- what you confirmed under About you & your people, as one short block of about 1,500 characters at most: your own facts first, then your people, managers and customers first; the rest stay on the page only, which marks them. Chat, the pen, a question asked from the command line, and both of the minister's turns (deciding which findings deserve a card, and writing the card) include it;
 - notes left on the current screen, and the documents and script results of matching tool packs. When you point at something with the pen, that includes the notes on it and those on the page for controls you can't see, with who left them and when, and the answer of any check a note is linked to;
 - **Watch Me:**
   - frames of your screen, up to 60 images per recording;

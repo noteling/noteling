@@ -60,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var matters: Matters!
     var minister: Minister!
     var lessons: Lessons!
+    var profile: Profile!
     var stickersPanel: StickersPanel?
     var stickersScreenObserver: NSObjectProtocol?
     /// Your own notes, as files, and on the screen.

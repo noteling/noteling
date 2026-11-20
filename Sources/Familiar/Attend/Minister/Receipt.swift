@@ -114,6 +114,8 @@ struct ReceiptPage: View {
     @ObservedObject var matters: Matters
     var log: MemoryLog?
     var lessons: Lessons?
+    var profile: Profile?
+    var saveName: ((String) -> Void)? = nil
     var now: () -> Date = Date.init
     /// Opens a matter's page.
     var open: (String) -> Void = { _ in }
@@ -163,6 +165,9 @@ struct ReceiptPage: View {
                     FolderJobSection(title: "Put away", icon: "moon.zzz") {
                         ForEach(receipt.putAway) { matter in row(matter, line: "Comes back if something about it changes · " + JobWords.time(matter.updatedAt, now: now)) }
                     }
+                }
+                FolderJobSection(title: AboutYouList.title, icon: "person.crop.circle") {
+                    if let profile { AboutYouList(profile: profile, now: now, saveName: saveName) } else { AboutYouList.consent }
                 }
                 FolderJobSection(title: "Taught", icon: "graduationcap") {
                     if let lessons { TaughtList(lessons: lessons, now: now) } else { TaughtList.nothingYet }

@@ -273,7 +273,7 @@ extension AppDelegate {
         }
         wand.sceneProvider = { [weak self] in self?.watcher.sample() ?? self?.watcher.current }
         wand.notesProvider = { [weak self] ctx in self?.registry.notes(for: ctx) ?? [] }
-        wand.author = { [weak self] in self.map { NoteStore.author($0.config) } ?? NSFullUserName() }
+        wand.author = { [weak self] in self.map { NoteStore.author($0.config, confirmedName: $0.profile?.me.name?.text) } ?? NSFullUserName() }
         wand.onNoteSave = { [weak self] note in self?.assistant.saveNote(note) }
         wand.onNoteDelete = { [weak self] id in self?.assistant.deleteNote(id) }
         assistant.onNotesChanged = { [weak self] in self?.hintsChanged() }

@@ -14,6 +14,12 @@ extension AppDelegate {
         guard var panel = folderJobs?.panel else { return }
         panel.matters = matters
         panel.lessons = lessons
+        panel.profile = profile
+        panel.saveName = { [weak self] name in
+            guard let self else { return }
+            self.config.noteAuthor = name
+            self.config.save()
+        }
         panel.mine = { [weak self] id in
             guard let self, let taken = self.matters.take(id) else { return }
             self.mine(taken)
@@ -71,6 +77,8 @@ extension AppDelegate {
         minister.recall = recall
         lessons = Lessons(file: Config.dir.appendingPathComponent(Matters.folder).appendingPathComponent(Lessons.fileName))
         minister.lessons = lessons
+        profile = Profile(home: Config.dir, memory: memory)
+        minister.profile = profile
         minister.notes = { [weak self] in self?.memos?.all ?? [] }   // the notes store comes a step later; read at each turn
         minister.onUrgent = { [weak notifier] matter in
             notifier?.post(matter: matter.id, title: matter.jobName, body: matter.view?.text ?? "")
