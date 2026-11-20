@@ -332,7 +332,13 @@ struct MinisterTests {
         place.runner.run(place.job.id)
         await place.runner.finish()
         #expect(place.client.prompts.isEmpty)   // the batch waits
-        try await Task.sleep(nanoseconds: 1_000_000_000)
+        // Then the turn comes with no one calling flush(). Wait for its result rather than a fixed second: in the full
+        // suite other suites hold the shared main actor for seconds at a time, and the turn queues behind them. A timer
+        // that never fires still fails, at the 30 s bound.
+        let end = Date().addingTimeInterval(30)
+        while Date() < end, place.matters.open.first?.view?.text != "Acme's order 4417 waits." {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
         #expect(place.client.prompts.count == 2 && place.matters.open.first?.view?.text == "Acme's order 4417 waits.")
     }
 
