@@ -302,8 +302,11 @@ final class WandController {
                 let named = page.elements.filter { $0.visible && anchor.matchesElement(role: $0.role, label: $0.label) }
                 let own = named.filter { $0.role == anchor.role }
                 found = Self.nearest(own.isEmpty ? named : own, to: spot)?.frame
-                    // On another page of the kind the name may carry the item's own: "Add to cart - Bananas".
-                    ?? Self.nearest(page.elements.filter { $0.visible && anchor.isLikeElement(role: $0.role, label: $0.label) }, to: spot)?.frame
+                // On another page of the kind the name may carry the item's own: "Add to cart - Bananas". Only for a
+                // hint on pages of a kind, as `belongs` has it: a hint for this page is on its own control or none.
+                if found == nil, anchor.pattern != nil {
+                    found = Self.nearest(page.elements.filter { $0.visible && anchor.isLikeElement(role: $0.role, label: $0.label) }, to: spot)?.frame
+                }
             }
             var predicted = false
             // A control with no name: beside the named one it was next to, where that one is now.
@@ -314,16 +317,24 @@ final class WandController {
                 found = control?.frame ?? expected
                 predicted = control == nil
             }
+            // A hint on the item's own name (its title, its picture) on another page of the kind: on this page's
+            // item's name in a control of its role, the one nearest where it was, before any place only guessed.
+            if found == nil || predicted, anchor.isOnTheItemsName, let item = Self.itemsName(of: anchor, in: page, spot: spot) {
+                guard item.visible else { below.append(note); continue }
+                found = item.frame
+                predicted = false
+            }
             // A named control that isn't on the page is left out, not drawn where it was: the spot kept beside a
             // name says where it was, nothing more.
-            // A hint on the item's own name (its title, its picture) on another page of the kind is the exception:
-            // no control by that name is here, so it goes where it was, checked as any predicted mark is.
+            // A hint on the item's own name with no such control here is the exception: it goes where it was,
+            // checked as any predicted mark is.
             if found == nil, anchor.label == nil || anchor.isOnTheItemsName, let spot {
                 found = spot
                 predicted = true
             }
             if let found, found.width > 0 || found.height > 0 { placed.append(PlacedNote(note: note, frame: appKit(found), predicted: predicted)) }
-            else if page.elements.contains(where: { !$0.visible && (anchor.label != nil && anchor.isLikeElement(role: $0.role, label: $0.label)
+            else if page.elements.contains(where: { !$0.visible && (anchor.matchesElement(role: $0.role, label: $0.label)
+                                                                      || (anchor.pattern != nil && anchor.isLikeElement(role: $0.role, label: $0.label))
                                                                       || (anchor.domID != nil && $0.domID == anchor.domID)) }) {
                 below.append(note)   // its control is on the page, scrolled out of view
             }
@@ -338,6 +349,16 @@ final class WandController {
         guard let spot else { return elements.first }
         func gap(_ e: PageElement) -> CGFloat { e.frame.map { hypot($0.midX - spot.midX, $0.midY - spot.midY) } ?? .infinity }
         return elements.min { gap($0) < gap($1) }
+    }
+
+    /// The control naming this page's item that a hint on another item's name (its title, its picture) goes on: of the
+    /// hint's role, its name the item's own by this page's address; one in view before one scrolled away, and of
+    /// several (the title and a carousel of like items) the one nearest where the hint's control was in the window.
+    static func itemsName(of anchor: NoteAnchor, in page: PageSnapshot, spot: CGRect?) -> PageElement? {
+        guard let key = page.key else { return nil }
+        let named = page.elements.filter { $0.frame != nil && anchor.roleAgrees($0.role) && NoteAnchor.namesTheItem($0.label, page: key) }
+        let shown = named.filter(\.visible)
+        return shown.isEmpty ? named.first : nearest(shown, to: spot)
     }
 
     /// The named control a nameless one sat next to, on this page: one in view before one scrolled away, and of

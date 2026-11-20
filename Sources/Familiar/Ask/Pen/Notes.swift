@@ -137,15 +137,27 @@ struct NoteAnchor: Codable, Equatable {
     /// found on the other pages of the kind.
     var isOnTheItemsName: Bool { pattern != nil && Self.namesTheItem(label, page: page) }
 
-    /// Two names of one control across pages: equal, or sharing at least ten characters of whole words at the start.
+    /// What sets an item's own name apart from a control's: "Add to cart - Bananas", "Add to list: Milk".
+    static let itemSeparators: Set<Character> = ["-", "–", "—", ":", "|", ",", "("]
+
+    /// Two names of one control across pages: equal; or the same whole words at the start, at least ten characters
+    /// of them, followed in each name by a separator and the item's own name, or by nothing ("Add to cart" and
+    /// "Add to cart – Bananas"). Without the separator the words after are another control's: "Sign in with Google"
+    /// and "Sign in with Apple", "Delete this item" and "Delete this item now", "Delete message" and "Delete messages".
     static func alike(_ a: String?, _ b: String?) -> Bool {
         guard let a = norm(a), let b = norm(b) else { return false }
         if a == b { return true }
         let shared = String(zip(a, b).prefix { $0 == $1 }.map(\.0))
-        if shared.count == min(a.count, b.count) { return shared.count >= 10 }   // one is the other's start
-        // Back to the last whole word, so "save changes" and "save draft" share only "save".
-        let words = shared.split(separator: " ", omittingEmptySubsequences: false).dropLast().joined(separator: " ")
-        return words.count >= 10
+        let short = a.count <= b.count ? a : b, long = a.count <= b.count ? b : a
+        // The shared whole words: all of the shorter name when the longer goes on with a new word, else back to the
+        // last whole word, so "save changes" and "save draft" share only "save".
+        let stem = shared.count == short.count && long.dropFirst(short.count).first == " "
+            ? short : shared.split(separator: " ", omittingEmptySubsequences: false).dropLast().joined(separator: " ")
+        let words = stem.trimmingCharacters(in: CharacterSet(charactersIn: " " + String(itemSeparators)))
+        guard words.count >= 10 else { return false }
+        if let last = stem.last, itemSeparators.contains(last) { return true }   // "add to list:" then the items
+        func after(_ s: String) -> Character? { s.dropFirst(stem.count).first { $0 != " " } }
+        return [after(a), after(b)].compactMap { $0 }.allSatisfy(itemSeparators.contains)
     }
 
     /// The rect anchor as a screen rect inside `windowFrame` (AppKit coordinates).
