@@ -128,6 +128,30 @@ struct IrreversibleGuardTests {
     }
 
     @Test
+    func hyphenJoinsPhraseWords() {
+        // Rowan's #140 review (L1): kebab-case ids and hyphenated labels hid committing phrases.
+        #expect(press(el(domID: "place-order")) == .confirm("place-order"))
+        #expect(press(el(domID: "btn-order-now")) == .confirm("btn-order-now"))
+        #expect(press(el(title: "Place-order")) == .confirm("Place-order"))
+        #expect(press(el(title: "Reply-all")) == .confirm("Reply-all"))
+        // Words that only commit inside a phrase stay free when hyphenated alone.
+        for id in ["order-history", "place-holder", "accept-cookies", "free-shipping"] {
+            #expect(press(el(domID: id)) == .safe, Comment(rawValue: id))
+        }
+    }
+
+    @Test
+    func tryForFreeAndAcceptThisOfferAsk() {
+        // Rowan's #140 review (L2): more wordings of starting a trial or accepting an offer.
+        for title in ["Try for free", "Try free", "Try FREE for 7 days", "Accept this offer"] {
+            #expect(press(el(title: title)) == .confirm(title), Comment(rawValue: title))
+        }
+        for title in ["Try for yourself", "Try again", "Accept this", "This offer"] {
+            #expect(press(el(title: title)) == .safe, Comment(rawValue: title))
+        }
+    }
+
+    @Test
     func underscoreSeparatesWordsInDomIDs() {
         // Rowan's #139 review (nit): `\b` counts "_" as a word character, so snake_case ids never matched.
         #expect(press(el(title: "Go", domID: "submit_btn")) == .confirm("Go"))
