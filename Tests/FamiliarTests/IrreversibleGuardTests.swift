@@ -87,6 +87,23 @@ struct IrreversibleGuardTests {
     }
 
     @Test
+    func shopBookDonateAndSubscribeButtonsAsk() {
+        // Found in click P0 (2026-11-19): these commit money or a booking and were classified safe.
+        for title in ["Place your order", "Place order", "Order now", "Complete order", "Book now", "Book",
+                      "Donate", "Donate $25", "Subscribe", "Subscribe for $9.99/month"] {
+            #expect(press(el(title: title)) == .confirm(title), Comment(rawValue: title))
+        }
+        // Still words, not substrings, and "order" alone is not a commitment.
+        for title in ["Order history", "Sort order", "Orders", "Bookmark", "Address Book contacts", "Subscribed", "Donation history"] {
+            if title == "Address Book contacts" {
+                #expect(press(el(title: title)) == .confirm(title), "bias towards asking: 'Book' is a whole word here")
+            } else {
+                #expect(press(el(title: title)) == .safe, Comment(rawValue: title))
+            }
+        }
+    }
+
+    @Test
     func valueAndDomIDAreCheckedToo() {
         // The value carries the confirm word: a web button whose text is exposed as value.
         #expect(press(el(title: "", value: "Submit")) == .confirm("Submit"))
