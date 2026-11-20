@@ -65,7 +65,14 @@ final class DeckModel: ObservableObject {
     /// What the person taught: the question comes from here and its answer goes here.
     var lessons: Lessons? { didSet { refreshQuestion() } }
     /// Who the person is: "Is this you?" asks to fill it, and its answer goes here.
-    var profile: Profile? { didSet { refreshQuestion() } }
+    var profile: Profile? {
+        didSet {
+            // The minister's triage asks about someone between the person's taps: the slot follows it.
+            asking = profile?.$asking.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refreshQuestion() }
+            refreshQuestion()
+        }
+    }
+    private var asking: AnyCancellable?
     /// What "Is this you?" drafts from, read when the deck asks: the Settings author or the Mac's name, and the packs in use.
     var drafts: () -> (name: String?, tools: String?) = { (nil, nil) }
     /// Opens the page About you & your people (the receipt), with the draft the person chose to Fix filled in.
@@ -111,6 +118,10 @@ final class DeckModel: ObservableObject {
     /// The question card as it stands: the minister's lesson question from the cards put away lately first, then
     /// "Is this you?" while something about the person can be drafted and wasn't put aside this week.
     func refreshQuestion() {
+        if let person = profile?.asking {
+            ask = .person(person)
+            return
+        }
         if let lessons, let question = lessons.question(putAway: Lessons.putAway(log: matters.memory, matters: matters, now: clock())) {
             ask = .lesson(question)
             return
@@ -144,6 +155,21 @@ final class DeckModel: ObservableObject {
             openAboutYou()
         case .notNow:
             profile.decline(draft)
+        }
+        asked()
+    }
+
+    /// The person's answer about someone the minister asked about: how they stand to them, kept as `asked`; or nil, Not
+    /// now, which holds the question about them for a week.
+    func answer(person relation: Relation?) {
+        guard case .person? = ask, let profile else { return }
+        if let relation {
+            do { try profile.answer(relation) } catch {
+                said = error.localizedDescription
+                return
+            }
+        } else {
+            profile.putAside()
         }
         asked()
     }
@@ -294,6 +320,9 @@ struct StickersView: View {
                         .transition(.scale(scale: 0.92).combined(with: .opacity))
                 case .aboutYou(let draft):
                     AboutYouCardView(draft: draft, scale: scale, answer: { model.answer($0) })
+                        .transition(.scale(scale: 0.92).combined(with: .opacity))
+                case .person(let person):
+                    PersonAskCardView(ask: person, scale: scale, answer: { model.answer(person: $0) })
                         .transition(.scale(scale: 0.92).combined(with: .opacity))
                 }
             }
@@ -483,6 +512,36 @@ struct AboutYouCardView: View {
                     .help("Opens About you & your people with this filled in")
                 Button("Not now") { answer(.notNow) }.buttonStyle(PaperTabStyle()).zIndex(0)
                     .help("Not asked again for a week")
+            }
+            .frame(width: PaperLook.cardWidth * scale - 14 * scale, alignment: .leading)
+            .padding(.leading, 14 * scale).padding(.top, -5)
+            .zIndex(0)
+        }
+    }
+}
+
+/// C: "Lena: your manager, a teammate, a customer, a vendor?", on blue paper after the cards, with what prompted it,
+/// and one tab a relation, Someone else and Not now under it.
+struct PersonAskCardView: View {
+    let ask: PersonAsk
+    var scale: CGFloat = 1
+    var answer: (Relation?) -> Void = { _ in }
+
+    /// The tabs under the card, in their order: the relations, then Not now (nil).
+    static let choices: [(title: String, relation: Relation?)] =
+        [(Relation.manager.label, .manager), (Relation.teammate.label, .teammate), (Relation.customer.label, .customer),
+         (Relation.vendor.label, .vendor), (Relation.other.label, .other), ("Not now", nil)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            PaperView(headline: "Who's \(ask.name)?", text: ask.text, byline: ask.byline, hand: .typed, colour: .blue,
+                      scale: scale, tilt: PaperLook.tilt(for: "person:" + ask.name))
+                .zIndex(1)
+            TabRow(spacing: 6, rowSpacing: -5) {
+                ForEach(Array(Self.choices.enumerated()), id: \.offset) { index, choice in
+                    Button(choice.title) { answer(choice.relation) }.buttonStyle(PaperTabStyle()).zIndex(Double(Self.choices.count - index))
+                        .help(choice.relation == nil ? "Not asked about them again for a week" : "Kept on this Mac, on About you & your people, and included in what Noteling asks the model")
+                }
             }
             .frame(width: PaperLook.cardWidth * scale - 14 * scale, alignment: .leading)
             .padding(.leading, 14 * scale).padding(.top, -5)

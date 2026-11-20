@@ -120,6 +120,8 @@ final class Profile: ObservableObject {
     @Published private(set) var declined: [String: Date] = [:]
     /// The draft the person chose to Fix: in memory only, for the page to fill in, until kept or the app quits.
     @Published var fixing: AboutYouDraft?
+    /// The question about a person the deck is asking (C): one at a time, in memory only, nothing kept before a tap.
+    @Published private(set) var asking: PersonAsk?
     let file: URL?
     /// Where Fix and Forget are logged: ids and counts only, never a fact's text.
     var memory: MemoryLog?
@@ -137,6 +139,8 @@ final class Profile: ObservableObject {
     static let blockLimit = 1_500
     /// A question put aside is asked again only after this many days.
     static let askAgainDays = 7
+    /// Questions about people put to the deck in one day, at most.
+    static let asksPerDay = 3
 
     /// `~/.noteling/profile/about.json`: beside Noteling's roots, never under one.
     static func file(home: URL) -> URL { home.appendingPathComponent(folder).appendingPathComponent(fileName) }
@@ -282,7 +286,7 @@ final class Profile: ObservableObject {
     /// draft, while the file can't be read, or within `askAgainDays` of the person putting it aside.
     func draft(name: String?, tools: String?) -> AboutYouDraft? {
         guard !unreadable else { return nil }
-        if let at = declined["me"], clock().timeIntervalSince(at) <= Double(Self.askAgainDays) * 86_400 { return nil }
+        if waiting(since: declined["me"]) { return nil }
         let clean = { (words: String?) -> String? in
             guard let words, let line = try? Self.line(words, what: "draft") else { return nil }
             return line
@@ -305,6 +309,79 @@ final class Profile: ObservableObject {
         self.fixing = fixing ? draft : nil
         write()
         memory?.append(["profile": fixing ? "fixing" : "not now", "ask": "me"])
+    }
+
+    /// The page closed without keeping: the "Fix and keep" rows from "Is this you?" go (Quill's #149 L2).
+    func pageClosed() {
+        if fixing != nil { fixing = nil }
+    }
+
+    /// Put aside within the last `askAgainDays`. A date ahead of the clock (the clock was set back) counts as expired,
+    /// so a card is never held past the week by a clock change (Quill's #149 L1).
+    func waiting(since at: Date?) -> Bool {
+        guard let at else { return false }
+        let age = clock().timeIntervalSince(at)
+        return age >= 0 && age <= Double(Self.askAgainDays) * 86_400
+    }
+
+    // MARK: asked in the moment (C)
+
+    /// Whether the person or someone they keep already goes by this name: then there is nothing to ask.
+    func knows(_ name: String) -> Bool {
+        if let mine = me.name, mine.text.caseInsensitiveCompare(name.trimmingCharacters(in: .whitespaces)) == .orderedSame { return true }
+        return people.contains { $0.goes(by: name) }
+    }
+
+    /// The minister's triage asked about someone: put to the deck unless a question is already waiting, `asksPerDay`
+    /// were put today (counted in `memory/`, so a restart doesn't reset it), the person is known by now, the file can't
+    /// be read, or they were put aside within `askAgainDays`. The log names no one. True when it is asked.
+    @discardableResult
+    func offer(_ ask: PersonAsk) -> Bool {
+        guard asking == nil, !unreadable, !knows(ask.name) else { return false }
+        if waiting(since: declined[Self.declineKey(ask.name)]) { return false }
+        guard askedToday < Self.asksPerDay else { return false }
+        asking = ask
+        offered.append(clock())
+        memory?.append(["profile": "asking", "ask": "person"])
+        return true
+    }
+
+    /// When this run put questions about people to the deck: the count still holds without a log.
+    private var offered: [Date] = []
+
+    /// How many questions about people the deck was given today: from the log, which outlives a restart, and never
+    /// fewer than this run gave.
+    var askedToday: Int {
+        let now = clock()
+        let here = offered.filter { Calendar.current.isDate($0, inSameDayAs: now) }.count
+        let logged = memory?.lines(on: now).filter { $0["profile"] as? String == "asking" && $0["ask"] as? String == "person" }.count ?? 0
+        return max(here, logged)
+    }
+
+    /// The tap: kept as `asked`, with how they stand to the person.
+    @discardableResult
+    func answer(_ relation: Relation) throws -> Person? {
+        guard let ask = asking else { return nil }
+        let person = try keep(person: ask.name, relation: relation, from: .asked)
+        asking = nil
+        return person
+    }
+
+    /// Not now: not asked about them again for `askAgainDays`. The file keeps a date under a key, not their name in words.
+    func putAside() {
+        guard let ask = asking else { return }
+        asking = nil
+        declined[Self.declineKey(ask.name)] = clock()
+        write()
+        memory?.append(["profile": "not now", "ask": "person"])
+    }
+
+    /// The key a put-aside question is kept under: a short hash of the name, so the file holds no name it wasn't given.
+    static func declineKey(_ name: String) -> String {
+        let folded = name.trimmingCharacters(in: .whitespaces).lowercased()
+        var hash: UInt64 = 0xcbf29ce484222325   // FNV-1a: stable across runs, unlike hashValue
+        for byte in folded.utf8 { hash = (hash ^ UInt64(byte)) &* 0x100000001b3 }
+        return "person:" + String(hash, radix: 16)
     }
 
     // MARK: the block
