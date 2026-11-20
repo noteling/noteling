@@ -31,6 +31,15 @@ struct AboutYouList: View {
         }
     }
 
+    /// A field Fix brought from "Is this you?": "Your name: Sam Lee? Fix and keep".
+    static func drafted(_ field: AboutMe.Field, _ text: String) -> String { "Your \(field.label.lowercased()): \(text)? Fix and keep" }
+
+    /// Where a fact kept on the page came from: the draft as it was is `drafted`; anything changed is the person's own.
+    static func from(_ field: AboutMe.Field, kept text: String, fixing: AboutYouDraft?) -> FactSource {
+        guard let drafted = fixing?[field], let kept = try? Profile.line(text, what: "draft"), kept == drafted else { return .typed }
+        return .drafted
+    }
+
     static func source(_ from: FactSource, at: Date, now: Date) -> String {
         from.words.prefix(1).uppercased() + from.words.dropFirst() + ", " + JobWords.time(at, now: now)
     }
@@ -54,6 +63,10 @@ struct AboutYouList: View {
                 Button("Forget") { profile.forget(field) }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
                     .help("Gone from the next thing Noteling asks the model")
             }
+        } else if let drafted = profile.fixing?[field] {
+            // From "Is this you?" → Fix: the draft filled in, kept only once the person keeps it.
+            Button(Self.drafted(field, drafted)) { start(key, name: drafted) }
+                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.penInk)
         } else {
             Button("Add your " + field.label.lowercased()) { start(key, name: "") }
                 .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Pad.inkSoft)
@@ -99,7 +112,8 @@ struct AboutYouList: View {
 
     private func keep(_ field: AboutMe.Field) {
         do {
-            try profile.keep(field, draft, from: .typed)   // the name also goes to the Settings author (Profile.onName)
+            // The name also goes to the Settings author (Profile.onName).
+            try profile.keep(field, draft, from: Self.from(field, kept: draft, fixing: profile.fixing))
             editing = nil
             problem = nil
         } catch { problem = error.localizedDescription }

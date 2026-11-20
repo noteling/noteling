@@ -137,6 +137,16 @@ extension AppDelegate {
         model.open = { [weak self] id in self?.jobsWindow.showMatter(id: id) }
         model.openMore = { [weak self] in self?.jobsWindow.showJobs() }
         model.lessons = lessons
+        // "Is this you?": drafted from what Noteling already has, never its secrets (the plan's Rule 5): the Settings
+        // author or the Mac's name, and the packs the person uses most (their notes and shown paths).
+        model.drafts = { [weak self] in
+            guard let self else { return (nil, nil) }
+            let author = self.config.noteAuthor.trimmingCharacters(in: .whitespaces)
+            let packs = (self.registry?.packs ?? []).filter { !$0.isLibrary }.map { (name: $0.name, uses: $0.notes.count + $0.paths.count) }
+            return (author.isEmpty ? NSFullUserName() : author, AboutYouDraft.tools(packs))
+        }
+        model.openAboutYou = { [weak self] in self?.jobsWindow.showReceipt() }
+        model.profile = profile
         var home: NSPoint?
         if let x = config.stickersX, let y = config.stickersY, x.isFinite, y.isFinite { home = NSPoint(x: x, y: y) }
         let stickers = StickersPanel(model: model, look: StickersLook(scale: CGFloat(config.stickerScale)), home: home,

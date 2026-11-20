@@ -115,6 +115,11 @@ struct Person: Codable, Equatable, Identifiable {
 final class Profile: ObservableObject {
     @Published private(set) var me = AboutMe()
     @Published private(set) var people: [Person] = []
+    /// Questions the person put aside, and when: `me` for "Is this you?". Not facts, never in a prompt; each is asked
+    /// again only after `askAgainDays`.
+    @Published private(set) var declined: [String: Date] = [:]
+    /// The draft the person chose to Fix: in memory only, for the page to fill in, until kept or the app quits.
+    @Published var fixing: AboutYouDraft?
     let file: URL?
     /// Where Fix and Forget are logged: ids and counts only, never a fact's text.
     var memory: MemoryLog?
@@ -130,6 +135,8 @@ final class Profile: ObservableObject {
     static let aliasLimit = 5
     /// The block every prompt reads, at most about this many characters; the page holds everyone.
     static let blockLimit = 1_500
+    /// A question put aside is asked again only after this many days.
+    static let askAgainDays = 7
 
     /// `~/.noteling/profile/about.json`: beside Noteling's roots, never under one.
     static func file(home: URL) -> URL { home.appendingPathComponent(folder).appendingPathComponent(fileName) }
@@ -138,6 +145,7 @@ final class Profile: ObservableObject {
         var v = 1
         var me = AboutMe()
         var people: [Person] = []
+        var declined: [String: Date]? = nil
     }
 
     init(file: URL?, memory: MemoryLog? = nil) {
@@ -267,6 +275,38 @@ final class Profile: ObservableObject {
         return found.count == 1 ? found[0] : nil
     }
 
+    // MARK: "Is this you?"
+
+    /// The draft to put to the person, if any: the fields with nothing kept that Noteling can fill from `name` (the
+    /// Settings author, else the Mac's full name) and `tools` (`AboutYouDraft.tools`); nil when nothing is left to
+    /// draft, while the file can't be read, or within `askAgainDays` of the person putting it aside.
+    func draft(name: String?, tools: String?) -> AboutYouDraft? {
+        guard !unreadable else { return nil }
+        if let at = declined["me"], clock().timeIntervalSince(at) <= Double(Self.askAgainDays) * 86_400 { return nil }
+        let clean = { (words: String?) -> String? in
+            guard let words, let line = try? Self.line(words, what: "draft") else { return nil }
+            return line
+        }
+        let draft = AboutYouDraft(name: me.name == nil ? clean(name) : nil, tools: me.tools == nil ? clean(tools) : nil)
+        return draft.isEmpty ? nil : draft
+    }
+
+    /// Yes: each drafted fact is kept as the person's, from `drafted`. The name also goes to the Settings author (`onName`).
+    func confirm(_ draft: AboutYouDraft) throws {
+        try writable()
+        if let name = draft.name, me.name == nil { try keep(.name, name, from: .drafted) }
+        if let tools = draft.tools, me.tools == nil { try keep(.tools, tools, from: .drafted) }
+        fixing = nil
+    }
+
+    /// Not now, or Fix: not asked again for `askAgainDays`. Fix also leaves the draft for the page to fill in.
+    func decline(_ draft: AboutYouDraft, fixing: Bool = false) {
+        declined["me"] = clock()
+        self.fixing = fixing ? draft : nil
+        write()
+        memory?.append(["profile": fixing ? "fixing" : "not now", "ask": "me"])
+    }
+
     // MARK: the block
 
     /// The people in the block's order: managers and customers first, then teammates, vendors, others; the most
@@ -340,6 +380,7 @@ final class Profile: ObservableObject {
         }
         me = kept.me
         people = kept.people.sorted { $0.at > $1.at }
+        declined = kept.declined ?? [:]
     }
 
     /// A file that couldn't be read is never written over: what is in it may be the person's, mended by hand.
@@ -360,7 +401,7 @@ final class Profile: ObservableObject {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         do {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            try JobFiles.write(try encoder.encode(Kept(me: me, people: people)), to: file)
+            try JobFiles.write(try encoder.encode(Kept(me: me, people: people, declined: declined.isEmpty ? nil : declined)), to: file)
         } catch {
             Log.info("profile: couldn't keep \(file.lastPathComponent): \(error.localizedDescription)")
         }

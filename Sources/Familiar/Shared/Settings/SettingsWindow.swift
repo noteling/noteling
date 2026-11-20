@@ -309,9 +309,20 @@ struct SettingsView: View {
     let onSave: () -> Void
     let onOpenTools: () -> Void
     let onReloadTools: () -> Void
+    /// Opens About you & your people on the receipt; nil hides the row (no jobs, so no receipt).
+    var onAboutYou: (() -> Void)? = nil
+
+    /// Settings has no author field: the name pen notes are signed with comes from About you & your people.
+    static let aboutYouWords = "Your name there signs the notes you leave with the pen; with none, your Mac's name does. Keeping a name there replaces the one notes were signed with, even one set by hand in config.json."
 
     var body: some View {
         Form {
+            if let onAboutYou {
+                Section("About you") {
+                    Button("About you & your people…", action: onAboutYou)
+                    Text(Self.aboutYouWords).font(.caption).foregroundStyle(.secondary)
+                }
+            }
             Section("Claude") {
                 if let line = model.teamLine {
                     VStack(alignment: .leading, spacing: 3) {
@@ -526,7 +537,7 @@ final class SettingsWindowController {
     let model = SettingsModel()
 
     func show(config: Config, packs: [ToolPack], jobs: [FolderJob] = [], linkedTools: LinkedToolsUpdater? = nil, onSave: @escaping () -> Void,
-              onOpenTools: @escaping () -> Void, onReloadTools: @escaping () -> Void) {
+              onOpenTools: @escaping () -> Void, onReloadTools: @escaping () -> Void, onAboutYou: (() -> Void)? = nil) {
         model.load(config: config, packs: packs, team: linkedTools?.team.settings, jobs: jobs)
         if teamChanges == nil, let linkedTools {   // an update while Settings is open, such as right after linking
             teamChanges = linkedTools.$team.dropFirst().removeDuplicates().receive(on: RunLoop.main)
@@ -537,7 +548,7 @@ final class SettingsWindowController {
             w.title = "Noteling Settings"
             w.isReleasedWhenClosed = false
             w.contentView = NSHostingView(rootView: SettingsView(model: model, linkedTools: linkedTools, onSave: onSave,
-                                                                 onOpenTools: onOpenTools, onReloadTools: onReloadTools))
+                                                                 onOpenTools: onOpenTools, onReloadTools: onReloadTools, onAboutYou: onAboutYou))
             w.center()
             window = w
         }
