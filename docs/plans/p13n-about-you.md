@@ -56,7 +56,7 @@ filled in by hand, and no prompt read it, so it was removed as "detached". Both 
 ### A: "Is this you?"
 
 Once, and again only a week after a dismissal, the deck shows one sticker: "You're Sam Lee at Acme, working in Shopify
-admin and Stripe? Yes / Fix." Yes keeps each drafted fact as `proposed`. Fix opens the page with the drafts filled in.
+admin and Stripe? Yes / Fix." Yes keeps each drafted fact as `drafted`. Fix opens the page with the drafts filled in.
 Drafts are deterministic in v1 (name; the most-used packs and apps → tools). Company and role are left blank unless the
 user states them; v1 does not derive a company from the mail address (Rule 5). A model-written guess is not needed to
 ship.

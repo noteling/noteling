@@ -60,6 +60,7 @@ enum Holdings {
             for told in lessons.told.prefix(toldLimit) { out += "- \(told.text)\n" }
         }
         if !lessons.all.isEmpty { out += "Taught: the findings of " + lessons.all.map(\.name).joined(separator: ", ") + " stay quiet unless one can't wait.\n" }
+        out += Profile(home: home).block(heading: "About the person: ").text
         out += "Today: " + Receipt.today(log: log, matters: matters, now: now).tally + "\n"
         return out
     }
