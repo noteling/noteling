@@ -55,10 +55,21 @@ final class DeckModel: ObservableObject {
     @Published var stamped: (id: String, verdict: Verdict)?
     /// The last card went: "Nothing needs you." shows for a moment, then the deck closes.
     @Published var ended = false
-    /// The minister's own question, asked after the cards: "Stop showing these?"
-    @Published var question: LessonQuestion?
+    /// The one question card after the cards (`DeckAsk`): the minister's "Stop showing these?", or "Is this you?".
+    @Published var ask: DeckAsk?
+    /// The minister's lesson question, when that is the card asking.
+    var question: LessonQuestion? {
+        get { if case .lesson(let question)? = ask { return question } else { return nil } }
+        set { ask = newValue.map(DeckAsk.lesson) }
+    }
     /// What the person taught: the question comes from here and its answer goes here.
     var lessons: Lessons? { didSet { refreshQuestion() } }
+    /// Who the person is: "Is this you?" asks to fill it, and its answer goes here.
+    var profile: Profile? { didSet { refreshQuestion() } }
+    /// What "Is this you?" drafts from, read when the deck asks: the Settings author or the Mac's name, and the packs in use.
+    var drafts: () -> (name: String?, tools: String?) = { (nil, nil) }
+    /// Opens the page About you & your people (the receipt), with the draft the person chose to Fix filled in.
+    var openAboutYou: () -> Void = {}
     var clock: () -> Date = Date.init
     /// How long a Do it can be taken back, and how long the stamp shows before the card goes.
     var undoSeconds: TimeInterval = 5
@@ -91,16 +102,21 @@ final class DeckModel: ObservableObject {
     var more: Int { max(0, cards.count - 1) }
     var count: Int { cards.count }
     /// A card, a question, the end, a press waiting or what it came to: something for the panel to show.
-    var hasSomethingToShow: Bool { count > 0 || question != nil || ended || pending != nil || said != nil }
+    var hasSomethingToShow: Bool { count > 0 || ask != nil || ended || pending != nil || said != nil }
     /// The questions waiting after the cards: one at most.
-    var asks: Int { question == nil ? 0 : 1 }
+    var asks: Int { ask == nil ? 0 : 1 }
     /// What lights the lamp: the cards that need the person, good news aside, and the question.
     var needs: Int { cards.filter { !$0.good }.count + asks }
 
-    /// The minister's question as it stands, from the cards put away lately.
+    /// The question card as it stands: the minister's lesson question from the cards put away lately first, then
+    /// "Is this you?" while something about the person can be drafted and wasn't put aside this week.
     func refreshQuestion() {
-        guard let lessons else { question = nil; return }
-        question = lessons.question(putAway: Lessons.putAway(log: matters.memory, matters: matters, now: clock()))
+        if let lessons, let question = lessons.question(putAway: Lessons.putAway(log: matters.memory, matters: matters, now: clock())) {
+            ask = .lesson(question)
+            return
+        }
+        let from: (name: String?, tools: String?) = profile == nil ? (nil, nil) : drafts()
+        ask = profile?.draft(name: from.name, tools: from.tools).map(DeckAsk.aboutYou)
     }
 
     /// The person answered the question: Yes is a lesson, No is remembered for a week.
@@ -108,8 +124,35 @@ final class DeckModel: ObservableObject {
         guard let question, let lessons else { return }
         if yes { lessons.teach(job: question.job, name: question.name) } else { lessons.decline(job: question.job) }
         matters.memory?.append(["stamp": yes ? "taught" : "kept", "job": question.job, "name": question.name])
-        self.question = nil
-        if cards.isEmpty { cardWent() }
+        asked()
+    }
+
+    /// The person's answer to "Is this you?": Yes keeps the drafted facts; Fix opens the page with them filled in;
+    /// Not now. Fix and Not now hold the question for a week.
+    enum AboutYouAnswer { case yes, fix, notNow }
+
+    func answer(_ answer: AboutYouAnswer) {
+        guard case .aboutYou(let draft)? = ask, let profile else { return }
+        switch answer {
+        case .yes:
+            do { try profile.confirm(draft) } catch {
+                said = error.localizedDescription
+                return
+            }
+        case .fix:
+            profile.decline(draft, fixing: true)
+            openAboutYou()
+        case .notNow:
+            profile.decline(draft)
+        }
+        asked()
+    }
+
+    /// A question was answered: the next one, if any, takes its place, or the deck ends.
+    private func asked() {
+        ask = nil
+        refreshQuestion()
+        if cards.isEmpty, ask == nil { cardWent() }
     }
 
     /// Today's tally for the end: "Noteling did 2 · you decided 5".
@@ -118,7 +161,7 @@ final class DeckModel: ObservableObject {
     /// After a stamp: with no card left, the end shows for a moment, unless a question waits first.
     private func cardWent() {
         refreshQuestion()
-        guard cards.isEmpty, question == nil else { return }
+        guard cards.isEmpty, ask == nil else { return }
         ended = true
         DispatchQueue.main.asyncAfter(deadline: .now() + endSeconds) { [weak self] in self?.ended = false }
     }
@@ -244,9 +287,15 @@ struct StickersView: View {
             if model.card == nil, model.ended {
                 DeckEndView(tally: model.tally, scale: scale)
                     .transition(.scale(scale: 0.92).combined(with: .opacity))
-            } else if model.card == nil, let question = model.question {
-                DeckQuestionView(question: question, scale: scale, yes: { model.answer(true) }, no: { model.answer(false) })
-                    .transition(.scale(scale: 0.92).combined(with: .opacity))
+            } else if model.card == nil, let ask = model.ask {
+                switch ask {
+                case .lesson(let question):
+                    DeckQuestionView(question: question, scale: scale, yes: { model.answer(true) }, no: { model.answer(false) })
+                        .transition(.scale(scale: 0.92).combined(with: .opacity))
+                case .aboutYou(let draft):
+                    AboutYouCardView(draft: draft, scale: scale, answer: { model.answer($0) })
+                        .transition(.scale(scale: 0.92).combined(with: .opacity))
+                }
             }
             if let card = model.card {
                 CardView(card: card, scale: scale, now: model.clock(), stamp: model.stamped?.id == card.id ? model.stamped?.verdict : nil,
@@ -404,6 +453,35 @@ struct DeckQuestionView: View {
                 Button("Yes, stop") { yes() }.buttonStyle(PaperTabStyle()).zIndex(1)
                     .help("Its findings stay quiet unless one can't wait. Forget it on the receipt.")
                 Button("No, keep showing") { no() }.buttonStyle(PaperTabStyle()).zIndex(0)
+                    .help("Not asked again for a week")
+            }
+            .frame(width: PaperLook.cardWidth * scale - 14 * scale, alignment: .leading)
+            .padding(.leading, 14 * scale).padding(.top, -5)
+            .zIndex(0)
+        }
+    }
+}
+
+/// "Is this you?", on blue paper after the cards: the draft in one line, with Yes, Fix and Not now under it.
+struct AboutYouCardView: View {
+    let draft: AboutYouDraft
+    var scale: CGFloat = 1
+    var answer: (DeckModel.AboutYouAnswer) -> Void = { _ in }
+
+    static let headline = "Is this you?"
+    static let byline = "From Noteling, kept only if you say yes"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            PaperView(headline: Self.headline, text: draft.text, byline: Self.byline, hand: .typed, colour: .blue,
+                      scale: scale, tilt: PaperLook.tilt(for: "about-you"))
+                .zIndex(1)
+            TabRow(spacing: 6, rowSpacing: -5) {
+                Button("Yes") { answer(.yes) }.buttonStyle(PaperTabStyle()).zIndex(2)
+                    .help("Kept on this Mac and included in what Noteling asks the model. Fix or forget it on the receipt.")
+                Button("Fix") { answer(.fix) }.buttonStyle(PaperTabStyle()).zIndex(1)
+                    .help("Opens About you & your people with this filled in")
+                Button("Not now") { answer(.notNow) }.buttonStyle(PaperTabStyle()).zIndex(0)
                     .help("Not asked again for a week")
             }
             .frame(width: PaperLook.cardWidth * scale - 14 * scale, alignment: .leading)

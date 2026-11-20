@@ -398,7 +398,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.shell.hintsOn = self.config.autoHints
             self.hints.setEnabled(self.config.autoHints, scene: self.watcher.current, notes: self.registry.notes(for: self.watcher.current))
             Log.info("settings saved (connection: \(self.effectiveConfig.connectionMode), ready: \(self.assistant.hasConnection), hotkey: \(self.config.hotkey))")
-        }, onOpenTools: { [weak self] in self?.openTools() }, onReloadTools: { [weak self] in self?.reloadTools() })
+        }, onOpenTools: { [weak self] in self?.openTools() }, onReloadTools: { [weak self] in self?.reloadTools() },
+        onAboutYou: profile == nil ? nil : { [weak self] in self?.jobsWindow.showReceipt() })
     }
 
     @objc func openConfig() { NSWorkspace.shared.open(Config.file) }
