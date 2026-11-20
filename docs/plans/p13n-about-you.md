@@ -41,8 +41,8 @@ filled in by hand, and no prompt read it, so it was removed as "detached". Both 
 
 ### The store: `Profile` (Attend/Minister, modelled on `Lessons`)
 
-- `me`: name, company, role and tools. Each is a `Fact {text, from: drafted | asked | told, at}` (`drafted` = a
-  draft the user confirmed).
+- `me`: name, company, role and tools. Each is a `Fact {text, from: drafted | asked | told | typed, at}` (`drafted` =
+  a draft the user confirmed; `typed` = written on the page, the fallback).
 - `people`: `Person {id, name, aliases, relation, words, from, at}`. `relation` is one of manager, teammate, customer,
   vendor or other, and `words` holds the user's own short description ("runs the warehouse"). `aliases` may hold
   other names, an email address or a handle; matching a row to a person uses the address or handle when the row has

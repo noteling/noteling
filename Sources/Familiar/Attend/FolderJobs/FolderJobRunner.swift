@@ -292,8 +292,6 @@ struct FolderJobsPanel {
     var lessons: Lessons? = nil
     /// Who the person is and who their people are, for the receipt's About-you section.
     var profile: Profile? = nil
-    /// Fix on the page's name writes the author set in Settings, so the name has one source.
-    var saveName: ((String) -> Void)? = nil
     /// Mine on a matter's page: takes the matter and makes it one of the person's notes, as the deck's Mine does.
     var mine: ((String) -> Void)? = nil
 }

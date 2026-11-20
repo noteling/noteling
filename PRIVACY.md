@@ -27,7 +27,7 @@ The app stores its data in `~/.noteling`, or in `$NOTELING_HOME` if you set it. 
 
 Watch Me recordings, developer-build secrets, the memory log, the activity log and About you & your people can be read only by your macOS user account, and so can the freeze diagnostics.
 
-**About you & your people.** The Jobs window's receipt lists everything kept there, one line a fact with where it came from, and Fix and Forget on each; Forget removes it from the file and from the next request. It is filled only from what you type there in this version. Fix and Forget are written to the memory log by the fact's id and a count, never its words. The file sits beside Noteling's folders, not in one Claude can read with its tools (see What Claude can read on your Mac below): Claude sees it only as the short block described under What a request can include.
+**About you & your people.** The Jobs window's receipt lists everything kept there, one line a fact with where it came from, and Fix and Forget on each; Forget removes it from the file and from the next request. It is filled from what you type there, and from what you tell the chat about yourself or someone ("Lena is my manager"): the chat keeps only what you said, never people it guesses from your mail, notes or screen, and its answer says what it kept. A name you confirm there also signs your pen notes, and forgetting it stops that. Fix and Forget are written to the memory log by the fact's id and a count, never its words. The file sits beside Noteling's folders, not in one Claude can read with its tools (see What Claude can read on your Mac below): Claude sees it only as the short block described under What a request can include.
 
 
 

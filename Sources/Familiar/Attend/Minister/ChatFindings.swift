@@ -57,7 +57,8 @@ struct ChatSource {
 /// under `job-results/chat/<slug>/`, so the next scan is diffed against the last and the minister sees what is new,
 /// changed and gone. The minister takes its turn at once, since the person is waiting, and the answer says what became
 /// of each row. A reminder the person dictates is not this: that is the scribe's, and nothing judges it. The chat also
-/// carries what the person tells the minister in words (`tell_the_minister`): standing rules kept with the lessons.
+/// carries what the person tells the minister in words (`tell_the_minister`): standing rules kept with the lessons; and
+/// who the person is and who their people are (`remember_me`, `remember_person`), kept on the About you page.
 @MainActor
 final class ChatFindings {
     let store: FolderJobStore
@@ -70,9 +71,13 @@ final class ChatFindings {
     var takeTurn: () async -> Void = {}
     /// Where what the person tells the minister is kept, beside what the deck taught it.
     var lessons: Lessons?
+    /// Where who the person is and who their people are is kept: the About you page, read by every prompt.
+    var profile: Profile?
 
     static let tool = "report_findings"
     static let tellTool = "tell_the_minister"
+    static let meTool = "remember_me"
+    static let personTool = "remember_person"
     static let rowLimit = 200
     static let aboutLimit = 600
 
@@ -117,7 +122,87 @@ final class ChatFindings {
                 do { return .text(try self.tell(input)) } catch { return .text(error.localizedDescription, isError: true) }
             }
         }
-        return [route, tell]
+        let me = ToolRoute(match: .tool(name: Self.meTool), definition: [
+            "name": Self.meTool,
+            "description": "Keep one fact about the person themselves when they state it (\"I run support at Acme\" is role: runs support, company: Acme; \"call me Sam\"; \"I live in Shopify admin and Stripe\"), or forget one they take back. Only what they said, in their words: never a guess. Kept on the About you page, where they can fix or forget it, and read by Noteling's next prompt; say so in a few words.",
+            "input_schema": ["type": "object", "additionalProperties": false, "properties": [
+                "name": ["type": ["string", "null"], "description": "Their name, as they want it."],
+                "company": ["type": ["string", "null"]],
+                "role": ["type": ["string", "null"], "description": "What they do, in their words."],
+                "tools": ["type": ["string", "null"], "description": "The apps and tools they work in."],
+                "forget": ["type": ["string", "null"], "enum": AboutMe.Field.allCases.map(\.rawValue) + [NSNull()], "description": "A fact to forget: name, company, role or tools."],
+            ]],
+        ]) { [weak self] _, input, _ in
+            await MainActor.run {
+                guard let self else { return .text("unavailable", isError: true) }
+                do { return .text(try self.rememberMe(input)) } catch { return .text(error.localizedDescription, isError: true) }
+            }
+        }
+        let person = ToolRoute(match: .tool(name: Self.personTool), definition: [
+            "name": Self.personTool,
+            "description": "Keep who someone is to the person when they say it (\"Lena is my manager\", \"Bo at Northwind is a customer\", \"Kim runs the warehouse\"), fix them, or forget them. Only what the person said: never infer people from mail, notes or the screen. Kept on the About you page and read by Noteling's next prompt, so cards and answers know who matters; say so in a few words.",
+            "input_schema": ["type": "object", "additionalProperties": false, "required": ["name"], "properties": [
+                "name": ["type": "string", "description": "Their name, as the person says it. The same name (or another name of theirs) again fixes them."],
+                "relation": ["type": ["string", "null"], "enum": Relation.allCases.map(\.rawValue) + [NSNull()], "description": "Who they are to the person. Required to keep someone new."],
+                "words": ["type": ["string", "null"], "description": "The person's own short description, at most \(Profile.factLimit) characters: \"runs the warehouse\"."],
+                "aliases": ["type": ["array", "null"], "items": ["type": "string"], "description": "Other names they go by: an email address, a handle; at most \(Profile.aliasLimit)."],
+                "forget": ["type": ["boolean", "null"], "description": "True to forget this person."],
+            ]],
+        ]) { [weak self] _, input, _ in
+            await MainActor.run {
+                guard let self else { return .text("unavailable", isError: true) }
+                do { return .text(try self.rememberPerson(input)) } catch { return .text(error.localizedDescription, isError: true) }
+            }
+        }
+        return [route, tell, me, person]
+    }
+
+    static let kept = "It's on the About you page, where Fix and Forget change it, and in Noteling's next prompt."
+
+    /// The person said who they are, or took a fact back: kept as `told`.
+    func rememberMe(_ input: [String: Any]) throws -> String {
+        guard let profile else { throw MinisterError("There's nowhere to keep it.") }
+        if let key = input["forget"] as? String {
+            guard let field = AboutMe.Field(rawValue: key) else { throw MinisterError("forget is one of name, company, role or tools.") }
+            guard profile.me[field] != nil else { return "Nothing was kept as their \(field.label.lowercased())." }
+            profile.forget(field)
+            return "Forgot their \(field.label.lowercased()); Noteling's next prompt no longer has it."
+        }
+        let said = AboutMe.Field.allCases.compactMap { field in (input[field.rawValue] as? String).map { (field, $0) } }
+            .filter { !$0.1.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !said.isEmpty else { throw MinisterError("Give name, company, role or tools in the person's words, or forget: one of them.") }
+        for (field, words) in said { _ = try Profile.line(words, what: field.label.lowercased()) }   // all or nothing
+        for (field, words) in said { try profile.keep(field, words, from: .told) }
+        let facts = said.compactMap { field, _ in profile.me[field].map { "\(field.label.lowercased()) \($0.text)" } }
+        return "Kept: " + facts.joined(separator: ", ") + ". " + Self.kept
+    }
+
+    /// The person said who someone is to them, or asked to forget them: kept as `told`.
+    func rememberPerson(_ input: [String: Any]) throws -> String {
+        guard let profile else { throw MinisterError("There's nowhere to keep it.") }
+        guard let name = input["name"] as? String, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw MinisterError("Give name: who the person means.")
+        }
+        let known = profile.person(named: name)
+        if input["forget"] as? Bool == true {
+            guard let known else { throw MinisterError("No one kept goes by “\(JobWords.clip(name, 80))”.") }
+            profile.forget(person: known.id)
+            return "Forgot \(known.name); Noteling's next prompt no longer has them."
+        }
+        let relation: Relation
+        if let raw = input["relation"] as? String {
+            guard let given = Relation(rawValue: raw) else { throw MinisterError("relation is one of " + Relation.allCases.map(\.rawValue).joined(separator: ", ") + ".") }
+            relation = given
+        } else if let known {
+            relation = known.relation
+        } else {
+            throw MinisterError("Give relation: who \(JobWords.clip(name, 80)) is to the person (" + Relation.allCases.map(\.rawValue).joined(separator: ", ") + ").")
+        }
+        let words = (input["words"] as? String) ?? known?.words   // what isn't said again stays as it was
+        let aliases = (input["aliases"] as? [Any])?.compactMap { $0 as? String } ?? []
+        // Someone kept is named as they were kept: "LENA" or her address fixes Lena without renaming her.
+        let kept = try profile.keep(person: known?.name ?? name, relation: relation, words: words, aliases: aliases, from: .told)
+        return "Kept: \(kept.name), \(kept.relation.words)" + (kept.words.map { " (\($0))" } ?? "") + ". " + Self.kept
     }
 
     /// The person told the minister something, or took it back.

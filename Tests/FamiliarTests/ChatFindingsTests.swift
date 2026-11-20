@@ -76,7 +76,7 @@ import Testing
     @Test func tellTheMinisterKeepsARuleAndForgetsIt() throws {
         let (scans, _, _, _, dir) = fixture()
         defer { try? FileManager.default.removeItem(at: dir) }
-        #expect(scans.routes().compactMap { $0.definition["name"] as? String } == ["report_findings", "tell_the_minister"])
+        #expect(scans.routes().compactMap { $0.definition["name"] as? String } == ["report_findings", "tell_the_minister", "remember_me", "remember_person"])
         #expect(throws: MinisterError.self) { try scans.tell(["instruction": "x"]) }   // no lessons to keep it in
         let lessons = Lessons(file: dir.appendingPathComponent("taught.json"))
         scans.lessons = lessons
@@ -86,6 +86,64 @@ import Testing
         #expect(throws: MinisterError.self) { try scans.tell(["forget": "lunch"]) }
         #expect(try scans.tell(["forget": "meetings"]) == "The minister forgot: “For all meetings, make the link the thing to open”.")
         #expect(lessons.told.isEmpty)
+    }
+
+    // MARK: remember_me / remember_person (docs/plans/p13n-about-you.md, delivery 2)
+
+    @Test func whatTheChatIsToldAboutThePersonIsKeptShownAndReadByTheNextPrompt() throws {
+        let (scans, _, _, _, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(throws: MinisterError.self) { try scans.rememberPerson(["name": "Lena", "relation": "manager"]) }   // nowhere to keep it
+        let profile = Profile(home: dir)
+        profile.clock = { self.at }
+        scans.profile = profile
+
+        #expect(try scans.rememberPerson(["name": "Lena", "relation": "manager", "words": "runs the warehouse", "aliases": ["lena@acme.example"]])
+                == "Kept: Lena, their manager (runs the warehouse). " + ChatFindings.kept)
+        #expect(try scans.rememberMe(["role": "runs support", "company": "Acme"]) == "Kept: company Acme, role runs support. " + ChatFindings.kept)
+
+        // Kept as told, on the page (read back from the file), and in the next prompt's block.
+        let again = Profile(home: dir)
+        #expect(again.me.role == Fact(text: "runs support", from: .told, at: at) && again.me.company?.from == .told)
+        let lena = try #require(again.person(named: "lena@acme.example"))
+        #expect(lena.relation == .manager && lena.from == .told && lena.words == "runs the warehouse")
+        #expect(again.block().text.contains("- They are: company: Acme · role: runs support\n- Lena (their manager), also lena@acme.example: runs the warehouse\n"))
+        #expect(Holdings.digest(home: dir, now: at).contains("- Lena (their manager), also lena@acme.example: runs the warehouse"))
+
+        // Said again, a person is fixed, not doubled; what isn't said again stays.
+        #expect(try scans.rememberPerson(["name": "LENA", "relation": "customer"]) == "Kept: Lena, a customer (runs the warehouse). " + ChatFindings.kept)
+        #expect(try scans.rememberPerson(["name": "lena@acme.example", "words": "buys for Northwind"]).hasPrefix("Kept: Lena, a customer (buys for Northwind)."))
+        #expect(profile.people.count == 1)
+
+        // Forgotten, gone from the page and the next prompt.
+        #expect(try scans.rememberPerson(["name": "lena", "forget": true]) == "Forgot Lena; Noteling's next prompt no longer has them.")
+        #expect(try scans.rememberMe(["forget": "role"]) == "Forgot their role; Noteling's next prompt no longer has it.")
+        #expect(try scans.rememberMe(["forget": "role"]) == "Nothing was kept as their role.")
+        #expect(Profile(home: dir).people.isEmpty && Profile(home: dir).me.role == nil)
+        #expect(!Holdings.digest(home: dir, now: at).contains("Lena") && !Holdings.digest(home: dir, now: at).contains("runs support"))
+    }
+
+    @Test func whatTheChatSaysAboutThePersonIsChecked() throws {
+        let (scans, _, _, _, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let profile = Profile(home: dir)
+        scans.profile = profile
+        #expect(throws: MinisterError.self) { try scans.rememberPerson(["name": "Kim"]) }   // someone new needs a relation
+        #expect(throws: MinisterError.self) { try scans.rememberPerson(["name": "Kim", "relation": "boss"]) }
+        #expect(throws: MinisterError.self) { try scans.rememberPerson(["name": " ", "relation": "manager"]) }
+        #expect(throws: MinisterError.self) { try scans.rememberPerson(["name": "Kim", "forget": true]) }   // no one to forget
+        #expect(throws: MinisterError.self) { try scans.rememberMe([:]) }
+        #expect(throws: MinisterError.self) { try scans.rememberMe(["forget": "age"]) }
+        // All or nothing: one fact too long keeps none of them.
+        #expect(throws: MinisterError.self) { try scans.rememberMe(["company": "Acme", "role": String(repeating: "r", count: Profile.factLimit + 1)]) }
+        #expect(profile.me.isEmpty)
+        // Another name someone else goes by is refused, not merged into them.
+        try profile.keep(person: "Lena", relation: .manager, aliases: ["lp"], from: .typed)
+        #expect(throws: MinisterError("Lena already goes by “lp”. Fix or forget them first; Noteling doesn't merge two people.")) {
+            try scans.rememberPerson(["name": "Bo", "relation": "customer", "aliases": ["lp"]])
+        }
+        #expect(profile.people.map(\.name) == ["Lena"])
+        #expect(profile.people.allSatisfy { $0.from == .typed })
     }
 
     @Test func whatTheChatHandsOverIsChecked() async {
