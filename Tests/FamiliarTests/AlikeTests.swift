@@ -44,6 +44,11 @@ struct AlikeTests {
         #expect(NoteAnchor.alike("Add to list: Milk", "Add to list: Bread"))
         #expect(NoteAnchor.alike("Add to registry (Milk)", "Add to registry (Bread)"))
         #expect(NoteAnchor.alike("Add to cart", "Add to cart"))
+        // A separator stuck to the end of the shorter name: the shorter name is the shared words.
+        #expect(NoteAnchor.alike("Add to list", "Add to list: Milk"))
+        #expect(NoteAnchor.alike("Add to cart", "Add to cart, Bananas"))
+        #expect(NoteAnchor.alike("Add to cart", "Add to cart-Bananas"))
+        #expect(NoteAnchor.alike("Add to cart-Bananas", "Add to cart"))
         // Ten characters of words before the separator, not counting it.
         #expect(!NoteAnchor.alike("Buy now - Milk", "Buy now - Bread"))
         #expect(!NoteAnchor.alike("Save changes", "Save draft") && !NoteAnchor.alike("Add to cart - Milk", "Add to list - Milk"))

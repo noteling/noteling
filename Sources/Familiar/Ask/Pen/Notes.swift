@@ -149,9 +149,11 @@ struct NoteAnchor: Codable, Equatable {
         if a == b { return true }
         let shared = String(zip(a, b).prefix { $0 == $1 }.map(\.0))
         let short = a.count <= b.count ? a : b, long = a.count <= b.count ? b : a
-        // The shared whole words: all of the shorter name when the longer goes on with a new word, else back to the
-        // last whole word, so "save changes" and "save draft" share only "save".
-        let stem = shared.count == short.count && long.dropFirst(short.count).first == " "
+        // The shared whole words: all of the shorter name when the longer goes on with a new word or a separator
+        // ("add to list" and "add to list: milk"), else back to the last whole word, so "save changes" and
+        // "save draft" share only "save".
+        let next = long.dropFirst(short.count).first
+        let stem = shared.count == short.count && (next == " " || next.map(itemSeparators.contains) == true)
             ? short : shared.split(separator: " ", omittingEmptySubsequences: false).dropLast().joined(separator: " ")
         let words = stem.trimmingCharacters(in: CharacterSet(charactersIn: " " + String(itemSeparators)))
         guard words.count >= 10 else { return false }
