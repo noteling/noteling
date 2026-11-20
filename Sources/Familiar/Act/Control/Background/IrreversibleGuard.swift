@@ -22,7 +22,8 @@ enum IrreversibleGuard {
                                          // "Give feedback" and "Clinical trial" stay free; the committing phrases are listed.
                                          "place order", "place your order", "order now", "order it now", "complete order",
                                          "book", "reserve", "rent", "donate", "pledge", "give now", "subscribe",
-                                         "free trial", "start trial", "upgrade", "renew", "bid", "make offer", "make an offer"]
+                                         "free trial", "start trial", "try it free", "upgrade", "renew", "bid", "make offer", "make an offer",
+                                         "accept offer", "accept the offer"]
 
     /// Forbidden combos keyed by canonical spelling ("cmd+shift+w": modifiers sorted, one spelling each).
     private static let forbiddenCombos: [String: String] = [
@@ -39,14 +40,15 @@ enum IrreversibleGuard {
     private static let forbiddenSubroles: Set<String> = ["AXCloseButton", "AXMinimizeButton", "AXZoomButton", "AXFullScreenButton"]
     private static let forbiddenRoles: Set<String> = ["AXMenuBarItem", "AXMenuItem"]
 
-    /// One regex for all confirm words: `\b` on both sides so "sender" and "posted" pass, `\s+` inside phrases so
-    /// "Reply  all" still matches. Case-insensitive.
+    /// One regex for all confirm words: no letter or digit on either side, so "sender", "posted" and "submit2" pass
+    /// but snake_case DOM ids ("reserve_btn") match (`\b` would count "_" as part of the word). Whitespace or "_"
+    /// inside phrases, so "Reply  all" and "place_order" still match. Case-insensitive.
     private static let confirmRegex: NSRegularExpression = {
         let alternatives = confirmWords.map { word in
-            word.split(separator: " ").map { NSRegularExpression.escapedPattern(for: String($0)) }.joined(separator: "\\s+")
+            word.split(separator: " ").map { NSRegularExpression.escapedPattern(for: String($0)) }.joined(separator: "[\\s_]+")
         }
         // The word list is a compile-time constant, so a bad pattern is a programming error, not a runtime condition.
-        return try! NSRegularExpression(pattern: "\\b(?:" + alternatives.joined(separator: "|") + ")\\b", options: [.caseInsensitive])
+        return try! NSRegularExpression(pattern: "(?<![\\p{L}\\p{M}\\p{N}])(?:" + alternatives.joined(separator: "|") + ")(?![\\p{L}\\p{M}\\p{N}])", options: [.caseInsensitive])
     }()
 
     private static func containsConfirmWord(_ s: String?) -> Bool {

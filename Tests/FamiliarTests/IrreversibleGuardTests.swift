@@ -117,6 +117,29 @@ struct IrreversibleGuardTests {
     }
 
     @Test
+    func tryItFreeAndAcceptOfferAsk() {
+        // Rowan's #139 review (L2): starting a trial or accepting an offer commits a charge or a sale.
+        for title in ["Try it free", "Try it free for 30 days", "Accept offer", "Accept the offer"] {
+            #expect(press(el(title: title)) == .confirm(title), Comment(rawValue: title))
+        }
+        for title in ["Try it", "Accept cookies", "Accepted offers", "Free"] {
+            #expect(press(el(title: title)) == .safe, Comment(rawValue: title))
+        }
+    }
+
+    @Test
+    func underscoreSeparatesWordsInDomIDs() {
+        // Rowan's #139 review (nit): `\b` counts "_" as a word character, so snake_case ids never matched.
+        #expect(press(el(title: "Go", domID: "submit_btn")) == .confirm("Go"))
+        #expect(press(el(domID: "reserve_btn")) == .confirm("reserve_btn"))
+        #expect(press(el(domID: "btn_place_order")) == .confirm("btn_place_order"))
+        // Still words: underscores split, letters and digits don't.
+        #expect(press(el(domID: "sender_name")) == .safe)
+        #expect(press(el(domID: "posted_at")) == .safe)
+        #expect(press(el(domID: "submit2")) == .safe)
+    }
+
+    @Test
     func valueAndDomIDAreCheckedToo() {
         // The value carries the confirm word: a web button whose text is exposed as value.
         #expect(press(el(title: "", value: "Submit")) == .confirm("Submit"))
