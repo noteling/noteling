@@ -33,16 +33,19 @@ import Testing
 
     @Test func usingTheWindowMakesNotelingStepAsideNotStop() async {
         let f = Fixture()
+        let clock = HandClock()   // moved by hand: a busy main thread mustn't end the pause before the checks run
         var stops: [String] = [], yields: [String] = [], dirty = 0
         let monitor = ConflictMonitor(target: f.target, recordOutstanding: { false }, expectingActivation: { false },
                                       onStop: { stops.append($0) }, onDirty: { dirty += 1 }, onYield: { yields.append($0) },
-                                      onAbortRecord: {})
+                                      onAbortRecord: {}, now: { clock.now })
         monitor.handle(.init(kind: .appActivated(f.target.pid), locationCG: .zero, isOurs: false))
         #expect(stops.isEmpty && yields == ["you switched to Fixture"] && dirty == 1)
-        #expect(await !monitor.waitUntilClear(timeout: 0.2))   // waiting for them to pause
+        clock.now += 0.2
+        #expect(await !monitor.waitUntilClear(timeout: 0))   // still waiting for them to pause
         monitor.handle(.init(kind: .appActivated(f.target.pid), locationCG: .zero, isOurs: false))
         #expect(yields.count == 1)   // told once per spell, not on every touch
-        #expect(await monitor.waitUntilClear(timeout: ConflictMonitor.yieldSeconds + 1))   // then it carries on
+        clock.now += ConflictMonitor.yieldSeconds + 0.1
+        #expect(await monitor.waitUntilClear(timeout: 0))   // then it carries on
 
         // Without a way to step aside (the careful mode's callers), it still ends the job as before.
         var ended: [String] = []
@@ -63,6 +66,8 @@ import Testing
         #expect(lane.contains("pressed without stopping for approval") && lane.contains("Working smoothly."))
         #expect(lane.contains("Never press ⌘Q"))   // what it never does stays
     }
+
+    private final class HandClock { var now = Date(timeIntervalSinceReferenceDate: 800_000_000) }
 
     @MainActor private final class Fixture {
         let target: TargetWindow
