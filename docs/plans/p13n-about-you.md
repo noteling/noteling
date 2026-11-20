@@ -57,7 +57,7 @@ filled in by hand, and no prompt read it, so it was removed as "detached". Both 
 
 Once, and again only a week after a dismissal, the deck shows one sticker: "You're Sam Lee at Acme, working in Shopify
 admin and Stripe? Yes / Fix." Yes keeps each drafted fact as `drafted`. Fix opens the page with the drafts filled in.
-Drafts are deterministic in v1 (name: the Settings author, else the macOS full name; tools: the packs with the most notes and shown paths, up to three, since Noteling keeps no other use count). Fix and Not now both hold the sticker for a week; the date is the only thing kept. Company and role are left blank unless the
+Drafts are deterministic in v1 (name: the Settings author, else the macOS full name; tools: the packs with the most notes and shown paths, up to three, since Noteling keeps no other use count). Fix and Not now both hold the sticker for a week; the date is the only thing kept. A date ahead of the clock (the clock was set back) counts as expired, for this sticker and for C, and a Fix draft the person doesn't keep goes when the page closes. Company and role are left blank unless the
 user states them; v1 does not derive a company from the mail address (Rule 5). A model-written guess is not needed to
 ship.
 
@@ -66,8 +66,9 @@ ship.
 - The minister's triage may return at most one `ask {name, finding, why}` when a verdict hinges on someone it doesn't know (`finding` names the row the name must appear in, and the card says which job it came from). This
   is a schema change to `triageDefinition` (which has `additionalProperties: false`) and a parse in `Minister.triage`.
   The name comes from untrusted rows, so code, not the model, checks it: it must appear in one of this turn's finding
-  rows, it is clipped to about 40 characters, and it is dropped if it matches a stored person or alias (including
-  people past the prompt cap). The deck then shows a card: "Lena: your manager, a teammate, a customer, a vendor?
+  rows (the row of the finding the ask names, which is tighter than any row of the turn), it is clipped to about 40
+  characters, and it is dropped if it matches a stored person or alias (including people past the prompt cap). A
+  dropped ask never fails the turn; `noteling.log` says why it was dropped, never the name. The deck then shows a card: "Lena: your manager, a teammate, a customer, a vendor?
   Someone else", with the finding that prompted it. One tap keeps it. There is at most one such card at a time and
   three a day, and a person who was dismissed isn't asked about again for a week (the file keeps a hash of the name and the date, not the name). The day's count is read from `memory/`, so a restart doesn't reset it.
 - In chat, "Lena is my manager" and "I run support at Acme" are kept through a `remember_person` / `remember_me` tool

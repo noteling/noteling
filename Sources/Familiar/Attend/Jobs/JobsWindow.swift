@@ -19,8 +19,13 @@ import SwiftUI
     }
     /// Any other way off the screen forgets where Back would have gone.
     @Published var route: Route = .jobs {
-        didSet { if let returning, route != returning.from { self.returning = nil } }
+        didSet {
+            if let returning, route != returning.from { self.returning = nil }
+            if oldValue != route { onLeave?(oldValue) }
+        }
     }
+    /// Told the screen the window just left, at once (not on the next run-loop turn).
+    var onLeave: ((Route) -> Void)?
     @Published private(set) var returning: Return?
 
     /// Opens `route` so that Back from it comes back to `origin`.

@@ -265,14 +265,18 @@ enum MinisterPrompt {
     /// the row of the finding named, which must be in this turn; it is one line of at most `askNameLimit` characters;
     /// and it is dropped when `known` says the person already goes by it (anyone kept, past the prompt's cap too). A
     /// bad ask is dropped, never an error: it must not cost the verdicts.
-    static func parseAsk(_ input: [String: Any], findings: [Shown], known: (String) -> Bool) -> PersonAsk? {
-        guard let ask = input["ask"] as? [String: Any], let raw = ask["name"] as? String, let key = ask["finding"] as? String,
-              let shown = findings.first(where: { $0.ref.key == key }) else { return nil }
+    static func parseAsk(_ input: [String: Any], findings: [Shown], known: (String) -> Bool,
+                         dropped: (String) -> Void = { _ in }) -> PersonAsk? {
+        guard let ask = input["ask"] as? [String: Any] else { return nil }      // no ask: the old shape, nothing dropped
+        guard let raw = ask["name"] as? String, let key = ask["finding"] as? String else { dropped("no name or finding"); return nil }
+        guard let shown = findings.first(where: { $0.ref.key == key }) else { dropped("names no finding of this turn"); return nil }
         let line = raw.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
         let name = String(line.prefix(askNameLimit)).trimmingCharacters(in: .whitespaces)
-        guard name.count >= 2, name.contains(where: \.isLetter) else { return nil }
-        guard shown.row.texts.values.contains(where: { $0.range(of: name, options: [.caseInsensitive, .diacriticInsensitive]) != nil }) else { return nil }
-        guard !known(name) else { return nil }
+        guard name.count >= 2, name.contains(where: \.isLetter) else { dropped("the name is too short or has no letter"); return nil }
+        guard shown.row.texts.values.contains(where: { $0.range(of: name, options: [.caseInsensitive, .diacriticInsensitive]) != nil }) else {
+            dropped("the name isn't in \(key)'s row"); return nil
+        }
+        guard !known(name) else { dropped("the person is already kept"); return nil }
         let why = ((ask["why"] as? String) ?? "").split(whereSeparator: \.isNewline).joined(separator: " ").trimmingCharacters(in: .whitespaces)
         return PersonAsk(name: name, finding: shown.ref, job: shown.job.name, why: why.isEmpty ? nil : JobWords.clip(why, whyLimit))
     }

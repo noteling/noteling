@@ -18,6 +18,9 @@ import SwiftUI
     private var requested = false
     /// Opened, not already open: the app looks for a newer copy of the team's tools, so a job pushed a moment ago shows.
     var onOpen: (() -> Void)?
+    /// The receipt stopped showing, by Back, another screen or the window closing: About you drops a draft it was
+    /// fixing that the person didn't keep (Quill's #149 L2).
+    var onLeaveReceipt: (() -> Void)?
 
     /// Nothing opens at launch; opening is always an explicit action.
     init(folderJobs: FolderJobsPanel, setup: JobsSetup = JobsSetup(), hideFromScreenShare: Bool) {
@@ -27,6 +30,8 @@ import SwiftUI
         panel.contentView = NSHostingView(rootView: JobsWindowView(navigation: navigation, folderJobs: folderJobs, setup: setup,
                                                                   close: { [weak self] in self?.hide() }))
         routeObservation = navigation.$route.receive(on: RunLoop.main).sink { [weak self] _ in self?.position() }
+        // Only while the window is open: a closed window already told, on hide().
+        navigation.onLeave = { [weak self] from in if from == .receipt, self?.requested == true { self?.onLeaveReceipt?() } }
         position()
         screenObservation = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
@@ -94,7 +99,8 @@ import SwiftUI
         panel.makeKeyAndOrderFront(nil)
     }
 
-    private func hide() {
+    func hide() {
+        if requested, navigation.route == .receipt { onLeaveReceipt?() }
         requested = false
         panel.orderOut(nil)
     }

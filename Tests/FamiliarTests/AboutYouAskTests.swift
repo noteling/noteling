@@ -106,6 +106,18 @@ import Testing
         #expect(!(try String(contentsOf: Profile.file(home: dir), encoding: .utf8)).contains("Sam Lee"))
     }
 
+    @Test func closingThePageWithoutKeepingDropsTheFixDraft() throws {
+        // Quill's #149 L2: the "Fix and keep" rows last while the page is open, not until quit.
+        let (_, _, _, profile, dir) = fixture()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let draft = try #require(profile.draft(name: "Sam Lee", tools: nil))
+        profile.decline(draft, fixing: true)
+        #expect(profile.fixing == draft)
+        profile.pageClosed()
+        #expect(profile.fixing == nil && profile.me.isEmpty)
+        #expect(profile.draft(name: "Sam Lee", tools: nil) == nil)                    // still put aside for the week
+    }
+
     @Test func anUnreadableFileIsNeverAskedAboutOrWrittenOver() throws {
         let (_, _, _, _, dir) = fixture()
         defer { try? FileManager.default.removeItem(at: dir) }

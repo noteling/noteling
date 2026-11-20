@@ -286,7 +286,7 @@ final class Profile: ObservableObject {
     /// draft, while the file can't be read, or within `askAgainDays` of the person putting it aside.
     func draft(name: String?, tools: String?) -> AboutYouDraft? {
         guard !unreadable else { return nil }
-        if let at = declined["me"], clock().timeIntervalSince(at) <= Double(Self.askAgainDays) * 86_400 { return nil }
+        if waiting(since: declined["me"]) { return nil }
         let clean = { (words: String?) -> String? in
             guard let words, let line = try? Self.line(words, what: "draft") else { return nil }
             return line
@@ -311,6 +311,19 @@ final class Profile: ObservableObject {
         memory?.append(["profile": fixing ? "fixing" : "not now", "ask": "me"])
     }
 
+    /// The page closed without keeping: the "Fix and keep" rows from "Is this you?" go (Quill's #149 L2).
+    func pageClosed() {
+        if fixing != nil { fixing = nil }
+    }
+
+    /// Put aside within the last `askAgainDays`. A date ahead of the clock (the clock was set back) counts as expired,
+    /// so a card is never held past the week by a clock change (Quill's #149 L1).
+    func waiting(since at: Date?) -> Bool {
+        guard let at else { return false }
+        let age = clock().timeIntervalSince(at)
+        return age >= 0 && age <= Double(Self.askAgainDays) * 86_400
+    }
+
     // MARK: asked in the moment (C)
 
     /// Whether the person or someone they keep already goes by this name: then there is nothing to ask.
@@ -325,7 +338,7 @@ final class Profile: ObservableObject {
     @discardableResult
     func offer(_ ask: PersonAsk) -> Bool {
         guard asking == nil, !unreadable, !knows(ask.name) else { return false }
-        if let at = declined[Self.declineKey(ask.name)], clock().timeIntervalSince(at) <= Double(Self.askAgainDays) * 86_400 { return false }
+        if waiting(since: declined[Self.declineKey(ask.name)]) { return false }
         guard askedToday < Self.asksPerDay else { return false }
         asking = ask
         offered.append(clock())

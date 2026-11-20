@@ -219,6 +219,24 @@ struct JobsPageTests {
         window.navigation.back()
         #expect(window.route == .jobs)
 
+        // Leaving the receipt, by Back, another screen or closing the window, is told once each time (About you's L2).
+        var left = 0
+        window.onLeaveReceipt = { left += 1 }
+        window.showReceipt()
+        window.showReceipt()
+        #expect(left == 0)
+        window.navigation.back()
+        #expect(window.route == .jobs && left == 1)
+        window.showReceipt()
+        window.showMatter(id: "m-1")
+        #expect(left == 2)
+        window.showReceipt()
+        window.hide()
+        #expect(left == 3)
+        window.showJobs()
+        window.hide()
+        #expect(left == 3)
+
         let chat = ChatFixture()
         defer { chat.remove() }
         var opened = 0

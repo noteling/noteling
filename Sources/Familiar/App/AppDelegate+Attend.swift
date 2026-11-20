@@ -146,6 +146,7 @@ extension AppDelegate {
             return (author.isEmpty ? NSFullUserName() : author, AboutYouDraft.tools(packs))
         }
         model.openAboutYou = { [weak self] in self?.jobsWindow.showReceipt() }
+        jobsWindow?.onLeaveReceipt = { [weak self] in self?.profile?.pageClosed() }
         model.profile = profile
         var home: NSPoint?
         if let x = config.stickersX, let y = config.stickersY, x.isFinite, y.isFinite { home = NSPoint(x: x, y: y) }

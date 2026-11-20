@@ -147,6 +147,46 @@ import Testing
         #expect(later.offer(ask("Lena Park")))
     }
 
+    @Test func aClockSetBackNeverHoldsTheQuestionPastTheWeek() throws {
+        // Quill's #149 L1: a decline dated ahead of the clock counts as expired, for C and for "Is this you?" alike.
+        let dir = dir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let profile = profile(dir)
+        #expect(profile.offer(ask("Lena Park")))
+        profile.putAside()
+        let draft = try #require(profile.draft(name: "Sam Lee", tools: nil))
+        profile.decline(draft)
+        let setBack = self.profile(dir, clock: at.addingTimeInterval(-86_400))
+        #expect(setBack.offer(ask("Lena Park")))
+        #expect(setBack.draft(name: "Sam Lee", tools: nil) == draft)
+        let sameMoment = self.profile(dir, clock: at)
+        #expect(!sameMoment.offer(ask("Lena Park")) && sameMoment.draft(name: "Sam Lee", tools: nil) == nil)   // the week starts at the tap
+    }
+
+    @Test func aDroppedAskSaysWhyInTheLogNeverWhoAndAnOldShapeReplyStillParses() throws {
+        let rows = [shown("m-1", ["from": "Lena Park <lena@acme.example>", "subject": "Quote for Q4"])]
+        var why: [String] = []
+        func parse(_ input: [String: Any], known: @escaping (String) -> Bool = { _ in false }) -> PersonAsk? {
+            MinisterPrompt.parseAsk(input, findings: rows, known: known) { why.append($0) }
+        }
+        func input(_ name: Any, finding: Any = "team/mail/m-1") -> [String: Any] { ["verdicts": [], "ask": ["name": name, "finding": finding]] }
+        #expect(parse(input("Lena Park")) != nil && why.isEmpty)
+        #expect(parse(input("Lena Park", finding: "team/mail/m-9")) == nil)
+        #expect(parse(input("L")) == nil)
+        #expect(parse(input("Bo Chen")) == nil)
+        #expect(parse(input("Lena Park"), known: { _ in true }) == nil)
+        #expect(parse(["verdicts": [], "ask": ["why": "no name"]]) == nil)
+        #expect(why == ["names no finding of this turn", "the name is too short or has no letter", "the name isn't in team/mail/m-1's row",
+                        "the person is already kept", "no name or finding"])
+        #expect(!why.joined().lowercased().contains("lena") && !why.joined().lowercased().contains("bo chen"))
+
+        // The reply from before 3b, with no ask: the verdicts parse as ever and nothing is dropped.
+        why = []
+        let old: [String: Any] = ["verdicts": [["finding": "team/mail/m-1", "matter": "new:quote", "show": true, "why": "A quote to answer."]]]
+        let parsed = try MinisterPrompt.parseTriage(old, findings: rows.map(\.ref), matters: [])
+        #expect(parsed.verdicts.count == 1 && parse(old) == nil && why.isEmpty)
+    }
+
     // MARK: the deck
 
     @Test func theQuestionAboutAPersonGoesBeforeTheLessonAndIsThisYouAndOneTapKeepsThemAsAsked() async throws {
