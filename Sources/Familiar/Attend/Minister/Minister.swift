@@ -206,14 +206,18 @@ final class Minister: ObservableObject {
         let current = matters.current
         let prompt = MinisterPrompt.triage(shown, descriptions: descriptions(for: shown), matters: current, now: clock(), lessons: lessons?.all ?? [], told: lessons?.told ?? [], notes: notes(), about: profile?.block().text ?? "")
         var result: (verdicts: [MinisterPrompt.Verdict], recompose: Set<String>)?
+        var ask: PersonAsk?
         let ids = Set(current.map(\.id))
         let refs = shown.map(\.ref)
+        let known: (String) -> Bool = { [profile] name in profile?.knows(name) ?? false }
         try await converse(client, system: MinisterPrompt.triageSystem, prompt: prompt, tool: MinisterPrompt.triageDefinition, effort: "low",
                            rounds: Self.triageRounds) { input in
             result = try MinisterPrompt.parseTriage(input, findings: refs, matters: ids)
+            ask = MinisterPrompt.parseAsk(input, findings: shown, known: known)
         }
         guard let result else { throw MinisterError("The minister gave no verdicts.") }
         apply(result.verdicts, recompose: result.recompose, findings: shown)
+        if let ask { profile?.offer(ask) }   // the deck asks after the verdicts stand; Profile keeps the limits
     }
 
     /// Verdicts become matters, worked out whole before anything is saved: a new label makes one matter for every

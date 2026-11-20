@@ -63,13 +63,13 @@ ship.
 
 ### C: ask in the moment
 
-- The minister's triage may return at most one `ask {name, why}` when a verdict hinges on someone it doesn't know. This
+- The minister's triage may return at most one `ask {name, finding, why}` when a verdict hinges on someone it doesn't know (`finding` names the row the name must appear in, and the card says which job it came from). This
   is a schema change to `triageDefinition` (which has `additionalProperties: false`) and a parse in `Minister.triage`.
   The name comes from untrusted rows, so code, not the model, checks it: it must appear in one of this turn's finding
   rows, it is clipped to about 40 characters, and it is dropped if it matches a stored person or alias (including
   people past the prompt cap). The deck then shows a card: "Lena: your manager, a teammate, a customer, a vendor?
   Someone else", with the finding that prompted it. One tap keeps it. There is at most one such card at a time and
-  three a day, and a person who was dismissed isn't asked about again for a week.
+  three a day, and a person who was dismissed isn't asked about again for a week (the file keeps a hash of the name and the date, not the name). The day's count is read from `memory/`, so a restart doesn't reset it.
 - In chat, "Lena is my manager" and "I run support at Acme" are kept through a `remember_person` / `remember_me` tool
   beside `tell_the_minister` (ChatFindings), and the reply says so: "Kept: Lena, your manager."
 

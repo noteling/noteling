@@ -55,15 +55,34 @@ struct AboutYouDraft: Equatable {
     }
 }
 
+/// C, asked in the moment: the minister's triage said a verdict hinges on who someone named in a finding is, and code
+/// checked the name (`MinisterPrompt.parseAsk`). One tap says how they stand to the person; nothing is kept before it.
+struct PersonAsk: Equatable {
+    /// As the finding has it, at most `MinisterPrompt.askNameLimit` characters.
+    let name: String
+    let finding: FindingRef
+    /// The job whose finding named them, as the person knows it.
+    let job: String
+    /// The minister's reason, one sentence.
+    let why: String?
+
+    /// "Lena: your manager, a teammate, a customer, a vendor?"
+    var text: String { "\(name): your manager, a teammate, a customer, a vendor?" }
+    /// Under it: what prompted the question.
+    var byline: String { "From \(job)" + (why.map { ": \($0)" } ?? "") }
+}
+
 /// The deck's one question card, after the matter cards. Only one shows at a time, in this order: a question about a
-/// person (C, tied to a live verdict; delivery 3b), then the minister's lesson question, then "Is this you?" (A).
+/// person (C, tied to a live verdict), then the minister's lesson question, then "Is this you?" (A).
 enum DeckAsk: Equatable {
+    case person(PersonAsk)
     case lesson(LessonQuestion)
     case aboutYou(AboutYouDraft)
 
     /// The card's identity, for its tilt and its animation.
     var key: String {
         switch self {
+        case .person(let ask): return "person:" + ask.name.lowercased()
         case .lesson(let question): return "lesson:" + question.job
         case .aboutYou: return "about-you"
         }
