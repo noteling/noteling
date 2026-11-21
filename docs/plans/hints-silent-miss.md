@@ -22,8 +22,12 @@ check and a KT with David before any code merges.
   `Prompt.notes` puts under "Notes on this page for controls not on the user's screen" (`Ask/Chat/Prompt.swift:469`).
   So the model hears about a miss when the user asks; the user is not told on their own.
 
-So a miss is visible only after the user acts (pen, ⌥⌥, the badge). Since #130, a hint on the item's own name
-(`isOnTheItemsName`) falls back to its kept spot instead of missing, so R03's case lands rather than misses.
+So a miss is visible only after the user acts (pen, ⌥⌥, the badge).
+
+**R03 is not covered by this sign.** R03's class (a pattern hint on the item's own name) is covered by #130's
+kept-spot fallback (`isOnTheItemsName`): it lands rather than misses. Under the pattern rule in §2, every other
+pattern-hint miss stays silent on purpose in v1. **Known limit for UAT:** a "pages like this" hint whose control is
+absent (e.g. "Add to cart" on an out-of-stock item, or a hint the site renamed) still shows nothing.
 
 ## 2. Options
 
@@ -36,9 +40,10 @@ So a miss is visible only after the user acts (pen, ⌥⌥, the badge). Since #1
 **Don't show a miss** (any option) while:
 - the page says it is loading, or is still settling (`settling != nil`), or the looks haven't run out;
 - the hint's control is on the page but scrolled away (`below`). That is not a miss;
-- the hint is for **pages of a kind** (`anchor.pattern != nil`) and names a generic control. "Add to cart" absent
-  from an out-of-stock item is normal, so it stays log-only. A miss on **this page's** own hint (no pattern) means the
-  hint or the page changed, and is the one worth telling;
+- the hint is for **pages of a kind**: `anchor.pattern != nil` → log-only (v1), for every pattern hint (Quill's
+  ruling on #151; reversible after UAT). Nothing defines a "generic" control, and "Add to cart" absent from an
+  out-of-stock item is normal. A miss on **this page's** own hint (no pattern) means the hint or the page changed,
+  and is the one worth telling;
 - the pen is up or the notes are shown by hand (they show the miss already), or hints are off;
 - outside a browser (v1). The window path (`readFront`, :392) can't tell loading from scrolled-away, so it would cry wolf.
 
@@ -46,22 +51,28 @@ So a miss is visible only after the user acts (pen, ⌥⌥, the badge). Since #1
 
 Do **A**, and B only if UAT says A is too quiet. Split:
 1. **Settled miss in `HintsController`.** A new `onMissed([StickyNote])` fires once per arrival, after the looks run
-   out with the last read not loading, filtered by the rules above. The shortfall log line moves there too, so it
+   out with the last read not loading, filtered by the rules above. **Once per arrival** = once per `PageKey`, until
+   `leave()` or a reload (the page loading again where it had finished, which resets `settling` to `[]`, Hints.swift
+   :193-195); then it may fire again. The shortfall log line moves there too, so it
    no longer fires on the first look. No UI.
 2. **The bubble.** `notesHere` gains `missedHere`, wired in `AppDelegate+Ask` (Ask-only, so no product-boundary
-   change). Badge re-glance, the "2 of 3" face, hover words, `--render` case.
+   change). Badge re-glance, the "2 of 3" face, hover words, `--render` case. The badge's `accessibilityLabel` and
+   its hover summary also say "2 of 3 hints found", not just the face.
 3. (Later, if asked) B with a per-hint "Not now", keyed by page and hint id.
 
 Tests (HintsTests style: a fake `reader`, tiny `retryDelays`):
 - fail-first on bd6b8fe: **the miss is logged only once the page settles**. A reader missing on look 1 and placing
   on look 2 logs no shortfall. Today it logs at :190;
 - `onMissed` fires once, after the last look, with the missed hint; never while every look says `loading`; never for
-  a hint that turns up on a later look or after `touch()`; never for a `below` hint; never for a pattern hint on a
-  generic control; cleared by `leave()` and on the next page;
-- badge: `missedHere` set and cleared with the page; count text "2 of 3"; a render-command snapshot.
+  a hint that turns up on a later look or after `touch()`; never for a `below` hint; never for any hint with `anchor.pattern != nil`; cleared by `leave()` and on the next
+  page; fires again after a reload of the same `PageKey` (loading → loaded → loading → settled), and not twice
+  without one;
+- badge: `missedHere` set and cleared with the page; count text "2 of 3"; `accessibilityLabel` and hover summary
+  say "2 of 3 hints found"; a render-command snapshot.
 
 The new hook's own tests can only fail-first by not compiling on base, so I'd add mutants for each "never" rule
-(drop the loading check, the `below` filter, the pattern filter, the once-only guard).
+(drop the loading check, the `below` filter, the `anchor.pattern != nil` filter, the once-only guard, and the
+reload reset of that guard).
 
 ## 4. Synthetics seam
 
