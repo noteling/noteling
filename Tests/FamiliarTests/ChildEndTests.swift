@@ -4,7 +4,7 @@ import Foundation
 import Testing
 
 /// The layout tests' wait for their child: every way it can end is told, and none of them waits forever.
-struct ChildEndTests {
+@Suite(.timeLimit(.minutes(1))) struct ChildEndTests {
     /// A child by the numbers: over after `looks` looks at it, or only once stopped, or never.
     private final class StandIn: WatchedChild, @unchecked Sendable {
         let processIdentifier: Int32 = 0x7fff_fff0   // nobody's
