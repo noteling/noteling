@@ -316,11 +316,14 @@ final class WandController {
             var predicted = false
             // A control with no name: beside the named one it was next to, where that one is now.
             if found == nil, let near = anchor.near, let named = Self.neighbour(near, in: page, spot: spot), let there = named.frame {
-                guard named.visible else { below.append(note); continue }
-                let expected = near.rect(from: there)
-                let control = Self.control(like: expected, role: anchor.role, in: page)
-                found = control?.frame ?? expected
-                predicted = control == nil
+                if named.visible {
+                    let expected = near.rect(from: there)
+                    let control = Self.control(like: expected, role: anchor.role, in: page)
+                    found = control?.frame ?? expected
+                    predicted = control == nil
+                } else if !Self.itemsNameIsInView(for: anchor, in: page) {
+                    below.append(note); continue   // beside a control scrolled out of view
+                }
             }
             // A hint on the item's own name (its title, its picture) on another page of the kind: on this page's
             // item's name in a control of its role, the one nearest where it was, before any place only guessed.
@@ -357,13 +360,26 @@ final class WandController {
     }
 
     /// The control naming this page's item that a hint on another item's name (its title, its picture) goes on: of the
-    /// hint's role, its name the item's own by this page's address; one in view before one scrolled away, and of
-    /// several (the title and a carousel of like items) the one nearest where the hint's control was in the window.
+    /// hint's role, its name the item's own by this page's address. Of several (the title and a carousel of like
+    /// items), the name with the most of its words in the address, in view or not: a like item's name in view is not
+    /// this item's, scrolled away. Of those, the name with the fewest words in all: "Set of 2" or "About" put to the
+    /// title is not the title. Of those as good, one in view before one scrolled away, and the one nearest where the
+    /// hint's control was in the window.
     static func itemsName(of anchor: NoteAnchor, in page: PageSnapshot, spot: CGRect?) -> PageElement? {
         guard let key = page.key else { return nil }
         let named = page.elements.filter { $0.frame != nil && anchor.roleAgrees($0.role) && NoteAnchor.namesTheItem($0.label, page: key) }
-        let shown = named.filter(\.visible)
-        return shown.isEmpty ? named.first : nearest(shown, to: spot)
+        let words = named.map { NoteAnchor.itemWords($0.label, page: key) }
+        let most = words.map(\.inAddress).max()
+        let fewest = words.filter { $0.inAddress == most }.map(\.all).min()
+        let best = zip(named, words).filter { $0.1.inAddress == most && $0.1.all == fewest }.map(\.0)
+        let shown = best.filter(\.visible)
+        return shown.isEmpty ? best.first : nearest(shown, to: spot)
+    }
+
+    /// A hint on the item's name whose neighbour is scrolled away is still on this page's item's name when that is in
+    /// view.
+    static func itemsNameIsInView(for anchor: NoteAnchor, in page: PageSnapshot) -> Bool {
+        anchor.isOnTheItemsName && itemsName(of: anchor, in: page, spot: nil)?.visible == true
     }
 
     /// The named control a nameless one sat next to, on this page: one in view before one scrolled away, and of

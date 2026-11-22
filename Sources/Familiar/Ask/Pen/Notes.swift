@@ -125,12 +125,18 @@ struct NoteAnchor: Codable, Equatable {
     /// A digit or a price alone does not make a name the item's: "Size 10", "Qty 1" or "4.5 out of 5 stars" is a
     /// control of the kind's pages, left out when it is not there, as any named control is.
     static func namesTheItem(_ label: String?, page: PageKey?) -> Bool {
-        guard let label = norm(label), let page else { return false }
+        let words = itemWords(label, page: page)
+        return words.all >= 2 && Double(words.inAddress) / Double(words.all) >= 0.6
+    }
+
+    /// The different words of a name, those of one or two letters left out, and how many of them are in the parts of
+    /// the address that name the item.
+    static func itemWords(_ label: String?, page: PageKey?) -> (inAddress: Int, all: Int) {
+        guard let label = norm(label), let page else { return (0, 0) }
         let words = Set(label.split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { $0.count > 2 })
-        guard words.count >= 2 else { return false }
         let slugWords = Set(PagePattern.segments(of: page.path).filter(PagePattern.looksLikeASlug)
             .flatMap { $0.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init) })
-        return Double(words.intersection(slugWords).count) / Double(words.count) >= 0.6
+        return (words.intersection(slugWords).count, words.count)
     }
 
     /// A hint for pages of a kind on the item's own name: kept with a named neighbour and its spot, by which it is
