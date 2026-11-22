@@ -42,6 +42,8 @@ final class WandController {
     /// The scene (for anchors) and the notes on it, asked when the pen is picked up.
     var sceneProvider: (() -> ScreenContext?)?
     var notesProvider: ((ScreenContext?) -> [StickyNote])?
+    /// Reads the page in a browser, by its bundle id, for a hint being written; called off the main thread.
+    var readPage: @Sendable (_ bundleID: String) -> PageSnapshot? = { PageReader.read(bundleID: $0) }
     var author: () -> String = { NSFullUserName() }
     var onNoteSave: ((StickyNote) -> Void)?
     var onNoteDelete: ((String) -> Void)?
@@ -121,9 +123,8 @@ final class WandController {
         Log.info("wand: pointing (\(caption))")
     }
 
-    func activate() {
-        guard !isActive else { return }
-        hideNotes()
+    /// The scene in front and the hints on it, as the pen and Show My Notes start from: nothing placed yet.
+    func takeScene() {
         scene = sceneProvider?()
         sceneNotes = notesProvider?(scene) ?? []
         scan = nil
@@ -131,6 +132,12 @@ final class WandController {
         edges = []
         unplaced = []
         below = []
+    }
+
+    func activate() {
+        guard !isActive else { return }
+        hideNotes()
+        takeScene()
         for screen in NSScreen.screens {
             let p = WandPanel(screen: screen, controller: self)
             if hideFromScreenShare { p.sharingType = .none }
@@ -155,13 +162,7 @@ final class WandController {
     /// click through to it. The next click, key or change of page puts them away.
     func showNotes() {
         guard !isActive, !isShowingNotes else { return }
-        scene = sceneProvider?()
-        sceneNotes = notesProvider?(scene) ?? []
-        scan = nil
-        placed = []
-        edges = []
-        unplaced = []
-        below = []
+        takeScene()
         for screen in NSScreen.screens {
             let p = WandPanel(screen: screen, controller: self, passive: true)
             p.sharingType = .none   // notes, colleagues' names and checks: never in a screen share, whatever the bubble's setting
@@ -665,7 +666,7 @@ final class WandView: NSView {
     private var editor: NoteEditor?
     private var editing: (anchor: NoteAnchor, frame: NSRect, existing: StickyNote?)?
     /// The page as read when the paper opened on a control with no name of its own, for its named neighbour.
-    private var pageForPaper: PageSnapshot?
+    private(set) var pageForPaper: PageSnapshot?
     private var paperReads = 0
     private var stroke: [NSPoint] = []        // the stroke in progress, global points
     private var strokeIsNote = false          // drawn with the right button: it ends in a note, not a question
@@ -900,8 +901,9 @@ final class WandView: NSView {
               let bundle = controller.scene?.bundleID else { return }
         paperReads += 1
         let read = paperReads
+        let readPage = controller.readPage
         Task { [weak self] in
-            let page = await Task.detached(priority: .userInitiated) { PageReader.read(bundleID: bundle) }.value
+            let page = await Task.detached(priority: .userInitiated) { readPage(bundle) }.value
             guard let self, self.paperReads == read, self.editor != nil else { return }
             self.pageForPaper = page
         }
