@@ -905,10 +905,10 @@ final class WandView: NSView {
     /// not known.
     private func readPageForPaper(anchor: NoteAnchor, existing: StickyNote?, found: Bool) {
         pageForPaper = nil
+        paperReads += 1         // a read begun for an earlier paper is not this one's, whether or not this one reads
         guard found, anchor.page != nil, anchor.label == nil || NoteAnchor.namesTheItem(anchor.label, page: anchor.page),
               anchor.domID == nil, existing?.anchor.near == nil,
               let bundle = controller.scene?.bundleID else { return }
-        paperReads += 1
         let read = paperReads
         let readPage = controller.readPage
         Task { [weak self] in

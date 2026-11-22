@@ -199,6 +199,62 @@ struct NearFromFoundTests {
         #expect(try await Again(first, on: Lamp.urlB, page: page, [mark]).changeUnread(mark).anchor.near == first.anchor.near)
     }
 
+    // MARK: a read begun for the paper before
+
+    /// How the paper before ends, its read still under way.
+    enum Ending: CaseIterable { case cancelled, kept, replaced }
+
+    /// A paper on `element` whose page is still being read when it ends and the hint's sticker is clicked; then that
+    /// read ends. The hint as changed there.
+    func changed(_ first: StickyNote, _ mark: WandController.PlacedNote, on url: String, page: PageSnapshot,
+                 after element: PageElement, _ ending: Ending, scope: Int? = nil) async throws -> StickyNote {
+        let late = P.Reads(page, held: true), again = Again(first, on: url, page: page, [mark])
+        defer { late.release() }
+        again.pen.controller.readPage = { late.read($0) }
+        try again.pen.open(element)
+        try await P.wait { late.bundles.count == 1 }
+        switch ending {
+        case .cancelled: try #require(again.pen.view.openPaper).onCancel?()
+        case .kept: _ = try again.pen.keep("The one before")
+        case .replaced: break
+        }
+        #expect((again.pen.view.openPaper == nil) == (ending != .replaced))
+        again.pen.view.showStickers([mark])
+        if ending == .replaced {
+            // A paper opened over another: not by the mouse, which the first paper would take.
+            again.pen.view.present(anchor: first.anchor, at: mark.frame, existing: first, found: mark.found)
+        } else {
+            try again.rightClick(mark)
+        }
+        late.release()
+        try await P.wait { late.answers == 1 }
+        try await P.settle()
+        #expect(again.pen.view.pageForPaper == nil && late.bundles.count == 1)
+        let changed = try again.pen.keep("Changed", scope: scope)
+        #expect(changed.id == first.id && changed.text == "Changed")
+        return changed
+    }
+
+    @Test(arguments: Ending.allCases) func aReadBegunBeforeIsNotTheEdgeStickers(_ ending: Ending) async throws {
+        let first = try Self.keptEarly(on: P.titleA), mark = try Self.edge(first, below: true)
+        #expect(Self.placed(first, on: Self.scrolledA).below.map(\.id) == [first.id])
+        #expect(try await changed(first, mark, on: Lamp.urlA, page: Self.scrolledA, after: P.priceA, ending).anchor.near == nil)
+    }
+
+    @Test(arguments: Ending.allCases) func aReadBegunBeforeIsNotANotOnYourScreenStickers(_ ending: Ending) async throws {
+        let first = try Self.keptEarly(on: P.titleA, scope: 0), page = Lamp.page(Lamp.urlA, [Self.review])
+        let mark = try Self.edge(first, below: false)
+        #expect(Self.placed(first, on: page).missing.map(\.id) == [first.id])
+        #expect(try await changed(first, mark, on: Lamp.urlA, page: page, after: P.priceA, ending, scope: 1).anchor.near == nil)
+    }
+
+    @Test(arguments: Ending.allCases) func aReadBegunBeforeIsNotAGuesss(_ ending: Ending) async throws {
+        let first = try Self.keptEarly(on: P.priceA)
+        let mark = try #require(Self.placed(first, on: P.pageB).placed.first)
+        #expect(mark.predicted && !mark.found)
+        #expect(try await changed(first, mark, on: Lamp.urlB, page: P.pageB, after: P.titleB, ending).anchor.near == nil)
+    }
+
     // MARK: found
 
     @Test func changedFromItsStickerOnTheControlItGetsOne() async throws {
