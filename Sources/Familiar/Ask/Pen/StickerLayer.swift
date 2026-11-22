@@ -10,6 +10,8 @@ final class StickerLayer {
     let note: StickyNote
     /// The control, in global coordinates.
     var frame: NSRect
+    /// The frame is its control's own, not where the sticker stands for want of it.
+    let found: Bool
     var mode: Mode = .brief
     let layer = CALayer()
     private let text = CATextLayer()
@@ -21,9 +23,10 @@ final class StickerLayer {
     /// A tag's side: enough to see the paper, too small to cover what it is stuck to.
     static let tagSide: CGFloat = 18
 
-    init(note: StickyNote, frame: NSRect, scale: CGFloat) {
+    init(note: StickyNote, frame: NSRect, found: Bool = true, scale: CGFloat) {
         self.note = note
         self.frame = frame
+        self.found = found
         self.scale = scale
         layer.backgroundColor = note.isWarning ? StickerPaper.warning : StickerPaper.tip
         layer.cornerRadius = 2
