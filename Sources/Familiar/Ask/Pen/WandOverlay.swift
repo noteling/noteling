@@ -312,11 +312,14 @@ final class WandController {
             var predicted = false
             // A control with no name: beside the named one it was next to, where that one is now.
             if found == nil, let near = anchor.near, let named = Self.neighbour(near, in: page, spot: spot), let there = named.frame {
-                guard named.visible else { below.append(note); continue }
-                let expected = near.rect(from: there)
-                let control = Self.control(like: expected, role: anchor.role, in: page)
-                found = control?.frame ?? expected
-                predicted = control == nil
+                if named.visible {
+                    let expected = near.rect(from: there)
+                    let control = Self.control(like: expected, role: anchor.role, in: page)
+                    found = control?.frame ?? expected
+                    predicted = control == nil
+                } else if !Self.itemsNameIsInView(for: anchor, in: page) {
+                    below.append(note); continue   // beside a control scrolled out of view
+                }
             }
             // A hint on the item's own name (its title, its picture) on another page of the kind: on this page's
             // item's name in a control of its role, the one nearest where it was, before any place only guessed.
@@ -360,6 +363,13 @@ final class WandController {
         let named = page.elements.filter { $0.frame != nil && anchor.roleAgrees($0.role) && NoteAnchor.namesTheItem($0.label, page: key) }
         let shown = named.filter(\.visible)
         return shown.isEmpty ? named.first : nearest(shown, to: spot)
+    }
+
+    /// A hint on the item's name whose neighbour is scrolled away is still on this page's item's name when that is in
+    /// view; but not on another control that names the item while the hint's own, by its full name, is scrolled away.
+    static func itemsNameIsInView(for anchor: NoteAnchor, in page: PageSnapshot) -> Bool {
+        guard anchor.isOnTheItemsName, itemsName(of: anchor, in: page, spot: nil)?.visible == true else { return false }
+        return !page.elements.contains { !$0.visible && anchor.matchesElement(role: $0.role, label: $0.label) }
     }
 
     /// The named control a nameless one sat next to, on this page: one in view before one scrolled away, and of
