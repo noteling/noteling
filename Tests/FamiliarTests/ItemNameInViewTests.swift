@@ -41,15 +41,23 @@ struct ItemNameInViewTests {
         return e
     }
 
+    /// The same note with no neighbour, as the pen keeps it before the page is read.
+    static func alone(_ note: StickyNote) -> StickyNote {
+        var note = note
+        note.anchor.near = nil
+        return note
+    }
+
     static let frameB = P.titleB.frame!
+
+    /// A like lamp's heading, its every word in B's address, and fewer of them than B's title has.
+    static let like = P.element("AXHeading", "Ceramic Table Lamp with Pleated Shade", CGRect(x: 100, y: 300, width: 200, height: 40))
 
     @Test func theTitleInViewWinsOverTheNeighbourScrolledAway() async throws {
         let note = try await Self.kept(on: P.titleA)
         #expect(Self.landing(note, on: Lamp.page(Lamp.urlB, [P.titleB, P.priceB, Self.away(P.cartB)])) == .on(Self.frameB))
         // The same as the hint with no neighbour.
-        var without = note
-        without.anchor.near = nil
-        #expect(Self.landing(without, on: Lamp.page(Lamp.urlB, [P.titleB, P.priceB, Self.away(P.cartB)])) == .on(Self.frameB))
+        #expect(Self.landing(Self.alone(note), on: Lamp.page(Lamp.urlB, [P.titleB, P.priceB, Self.away(P.cartB)])) == .on(Self.frameB))
     }
 
     /// Of two headings with B's name in view, the nearer to where A's title was, as with no neighbour at all.
@@ -61,11 +69,20 @@ struct ItemNameInViewTests {
         }
     }
 
-    /// A like item's name further down does not keep the one in view from winning.
-    @Test func aLikeNameScrolledAwayDoesNotMatter() async throws {
+    /// B's name in a second heading, scrolled away, does not keep the one in view from winning.
+    @Test func theSameNameScrolledAwayDoesNotMatter() async throws {
         let note = try await Self.kept(on: P.titleA)
-        let like = P.element("AXHeading", Lamp.titleB, Self.frameB)
-        #expect(Self.landing(note, on: Lamp.page(Lamp.urlB, [Self.away(like), P.titleB, Self.away(P.cartB)])) == .on(Self.frameB))
+        let again = P.element("AXHeading", Lamp.titleB, Self.frameB)
+        #expect(Self.landing(note, on: Lamp.page(Lamp.urlB, [Self.away(again), P.titleB, Self.away(P.cartB)])) == .on(Self.frameB))
+    }
+
+    /// A row of like items further down B lists A too: the hint's own name is on the page, scrolled away, and B's
+    /// title is the one it goes on.
+    @Test func itsOwnItemsNameInARowFurtherDownDoesNotMatter() async throws {
+        let note = try await Self.kept(on: P.titleA)
+        let page = Lamp.page(Lamp.urlB, [P.titleB, P.priceB, Self.away(P.cartB), Self.away(P.titleA)])
+        #expect(Self.landing(note, on: page) == .on(Self.frameB))
+        #expect(Self.landing(Self.alone(note), on: page) == .on(Self.frameB))
     }
 
     /// On the hint's own page the title is found by its name, whatever is scrolled away.
@@ -73,8 +90,6 @@ struct ItemNameInViewTests {
         let note = try await Self.kept(on: P.titleA)
         #expect(Self.landing(note, on: Lamp.page(Lamp.urlA, [P.titleA, Self.away(P.cartA)])) == .on(P.titleA.frame!))
     }
-
-    // MARK: as before
 
     @Test func theNameAlsoScrolledAwayIsFurtherDown() async throws {
         let note = try await Self.kept(on: P.titleA)
@@ -88,13 +103,69 @@ struct ItemNameInViewTests {
         #expect(Self.landing(note, on: Lamp.page(Lamp.urlB, [reviews, P.priceB, Self.away(P.cartB)])) == .below)
     }
 
-    /// Down A's own page, at a carousel of like lamps: the hint's own title is on the page, scrolled away.
+    // MARK: the item's name, scrolled away, and a like one in view
+
+    @Test func aLikeNameInViewIsNotTheTitleScrolledAway() async throws {
+        let note = try await Self.kept(on: P.titleA)
+        #expect(NoteAnchor.namesTheItem(Self.like.label, page: PageKey.of(Lamp.urlB)))
+        for cart in [Self.away(P.cartB, y: -400), P.cartB] {   // and with the cart in a bar that stays in view
+            let page = Lamp.page(Lamp.urlB, [Self.away(P.titleB, y: -600), cart, Self.like])
+            #expect(Self.landing(note, on: page) == .below)
+            #expect(Self.landing(Self.alone(note), on: page) == .below)
+        }
+    }
+
+    /// Both in view, the like one just where A's title was: B's title, not the nearer.
+    @Test func ofTheTitleAndALikeNameInViewItIsTheTitle() async throws {
+        let note = try await Self.kept(on: P.titleA)
+        var near = Self.like
+        near.frame = P.titleA.frame
+        for names in [[near, P.titleB], [P.titleB, near]] {
+            let page = Lamp.page(Lamp.urlB, names + [Self.away(P.cartB)])
+            #expect(Self.landing(note, on: page) == .on(Self.frameB))
+            #expect(Self.landing(Self.alone(note), on: page) == .on(Self.frameB))
+        }
+    }
+
+    /// The same lamp in another colour, B's title but for one word.
+    @Test func anotherColourInViewIsNotTheTitleScrolledAway() async throws {
+        let note = try await Self.kept(on: P.titleA)
+        let blue = P.element("AXHeading", Lamp.titleB.replacingOccurrences(of: "Ivory", with: "Blue"), Self.like.frame!)
+        #expect(NoteAnchor.namesTheItem(blue.label, page: PageKey.of(Lamp.urlB)))
+        let page = Lamp.page(Lamp.urlB, [Self.away(P.titleB, y: -600), Self.away(P.cartB, y: -400), blue])
+        #expect(Self.landing(note, on: page) == .below)
+        #expect(Self.landing(Self.alone(note), on: page) == .below)
+    }
+
+    /// Down A's own page, at a carousel of like lamps.
     @Test func onItsOwnPageALikeLampsNameIsNotTheTitleScrolledAway() async throws {
         let note = try await Self.kept(on: P.titleA)
-        let like = P.element("AXHeading", "Better Homes & Gardens 13 in Pink Velvet Pleated Shade Table Lamp", CGRect(x: 100, y: 300, width: 200, height: 40))
-        #expect(NoteAnchor.namesTheItem(like.label, page: PageKey.of(Lamp.urlA)))
-        #expect(Self.landing(note, on: Lamp.page(Lamp.urlA, [Self.away(P.titleA, y: -600), Self.away(P.cartA, y: -400), like])) == .below)
+        let pink = P.element("AXHeading", "Better Homes & Gardens 13 in Pink Velvet Pleated Shade Table Lamp", Self.like.frame!)
+        #expect(NoteAnchor.namesTheItem(pink.label, page: PageKey.of(Lamp.urlA)))
+        let page = Lamp.page(Lamp.urlA, [Self.away(P.titleA, y: -600), Self.away(P.cartA, y: -400), pink])
+        #expect(Self.landing(note, on: page) == .below)
+        #expect(Self.landing(Self.alone(note), on: page) == .below)
     }
+
+    /// Known limit: B's title in a shorter form in view, and a fuller name of the item scrolled away. A miss, not a
+    /// wrong place.
+    @Test func aFullerNameScrolledAwayKeepsTheHintFromAShorterOneInView() async throws {
+        let note = try await Self.kept(on: P.titleA)
+        let short = P.element("AXHeading", "Home Decor Ribbed Ceramic Table Lamp", Self.frameB)
+        let page = Lamp.page(Lamp.urlB, [short, Self.away(P.cartB), Self.away(P.titleB)])
+        #expect(Self.landing(note, on: page) == .below)
+        #expect(Self.landing(Self.alone(note), on: page) == .below)
+    }
+
+    /// Known limit: B's title is not listed at all, so a like name is the best the page has.
+    @Test func withNoTitleListedALikeNameInViewTakesTheHint() async throws {
+        let note = try await Self.kept(on: P.titleA)
+        let page = Lamp.page(Lamp.urlB, [Self.like, P.priceB, Self.away(P.cartB)])
+        #expect(Self.landing(note, on: page) == .on(Self.like.frame!))
+        #expect(Self.landing(Self.alone(note), on: page) == .on(Self.like.frame!))
+    }
+
+    // MARK: as before
 
     @Test func aPriceIsFurtherDownWithItsNeighbour() async throws {
         let note = try await Self.kept(on: P.priceA)
