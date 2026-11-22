@@ -61,6 +61,10 @@ struct ItemNameHintTests {
         for label in ["Size 10", "Qty 1", "4.5 out of 5 stars", "$24.97", "13 in", "Now $19.88"] {
             #expect(!NoteAnchor.namesTheItem(label, page: a), "\(label)")
         }
+        // Nor does one word of the address with a size put to it: short words are not words of a name here.
+        for label in ["13 in Lamp", "Lamp 13", "13 in Velvet"] {
+            #expect(!NoteAnchor.namesTheItem(label, page: a), "\(label)")
+        }
         // Without a page there is no slug to tell by.
         #expect(!NoteAnchor.namesTheItem(Self.titleA, page: nil))
     }

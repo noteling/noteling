@@ -233,6 +233,113 @@ struct ItemNameInViewTests {
         #expect(Self.landing(Self.alone(note), on: miss) == .below)
     }
 
+    // MARK: names alike but for words of one or two letters
+
+    static let spotA = P.titleA.frame!
+    static let bulbsUrl = "https://www.walmart.com/ip/Great-Value-LED-Bulbs-60-Watt-Soft-White-2-Pack/123456789"
+    static let bulbs = "Great Value LED Bulbs 60 Watt Soft White 2 Pack"
+
+    /// A page: its address, its title, and a name alike.
+    struct Alike: CustomTestStringConvertible {
+        let url: String, title: String, other: String
+        var testDescription: String { other }
+        @MainActor func heading() -> PageElement { P.element("AXHeading", title, ItemNameInViewTests.frameB) }
+        @MainActor func like(_ frame: CGRect) -> PageElement { P.element("AXHeading", other, frame) }
+        @MainActor func page(_ elements: [PageElement]) -> PageSnapshot { Lamp.page(url, elements) }
+    }
+
+    static let shortWordsApart = [
+        Alike(url: bulbsUrl, title: bulbs, other: "Great Value LED Bulbs 60 Watt Soft White 4 Pack"),
+        Alike(url: bulbsUrl, title: bulbs, other: "Great Value LED Bulbs 40 Watt Soft White 2 Pack"),
+        Alike(url: Lamp.urlB, title: Lamp.titleB, other: "\(Lamp.titleB), 2 Pk"),
+        Alike(url: Lamp.urlB, title: Lamp.titleB, other: Lamp.titleB.replacingOccurrences(of: "18 in ", with: "")),
+    ]
+    static let hundredWatt = Alike(url: bulbsUrl, title: bulbs, other: "Great Value LED Bulbs 100 Watt Soft White 2 Pack")
+
+    @Test(arguments: shortWordsApart + [hundredWatt], [true, false])
+    func aNameAlikeButForShortWordsIsNotTheTitleScrolledAway(_ it: Alike, cartInView: Bool) async throws {
+        let note = try await Self.kept(on: P.titleA)
+        let cart = cartInView ? P.cartB : Self.away(P.cartB, y: -400)
+        for names in [[Self.away(it.heading(), y: -600), it.like(Self.like.frame!)], [it.like(Self.like.frame!), Self.away(it.heading(), y: -600)]] {
+            #expect(Self.landing(note, on: it.page(names + [cart])) == .below)
+            #expect(Self.landing(Self.alone(note), on: it.page(names + [cart])) == .below)
+        }
+    }
+
+    /// Both in view, the other just where A's title was.
+    @Test(arguments: shortWordsApart + [hundredWatt], [true, false])
+    func ofTheTitleAndANameAlikeButForShortWordsItIsTheTitle(_ it: Alike, cartInView: Bool) async throws {
+        let note = try await Self.kept(on: P.titleA)
+        let cart = cartInView ? P.cartB : Self.away(P.cartB)
+        for names in [[it.heading(), it.like(Self.spotA)], [it.like(Self.spotA), it.heading()]] {
+            #expect(Self.landing(note, on: it.page(names + [cart])) == .on(Self.frameB))
+            #expect(Self.landing(Self.alone(note), on: it.page(names + [cart])) == .on(Self.frameB))
+        }
+    }
+
+    static let blueB = Lamp.titleB.replacingOccurrences(of: "Ivory", with: "Blue")
+
+    /// A title, and a like item's name with fewer of the longer words in the address: some with more of the short
+    /// ones, which the title lacks or writes otherwise.
+    static let aLongWordApart = ["", "18in ", "18\" ", "18 in "].map {
+        Alike(url: Lamp.urlB, title: Lamp.titleB.replacingOccurrences(of: "18 in ", with: $0), other: blueB)
+    } + [
+        Alike(url: "https://www.walmart.com/ip/Ceramic-Table-Lamp-in-Ivory-by-Home-Decor/123456789",
+              title: "Home Decor Ceramic Table Lamp, Ivory", other: "Ceramic Table Lamp in Blue by Home Decor"),
+        Alike(url: "https://www.walmart.com/ip/Great-Value-LED-Bulbs-Soft-White-A-19-E-26-2-Pack/123456789",
+              title: "Great Value LED Bulbs Soft White 2 Pack", other: "Great Value LED Bulbs Cool White A 19 E 26 2 Pack"),
+    ]
+
+    /// Short words never outdo a longer one.
+    @Test(arguments: aLongWordApart)
+    func shortWordsDoNotOutdoALongerOne(_ it: Alike) async throws {
+        let note = try await Self.kept(on: P.titleA)
+        for hint in [note, Self.alone(note)] {
+            for cart in [P.cartB, Self.away(P.cartB)] {
+                #expect(Self.landing(hint, on: it.page([Self.away(it.heading(), y: -600), it.like(Self.like.frame!), cart])) == .below)
+                #expect(Self.landing(hint, on: it.page([it.like(Self.spotA), it.heading(), cart])) == .on(Self.frameB))
+                #expect(Self.landing(hint, on: it.page([it.heading(), Self.away(it.like(Self.like.frame!)), cart])) == .on(Self.frameB))
+            }
+        }
+    }
+
+    /// Nor do they outdo the fewest of the longer words.
+    @Test func shortWordsDoNotOutdoTheFewestLongerOnes() async throws {
+        let note = try await Self.kept(on: P.titleA)
+        let it = Alike(url: Lamp.urlB, title: Lamp.titleB.replacingOccurrences(of: "18 in ", with: ""), other: "About \(Lamp.titleB)")
+        for hint in [note, Self.alone(note)] {
+            #expect(Self.landing(hint, on: it.page([Self.away(it.heading(), y: -600), it.like(Self.like.frame!), Self.away(P.cartB)])) == .below)
+            #expect(Self.landing(hint, on: it.page([it.like(Self.spotA), it.heading(), Self.away(P.cartB)])) == .on(Self.frameB))
+        }
+        // Known limit, the price of it: a title with one word more than a pack sibling, which takes the hint.
+        let new = Alike(url: Self.bulbsUrl, title: "New \(Self.bulbs)", other: Self.shortWordsApart[0].other)
+        for hint in [note, Self.alone(note)] {
+            #expect(Self.landing(hint, on: new.page([Self.away(new.heading(), y: -600), new.like(Self.like.frame!), Self.away(P.cartB)])) == .on(Self.like.frame!))
+        }
+    }
+
+    /// Known limits, each a wrong place with the like name in view and a miss with it scrolled away: the address lacks
+    /// a short word of the title, and a like name lacks it too, so has the fewest words; or the title lacks a short
+    /// word of the address, and a like name has it.
+    static let shortWordLimits = [
+        Alike(url: "https://www.walmart.com/ip/nike-air-max-running-shoes/123456789",
+              title: "Nike Air Max 90 Running Shoes", other: "Nike Air Max Running Shoes"),
+        Alike(url: "https://www.walmart.com/ip/Home-Decor-18-in-Ribbed-Ceramic-Table-Lamp/123456789",
+              title: "Home Decor Ribbed Ceramic Table Lamp", other: "Home Decor 20 in Ribbed Ceramic Table Lamp"),
+    ]
+
+    @Test(arguments: shortWordLimits)
+    func aShortWordOnlyTheTitleOrTheAddressHasCostsTheTitleTheHint(_ it: Alike) async throws {
+        let note = try await Self.kept(on: P.titleA)
+        let both = [it.heading(), it.like(Self.like.frame!)]   // the title the nearer to where A's was
+        for hint in [note, Self.alone(note)] {
+            #expect(Self.landing(hint, on: it.page(both + [Self.away(P.cartB)])) == .on(Self.like.frame!))
+            #expect(Self.landing(hint, on: it.page([it.heading(), Self.away(it.like(Self.like.frame!)), Self.away(P.cartB)])) == .below)
+        }
+        // The cart in view: the neighbour finds the title.
+        #expect(Self.landing(note, on: it.page(both + [P.cartB])) == .on(Self.frameB))
+    }
+
     // MARK: as before
 
     @Test func aPriceIsFurtherDownWithItsNeighbour() async throws {
