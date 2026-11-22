@@ -101,6 +101,11 @@ struct ItemNameInViewTests {
         // A heading of the hint's role in view that names something else.
         let reviews = P.element("AXHeading", "Customer ratings and reviews", Self.frameB)
         #expect(Self.landing(note, on: Lamp.page(Lamp.urlB, [reviews, P.priceB, Self.away(P.cartB)])) == .below)
+        // One word of the address, or fewer than most of a name's words, do not name the item.
+        for other in ["Lamp", "Mainstays Ceramic Desk Lamp, Blue Drum Shade"] {
+            let heading = P.element("AXHeading", other, Self.frameB)
+            #expect(Self.landing(note, on: Lamp.page(Lamp.urlB, [heading, P.priceB, Self.away(P.cartB)])) == .below, "\(other)")
+        }
     }
 
     // MARK: the item's name, scrolled away, and a like one in view
