@@ -65,10 +65,14 @@ final class WandController {
         /// Placed by where its control should be (beside a named neighbour, or at a spot in the window) rather than
         /// by the control's name or id: the live page can say what is there.
         let predicted: Bool
-        init(note: StickyNote, frame: NSRect, predicted: Bool = false) {
+        /// The frame is its control's: not a spot it was guessed at (nor a like control the live page has there), nor
+        /// a sticker's place at the window's edge. A neighbour is measured only from a control's own frame.
+        let found: Bool
+        init(note: StickyNote, frame: NSRect, predicted: Bool = false, found: Bool? = nil) {
             self.note = note
             self.frame = frame
             self.predicted = predicted
+            self.found = found ?? !predicted
         }
     }
 
@@ -259,7 +263,7 @@ final class WandController {
             guard top - height >= window.minY + 6 else { break }
             let sticker = NSRect(x: x, y: top - height, width: 280, height: height)
             // StickerPaper.origin puts a sticker's corner 26 left of and 10 below its control's top right.
-            out.append(PlacedNote(note: shown, frame: NSRect(x: sticker.minX + 25, y: sticker.minY + 9, width: 1, height: 1)))
+            out.append(PlacedNote(note: shown, frame: NSRect(x: sticker.minX + 25, y: sticker.minY + 9, width: 1, height: 1), found: false))
             top = sticker.minY - 8
         }
         return out
@@ -395,14 +399,16 @@ final class WandController {
     /// Marks placed by where their control should be, moved onto the control that is there on the live page, when
     /// one about the size of the hint's is: a hint on a price block lands on the block as the page has it now, not
     /// where the block was on the page it was left on, and never on the column or the page around the spot. One
-    /// Accessibility call per such mark; a spot with no such control keeps its place.
-    nonisolated static func snapped(_ placed: [PlacedNote], bundleID: String, primaryMaxY: CGFloat) -> [PlacedNote] {
+    /// Accessibility call per such mark; a spot with no such control keeps its place. A control like the hint's is
+    /// where to draw the mark; that it is the hint's own is still a guess.
+    nonisolated static func snapped(_ placed: [PlacedNote], bundleID: String, primaryMaxY: CGFloat,
+                                    control: (String, CGPoint, String, [String]?, CGSize?) -> CGRect? = ControlSnap.frame) -> [PlacedNote] {
         placed.map { mark in
             guard mark.predicted, let role = mark.note.anchor.role else { return mark }
             let centre = CGPoint(x: mark.frame.midX, y: primaryMaxY - mark.frame.midY)
-            guard let frame = ControlSnap.frame(bundleID: bundleID, at: centre, role: role, classes: mark.note.anchor.classes, like: mark.frame.size),
+            guard let frame = control(bundleID, centre, role, mark.note.anchor.classes, mark.frame.size),
                   frame.width > 0, frame.height > 0 else { return mark }
-            return PlacedNote(note: mark.note, frame: NSRect(x: frame.minX, y: primaryMaxY - frame.maxY, width: frame.width, height: frame.height))
+            return PlacedNote(note: mark.note, frame: NSRect(x: frame.minX, y: primaryMaxY - frame.maxY, width: frame.width, height: frame.height), found: false)
         }
     }
 
@@ -585,7 +591,7 @@ final class WandController {
         placed.removeAll { $0.note.id == note.id }
         unplaced.removeAll { $0.id == note.id }
         edges.removeAll { $0.note.id == note.id }
-        placed.append(PlacedNote(note: note, frame: draft.frame))
+        placed.append(PlacedNote(note: note, frame: draft.frame, found: draft.found))
         refreshStickers()
         onNoteSave?(note)
         return note
@@ -664,7 +670,7 @@ final class WandView: NSView {
     private var captionRestore: DispatchWorkItem?
     private var stickers: [StickerLayer] = []
     private var editor: NoteEditor?
-    private var editing: (anchor: NoteAnchor, frame: NSRect, existing: StickyNote?)?
+    private var editing: (anchor: NoteAnchor, frame: NSRect, existing: StickyNote?, found: Bool)?
     /// The page as read when the paper opened on a control with no name of its own, for its named neighbour.
     private(set) var pageForPaper: PageSnapshot?
     private var paperReads = 0
@@ -764,8 +770,9 @@ final class WandView: NSView {
         if !dragged, let id = sticker(at: start), let original = controller.note(id: id) {
             clearInk()
             if strokeIsNote {
-                let frame = stickers.first { $0.note.id == id }.map { $0.frame } ?? NSRect(x: start.x - 8, y: start.y - 8, width: 16, height: 16)
-                present(anchor: original.anchor, at: frame, existing: original)
+                let sticker = stickers.first { $0.note.id == id }
+                let frame = sticker?.frame ?? NSRect(x: start.x - 8, y: start.y - 8, width: 16, height: 16)
+                present(anchor: original.anchor, at: frame, existing: original, found: sticker?.found ?? false)
             } else {
                 controller.pick(note: id, at: start)
             }
@@ -807,7 +814,7 @@ final class WandView: NSView {
     func showStickers(_ placed: [WandController.PlacedNote]) {
         stickers.forEach { $0.layer.removeFromSuperlayer() }
         stickers = placed.map { p in
-            let s = StickerLayer(note: p.note, frame: p.frame, scale: screen.backingScaleFactor)
+            let s = StickerLayer(note: p.note, frame: p.frame, found: p.found, scale: screen.backingScaleFactor)
             s.mode = passive ? .open : .brief
             layer?.addSublayer(s.layer)
             layout(s)
@@ -858,7 +865,8 @@ final class WandView: NSView {
         for s in stickers where s.note.id == id && s.mode != mode { s.mode = mode; layout(s) }
     }
 
-    func present(anchor: NoteAnchor, at frame: NSRect, existing: StickyNote?) {
+    /// `found`: the frame is the hint's control's, not where its sticker stands for want of it.
+    func present(anchor: NoteAnchor, at frame: NSRect, existing: StickyNote?, found: Bool = true) {
         editor?.removeFromSuperview()
         let ed = NoteEditor(existing: existing, place: anchor.controlSummary, checks: controller.checksProvider(controller.scene),
                             canShare: controller.canShare(), scope: Self.scopes(for: anchor, existing: existing))
@@ -866,7 +874,7 @@ final class WandView: NSView {
         ed.frame = NSRect(origin: o, size: ed.frame.size)
         ed.onCommit = { [weak self] text, kind, check, scope in self?.finishEditor(text: text, kind: kind, check: check, scope: scope) }
         ed.onShare = { [weak self] text, kind, check, scope in self?.finishEditor(text: text, kind: kind, check: check, scope: scope, share: true) }
-        readPageForPaper(anchor: anchor, existing: existing)
+        readPageForPaper(anchor: anchor, existing: existing, found: found)
         ed.onCancel = { [weak self] in self?.closeEditor() }
         ed.onDelete = { [weak self] in
             guard let self, let ex = self.editing?.existing else { return }
@@ -876,7 +884,7 @@ final class WandView: NSView {
         }
         addSubview(ed)
         editor = ed
-        editing = (anchor, frame, existing)
+        editing = (anchor, frame, existing, found)
         NSCursor.arrow.set()
         window?.makeKey()
         window?.makeFirstResponder(ed.textView)
@@ -893,10 +901,11 @@ final class WandView: NSView {
     }
 
     /// A control with no name of its own, on a page: the page is read while the hint is written, so the hint can be
-    /// stuck beside the named control nearest to it.
-    private func readPageForPaper(anchor: NoteAnchor, existing: StickyNote?) {
+    /// stuck beside the named control nearest to it. Not for one whose control was not found: beside what, then, is
+    /// not known.
+    private func readPageForPaper(anchor: NoteAnchor, existing: StickyNote?, found: Bool) {
         pageForPaper = nil
-        guard anchor.page != nil, anchor.label == nil || NoteAnchor.namesTheItem(anchor.label, page: anchor.page),
+        guard found, anchor.page != nil, anchor.label == nil || NoteAnchor.namesTheItem(anchor.label, page: anchor.page),
               anchor.domID == nil, existing?.anchor.near == nil,
               let bundle = controller.scene?.bundleID else { return }
         paperReads += 1
@@ -932,7 +941,7 @@ final class WandView: NSView {
             let control = CGRect(x: e.frame.minX, y: primaryMaxY - e.frame.maxY, width: e.frame.width, height: e.frame.height)
             anchor.near = NoteNear.of(control: control, in: page)
         }
-        let draft = NoteDraft(existingID: e.existing?.id, anchor: anchor, kind: kind, text: text, frame: e.frame, check: check)
+        let draft = NoteDraft(existingID: e.existing?.id, anchor: anchor, kind: kind, text: text, frame: e.frame, found: e.found, check: check)
         let note = controller.save(draft)
         closeEditor()
         if share {

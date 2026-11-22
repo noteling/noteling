@@ -306,6 +306,7 @@ struct NoteDraft {
     var kind: String
     var text: String
     var frame: NSRect          // where the sticker goes on screen, AppKit global coordinates
+    var found: Bool = true     // the frame is its control's
     var check: NoteCheck? = nil
 }
 
