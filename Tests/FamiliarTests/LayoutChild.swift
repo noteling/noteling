@@ -12,7 +12,7 @@ protocol WatchedChild: AnyObject {
 }
 
 extension Process: WatchedChild {
-    func stop() { kill(processIdentifier, SIGKILL) }
+    func stop() { ChildEnd.kill(processIdentifier) }
 }
 
 /// How a watched child ended. Every wait here has a limit: `waitUntilExit` has none, and has been seen not to come back
@@ -53,12 +53,24 @@ struct ChildEnd {
         return end
     }
 
+    /// Whether the process is there and a child of this one: an end never reported leaves a number that may by now be
+    /// somebody else's.
+    static func isOurs(_ pid: pid_t) -> Bool {
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        return proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size && info.pbi_ppid == UInt32(getpid())
+    }
+
+    static func kill(_ pid: pid_t) {
+        if isOurs(pid) { _ = Darwin.kill(pid, SIGKILL) }
+    }
+
     /// What is known of the child, for a failure: its end, whether it was seen running, and its log.
     func told(_ child: some WatchedChild, log: String) -> String {
         let how = switch (timedOut, status) {
         case (false, let status?): "ended by itself with status \(status)"
         case (true, let status?): "was stopped at the limit, and ended with status \(status)"
-        case (_, nil): "was stopped at the limit, and its end was never reported (process \(kill(child.processIdentifier, 0) == 0 ? "still there" : "gone"))"
+        case (_, nil): "was not over at the limit, and its end was never reported (process \(Self.isOurs(child.processIdentifier) ? "still there" : "gone"))"
         }
         return "The child (pid \(child.processIdentifier)) was \(seenRunning ? "seen running" : "never seen running") and \(how). Its log:\n\(log.isEmpty ? "(empty)" : log)"
     }

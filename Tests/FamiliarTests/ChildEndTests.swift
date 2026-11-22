@@ -57,7 +57,7 @@ struct ChildEndTests {
         let end = try await ChildEnd.of(child, limit: 0.2, afterStop: 0.3)
         #expect(end.seenRunning && end.timedOut && end.status == nil)
         #expect(child.stopped == 1)
-        #expect(end.told(child, log: "its last line") == "The child (pid \(child.processIdentifier)) was seen running and was stopped at the limit, and its end was never reported (process gone). Its log:\nits last line")
+        #expect(end.told(child, log: "its last line") == "The child (pid \(child.processIdentifier)) was seen running and was not over at the limit, and its end was never reported (process gone). Its log:\nits last line")
     }
 
     @Test func aRealChildPastTheLimitIsNotLeftBehind() async throws {
@@ -68,6 +68,25 @@ struct ChildEndTests {
         let end = try await ChildEnd.of(child, limit: 0.3)
         #expect(end.seenRunning && end.timedOut && end.status == SIGKILL)
         #expect(kill(child.processIdentifier, 0) == -1 && errno == ESRCH)
+    }
+
+    @Test func onlyAChildOfThisProcessIsKilled() async throws {
+        let child = Process()
+        let pipe = Pipe()
+        child.executableURL = URL(fileURLWithPath: "/bin/sh")
+        child.arguments = ["-c", "/bin/sleep 60 & echo $!; wait"]
+        child.standardOutput = pipe
+        try child.run()
+        let line = String(decoding: pipe.fileHandleForReading.availableData, as: UTF8.self)
+        let grandchild = try #require(pid_t(line.trimmingCharacters(in: .whitespacesAndNewlines)))
+        #expect(ChildEnd.isOurs(child.processIdentifier))
+        #expect(!ChildEnd.isOurs(grandchild))
+        ChildEnd.kill(grandchild)   // not ours to kill: it stays
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(child.isRunning)   // it waits for the grandchild
+        #expect(kill(grandchild, 0) == 0)
+        _ = kill(grandchild, SIGTERM)
+        #expect(try await ChildEnd.of(child, limit: 30).timedOut == false)
     }
 
     @Test func aCancelledTestDoesNotLeaveItsChildBehind() async throws {
