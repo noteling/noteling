@@ -557,6 +557,9 @@ notarization credential: `xcrun notarytool store-credentials familiar-notary --a
 Then `./scripts/release.sh` signs with the hardened runtime, notarizes, staples, and writes `dist/<version>/Noteling-<version>.dmg`
 and `.pkg` (signed too if a **Developer ID Installer** certificate exists).
 The release script refuses an existing output directory; use a new version instead of replacing an earlier build.
+It also refuses, before anything is sent to Apple, an app that another account on the Mac couldn't read and run, and
+checks the DMG and the .pkg again (`scripts/check-modes.sh`). `scripts/build.sh` sets those modes before signing, so the
+checkout's modes and your umask don't matter.
 `scripts/build.sh` picks the Developer ID
 automatically when present; Developer ID builds keep secrets in the Keychain (`secretsStore: auto`).
 IT can push the .pkg via MDM with a PPPC profile that pre-approves Accessibility; Screen Recording cannot be

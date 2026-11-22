@@ -4,6 +4,7 @@
 #   xcrun notarytool store-credentials familiar-notary --apple-id EMAIL --team-id TEAMID --password APP_SPECIFIC_PASSWORD
 set -euo pipefail
 cd "$(dirname "$0")/.."
+umask 022   # stapler writes the ticket into the app
 PROFILE="${NOTELING_NOTARY_PROFILE:-${FAMILIAR_NOTARY_PROFILE:-familiar-notary}}"   # profile name from before the rename
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
 DIST="dist/$VERSION"
@@ -19,6 +20,8 @@ xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1 || { echo
 APP="build/Noteling.app"
 codesign --verify --deep --strict --verbose=2 "$APP"
 grep -q "Developer ID" <(codesign -dvv "$APP" 2>&1) || { echo "app is not Developer ID signed"; exit 1; }
+
+./scripts/check-modes.sh "$APP"   # before anything is sent to Apple
 
 mkdir -p dist
 mkdir "$DIST"
@@ -36,10 +39,11 @@ staple "$APP"
 rm "$DIST/Noteling.zip"
 
 echo "== dmg"
-STAGE="$(mktemp -d)"; cp -R "$APP" "$STAGE/"; ln -s /Applications "$STAGE/Applications"
+STAGE="$(mktemp -d)"; chmod 755 "$STAGE"; cp -R "$APP" "$STAGE/"; ln -s /Applications "$STAGE/Applications"
 DMG="$DIST/Noteling-$VERSION.dmg"
 hdiutil create -volname "Noteling" -srcfolder "$STAGE" -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
+./scripts/check-modes.sh "$DMG"
 IDENTITY_APP="$(security find-identity -v -p codesigning | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')"
 codesign --force --timestamp --sign "$IDENTITY_APP" "$DMG"      # the image itself must be signed before notarization
 xcrun notarytool submit "$DMG" --keychain-profile "$PROFILE" --wait
@@ -50,10 +54,12 @@ PKG="$DIST/Noteling-$VERSION.pkg"
 IDENTITY_INSTALLER="$(security find-identity -v -p basic | grep -o '"Developer ID Installer: [^"]*"' | head -1 | tr -d '"' || true)"
 if [ -n "$IDENTITY_INSTALLER" ]; then
   pkgbuild --component "$APP" --install-location /Applications --identifier app.noteling.mac --version "$VERSION" --sign "$IDENTITY_INSTALLER" "$PKG"
+  ./scripts/check-modes.sh "$PKG"
   xcrun notarytool submit "$PKG" --keychain-profile "$PROFILE" --wait
   staple "$PKG"
 else
   pkgbuild --component "$APP" --install-location /Applications --identifier app.noteling.mac --version "$VERSION" "$PKG"
+  ./scripts/check-modes.sh "$PKG"
   echo "note: no 'Developer ID Installer' certificate, so the .pkg is unsigned (fine for MDM push, not for direct download). Create one on the developer portal to sign it."
 fi
 

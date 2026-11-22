@@ -2,6 +2,7 @@
 # Builds Noteling with SwiftPM and assembles build/Noteling.app (ad-hoc signed unless a "Noteling Dev" or older "Familiar Dev" identity exists).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+umask 022   # codesign writes files of its own after the modes are set below
 
 CONFIG="${1:-release}"
 if ! OUT=$(swift build -c "$CONFIG" 2>&1); then
@@ -59,6 +60,10 @@ JUNK="$(find "$APP" \( -name '__pycache__' -o -name '*.pyc' -o -name '.DS_Store'
 if [ -n "$JUNK" ]; then
   echo "build refused: these files must not ship in the app:"; echo "$JUNK"; exit 1
 fi
+
+# Copies keep the checkout's modes, which a private umask makes owner-only; every account on the Mac must be able to
+# read and run the app. Before signing: a signed app is never changed to rescue it.
+chmod -R u+rwX,go+rX,go-w "$APP"
 
 IDENTITY="${FAMILIAR_SIGN_IDENTITY:-}"
 IDS="$(security find-identity -v -p codesigning 2>/dev/null || true)"
