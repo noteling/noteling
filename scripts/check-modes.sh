@@ -33,7 +33,8 @@ esac
 BAD="$(find "$APP" ! -type l \( ! -perm -444 -o -perm -020 -o -perm -002 \
   -o \( -perm -100 ! -perm -011 \) \) -exec stat -f '%Sp %N' {} +)"
 if [ -n "$MOUNTED" ]; then   # the window the app is dragged from
-  BAD="$BAD$(find "$WORK/mount" -maxdepth 0 ! -perm -555 -exec stat -f '%Sp %N' {} +)"
+  WINDOW="$(find "$WORK/mount" -maxdepth 0 ! -perm -555 -exec stat -f '%Sp %N' {} +)"
+  BAD="${WINDOW:+$WINDOW$'\n'}$BAD"
 fi
 if [ -n "$BAD" ]; then
   echo "refused: in $TARGET another account couldn't open these, or could change them:"
