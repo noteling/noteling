@@ -143,6 +143,11 @@ struct NoteAnchor: Codable, Equatable {
     /// found on the other pages of the kind.
     var isOnTheItemsName: Bool { pattern != nil && Self.namesTheItem(label, page: page) }
 
+    /// Found by the named control beside it: a hint on a control with no name, or on the item's own name. Any other
+    /// hint is on its own control or none, whatever neighbour it carries (a title's hint, changed from pages like
+    /// this to this page, keeps its neighbour for when it is changed back).
+    var goesByItsNeighbour: Bool { label == nil || isOnTheItemsName }
+
     /// What sets an item's own name apart from a control's: "Add to cart - Bananas", "Add to list: Milk".
     static let itemSeparators: Set<Character> = ["-", "–", "—", ":", "|", ",", "("]
 

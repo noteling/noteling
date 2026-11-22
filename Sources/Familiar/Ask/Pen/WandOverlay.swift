@@ -322,8 +322,8 @@ final class WandController {
                 }
             }
             var predicted = false
-            // A control with no name: beside the named one it was next to, where that one is now.
-            if found == nil, let near = anchor.near, let named = Self.neighbour(near, in: page, spot: spot), let there = named.frame {
+            // A control with no name, or the item's own: beside the named one it was next to, where that one is now.
+            if found == nil, anchor.goesByItsNeighbour, let near = anchor.near, let named = Self.neighbour(near, in: page, spot: spot), let there = named.frame {
                 if named.visible {
                     let expected = near.rect(from: there)
                     let control = Self.control(like: expected, role: anchor.role, in: page)
