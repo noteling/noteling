@@ -68,11 +68,14 @@ final class WandController {
         /// The frame is its control's: not a spot it was guessed at (nor a like control the live page has there), nor
         /// a sticker's place at the window's edge. A neighbour is measured only from a control's own frame.
         let found: Bool
-        init(note: StickyNote, frame: NSRect, predicted: Bool = false, found: Bool? = nil) {
+        /// On its control by a name that differs from the hint's only in a count, the only such control on the page.
+        let recounted: Bool
+        init(note: StickyNote, frame: NSRect, predicted: Bool = false, found: Bool? = nil, recounted: Bool = false) {
             self.note = note
             self.frame = frame
             self.predicted = predicted
             self.found = found ?? !predicted
+            self.recounted = recounted
         }
     }
 
@@ -219,12 +222,7 @@ final class WandController {
                     result.placed = await Task.detached(priority: .userInitiated) { Self.snapped(marks, bundleID: bundle, primaryMaxY: primaryMaxY) }.value
                     guard self.isActive || self.isShowingNotes else { return }
                 }
-                // Notes saved while the page was read keep where they were put; ones removed meanwhile stay gone.
-                let current = Set(self.sceneNotes.map(\.id)), savedMeanwhile = Set(self.placed.map(\.note.id))
-                self.placed = result.placed.filter { current.contains($0.note.id) && !savedMeanwhile.contains($0.note.id) }
-                    + self.placed.filter { current.contains($0.note.id) }
-                self.unplaced = (result.missing + result.below).filter { current.contains($0.id) }
-                self.below = Set(result.below.map(\.id))
+                self.take(result)
                 let window = page.flatMap(\.windowFrame).map { NSRect(x: $0.minX, y: primaryMaxY - $0.maxY, width: $0.width, height: $0.height) }
                 self.edges = window.map { Self.atEdge(self.unplaced, of: $0, below: self.below) } ?? []
                 self.refreshStickers()
@@ -243,6 +241,16 @@ final class WandController {
             refreshStickers()
             onPlaced?(placed.count, unplaced.count, isShowingNotes)
         }
+    }
+
+    /// Where a read of the page put the scene's notes. Notes saved while the page was read keep where they were put;
+    /// ones removed meanwhile stay gone.
+    func take(_ result: (placed: [PlacedNote], missing: [StickyNote], below: [StickyNote])) {
+        let current = Set(sceneNotes.map(\.id)), savedMeanwhile = Set(placed.map(\.note.id))
+        placed = result.placed.filter { current.contains($0.note.id) && !savedMeanwhile.contains($0.note.id) }
+            + placed.filter { current.contains($0.note.id) }
+        unplaced = (result.missing + result.below).filter { current.contains($0.id) }
+        below = Set(result.below.map(\.id))
     }
 
     static let noNotes = "No hints on this page yet. Pick up the pen and right-click a button to leave one."
@@ -286,8 +294,8 @@ final class WandController {
 
     /// Notes placed on a page's controls: by the page's own id, then by role and label, then beside the named control
     /// a nameless one sat next to, then by the spot kept for it. Of several controls by one name, the one nearest
-    /// where the note's control was in the window. A note whose control isn't on the page is left out rather than
-    /// stuck somewhere wrong.
+    /// where the note's control was in the window. Last, on the one control whose name differs from the hint's only in
+    /// a count. A note whose control isn't on the page is left out rather than stuck somewhere wrong.
     static func place(_ notes: [StickyNote], page: PageSnapshot, primaryMaxY: CGFloat)
         -> (placed: [PlacedNote], missing: [StickyNote], below: [StickyNote]) {
         func appKit(_ frame: CGRect) -> NSRect { NSRect(x: frame.minX, y: primaryMaxY - frame.maxY, width: frame.width, height: frame.height) }
@@ -346,9 +354,26 @@ final class WandController {
                                                                       || (anchor.domID != nil && $0.domID == anchor.domID)) }) {
                 below.append(note)   // its control is on the page, scrolled out of view
             }
+            // Last, so that only a hint that would be missing is on its control by all of its name but a count.
+            else if let control = Self.recounted(anchor, in: page), !control.visible { below.append(note) }
+            else if let frame = Self.recounted(anchor, in: page)?.frame, frame.width > 0 || frame.height > 0 {
+                placed.append(PlacedNote(note: note, frame: appKit(frame), recounted: true))
+            }
             else { missing.append(note) }
         }
         return (placed, missing, below)
+    }
+
+    /// The one control on a page whose name differs from the hint's only in a count ("Notifications (3)" there,
+    /// "Notifications (4)" here), in view or not. Nil when the page lists two or more, or has the hint's own name or id
+    /// anywhere; or may have more than was read of it.
+    static func recounted(_ anchor: NoteAnchor, in page: PageSnapshot) -> PageElement? {
+        guard anchor.label != nil, !page.truncated, !page.loading else { return nil }
+        guard !page.elements.contains(where: { anchor.matchesElement(role: $0.role, label: $0.label)
+                                               || (anchor.domID != nil && $0.domID == anchor.domID) }) else { return nil }
+        let like = page.elements.filter { $0.role == anchor.role && ChangingCounts.differOnly(anchor.label, $0.label) }
+        guard like.count == 1, anchor.isRecounted(role: like[0].role, label: like[0].label, domID: like[0].domID) else { return nil }
+        return like[0]
     }
 
     /// Of the controls a note may be on, the one nearest where the note's control was in the window, when the note
@@ -535,10 +560,21 @@ final class WandController {
     }
 
     /// The note this control has of its own, for editing: only by the page's id or its role and label, never by
-    /// overlap, so right-clicking near or around a noted control starts a new note instead of moving someone's.
+    /// overlap, so right-clicking near or around a noted control starts a new note instead of moving someone's. With
+    /// none, the note the page's reading put on this very control by all of its name but a count: only the reading can
+    /// say there is no other such control, so before it is back there is none.
     func ownNote(on target: WandTarget) -> StickyNote? {
         guard target.region == nil, let e = target.element else { return nil }
-        return sceneNotes.first { Self.belongs($0, to: e) }
+        if let own = sceneNotes.first(where: { Self.belongs($0, to: e) }) { return own }
+        guard let f = e.frame else { return nil }
+        return placed.first { p in
+            p.recounted && Self.sameFrame(p.frame, f) && p.note.anchor.isRecounted(role: e.role, label: e.anchorLabel, domID: e.domID)
+        }?.note
+    }
+
+    /// One control's frame, as the page's reading and the pen each have it: within two points on every side.
+    static func sameFrame(_ a: NSRect, _ b: NSRect) -> Bool {
+        abs(a.minX - b.minX) <= 2 && abs(a.minY - b.minY) <= 2 && abs(a.maxX - b.maxX) <= 2 && abs(a.maxY - b.maxY) <= 2
     }
 
     /// A sticker picked with the pen: that note alone, as if its control had been pointed at, so a note whose control

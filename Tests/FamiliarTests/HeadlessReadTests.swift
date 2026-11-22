@@ -99,6 +99,8 @@ struct HeadlessReadTests {
     }
 
     /// `--find` and `WandController.place` give the same answer: found where the hint goes, missing where it is left out.
+    /// But for a name whose count has changed ("Shopping cart 1 item", now "2 items"): a hint is on it when the page has
+    /// no other, and `--find`, which looks for the name asked for, says there is none.
     @Test func findAgreesWithPlace() {
         let pages = [
             Self.page("https://shop.example/ip/milk/1", [Self.element("AXButton", "Add to cart", Self.cart)]),
@@ -121,6 +123,13 @@ struct HeadlessReadTests {
                 #expect(note.frame.minX == 500 && note.frame.width == 200)
             }
         }
+    }
+
+    @Test func findDoesNotFollowAChangedCountAsAHintDoes() {
+        let page = Self.page("https://shop.example/ip/milk/1", [Self.element("AXButton", "Shopping cart 2 items", Self.cart)])
+        #expect(WandController.place([Self.hint(on: "Shopping cart 1 item")], page: page, primaryMaxY: 800).placed.count == 1)
+        let found = HeadlessRead.find("Shopping cart 1 item", role: "AXButton", in: page)
+        #expect(found.match == "none" && found.count == 0)
     }
 
     @Test func exactWinsOverAlikeAndAnyRoleWithoutRole() {

@@ -49,6 +49,10 @@ when you leave a hint, and nothing goes anywhere but your own Mac until you shar
   hint's name exactly, its hint goes on the control of the same kind whose name starts with the same whole words,
   ten characters of them or more; of several, the one nearest where the hint was left. "Save changes" and "Save
   draft" share only "Save", so they are never taken for each other.
+- **A name with a count.** "Notifications (3)" or "Shopping cart 1 item" is called something else when the count
+  changes. When nothing on the page has the hint's name, its hint goes on the one control of the same kind whose name
+  differs only in the count; with two or more of them, on none. A number is a count in brackets, or before a word such as
+  items, messages or unread (in English); any other number, as in "Size 10" or "Page 2", is part of the name.
 - **Something with no name.** A hint on a block the page gives no name to, such as a price, is found on the next page
   of its kind beside the named control it sits next to ("Add to cart"), where that control is now, and about the
   size it was: a section of the page around that spot is never taken for it. Of several controls by one name, the
