@@ -44,11 +44,19 @@ when you leave a hint, and nothing goes anywhere but your own Mac until you shar
   or a scroll puts them away too.
 - **Noteling's glance.** Arriving where there are hints, Noteling holds up a small badge for a moment with their
   count. Click it to show them.
+- **A control's own name.** A hint on a control with a name goes on the control of that kind with the same name, capitals
+  and spaces aside; of several, the one nearest where the hint was left. When the page gives the control a lasting id,
+  the id finds it even if its name has changed. For **This page** and **Whole site**, a changed count (below) is the only
+  other way: a name like the hint's is not enough.
 - **A name that carries the item's.** A button whose name ends with the item's own ("Add to cart - Bananas") is
-  called something else on the next item's page ("Add to cart - Great Value Milk"). When no control there has the
-  hint's name exactly, its hint goes on the control of the same kind whose name starts with the same whole words,
-  ten characters of them or more; of several, the one nearest where the hint was left. "Save changes" and "Save
-  draft" share only "Save", so they are never taken for each other.
+  called something else on the next item's page ("Add to cart - Great Value Milk"). When no control in view there has the
+  hint's name exactly, a hint for **Pages like this** goes on the control of the same kind whose name starts with the
+  same whole words, ten characters of them or more, if in each name a separator comes right after the words they share,
+  or nothing does. A separator is a hyphen or dash, a colon, a comma, a `|` or an opening bracket. Of several such
+  controls, it is the one nearest where the hint was left. "Save changes" and "Save draft" share only "Save", so they
+  are never taken for each other; nor are names that part at a plain word, as "Sign in with Google" and "Sign in with
+  Apple" do. So a hint on "Write a review for lamp" isn't found at "Write a review for chair", nor one on "Add to
+  cart - Great Value Milk" at "Add to cart - Great Value Eggs".
 - **A name with a count.** "Notifications (3)" or "Shopping cart 1 item" is called something else when the count
   changes. When nothing on the page has the hint's name, its hint goes on the one control of the same kind whose name
   differs only in the count; with two or more of them, on none. A number is a count in brackets, or before a word such as
