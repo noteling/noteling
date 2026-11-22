@@ -129,11 +129,11 @@ struct NoteAnchor: Codable, Equatable {
         return words.all >= 2 && Double(words.inAddress) / Double(words.all) >= 0.6
     }
 
-    /// The different words of a name, those of one or two letters left out, and how many of them are in the parts of
-    /// the address that name the item.
-    static func itemWords(_ label: String?, page: PageKey?) -> (inAddress: Int, all: Int) {
+    /// The different words of a name, those of one or two letters left out (or only those), and how many of them are
+    /// in the parts of the address that name the item.
+    static func itemWords(_ label: String?, page: PageKey?, short: Bool = false) -> (inAddress: Int, all: Int) {
         guard let label = norm(label), let page else { return (0, 0) }
-        let words = Set(label.split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { $0.count > 2 })
+        let words = Set(label.split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { ($0.count <= 2) == short })
         let slugWords = Set(PagePattern.segments(of: page.path).filter(PagePattern.looksLikeASlug)
             .flatMap { $0.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init) })
         return (words.intersection(slugWords).count, words.count)
