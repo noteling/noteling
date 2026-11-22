@@ -19,27 +19,49 @@ enum ChangingCounts {
         "first", "top", "past", "every", "to", "with", "for", "than", "unit", "copy", "quiz", "test", "plan",
     ]
 
-    /// A name with one of its counts taken out, and the count.
+    /// A name with one of its counts taken out: the name up to the number, the number, the bracket's end or what is
+    /// counted (its singular), and the rest of the name.
     struct Reading: Equatable {
-        var rest: String
+        var before: String
         var count: Int
+        var what: String
+        var after: String
+
+        /// The same name with another count in the same place.
+        func differsOnlyInCount(from other: Reading) -> Bool {
+            before == other.before && what == other.what && after == other.after && count != other.count
+        }
+
+        /// Whether a normalized name can have such a reading: the same words, with a number there. A screen for a
+        /// page's names, as reading one is slow; it passes some that have none ("2 item", a year).
+        func isPossible(in name: String) -> Bool {
+            guard name.hasPrefix(before) else { return false }
+            let rest = name.dropFirst(before.count), digits = rest.prefix { "0123456789,".contains($0) }
+            guard !digits.isEmpty, rest.dropFirst(digits.count).hasPrefix(what) else { return false }
+            let end = rest.dropFirst(digits.count + what.count)
+            return end == after || end == "s" + after
+        }
     }
 
     /// The names are the same but for one count, in the same place in each, and the counts differ.
-    static func differOnly(_ a: String?, _ b: String?) -> Bool {
-        guard let a = NoteAnchor.norm(a), let b = NoteAnchor.norm(b), a != b else { return false }
-        let there = readings(of: b)
-        return readings(of: a).contains { mine in there.contains { $0.rest == mine.rest && $0.count != mine.count } }
+    static func differOnly(_ a: String?, _ b: String?) -> Bool { differOnly(readings(of: a), b) }
+
+    /// The same, of a name already read: a hint's is read once for all the names on a page.
+    static func differOnly(_ mine: [Reading], _ b: String?) -> Bool {
+        guard !mine.isEmpty, let name = NoteAnchor.norm(b), mine.contains(where: { $0.isPossible(in: name) }) else { return false }
+        let there = readings(of: name)
+        return mine.contains { my in there.contains { my.differsOnlyInCount(from: $0) } }
     }
 
-    /// Every way to read a count in a normalized name, with at least ten characters of name besides it.
-    static func readings(of name: String) -> [Reading] {
-        (bracketed(name) + counted(name)).filter { words(of: $0.rest).count >= 10 }
+    /// Every way to read a count in a name, with at least ten characters of name besides it.
+    static func readings(of name: String?) -> [Reading] {
+        guard let name = NoteAnchor.norm(name), name.utf8.contains(where: { (48...57).contains($0) }) else { return [] }   // a digit
+        return (bracketed(name) + counted(name)).filter { words(of: $0).count >= 10 }
     }
 
     /// The name less the count's place, brackets and the punctuation at its ends.
-    private static func words(of rest: String) -> String {
-        let bare = rest.map { "#()".contains($0) ? " " : $0 }
+    private static func words(of reading: Reading) -> String {
+        let bare = (reading.before + " " + reading.what + reading.after).map { "#()".contains($0) ? " " : $0 }
         return String(bare).split(separator: " ").joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: " ,:"))
     }
 
@@ -49,7 +71,7 @@ enum ChangingCounts {
             let digits = match.output.1, before = name[..<match.range.lowerBound], after = name[match.range.upperBound...]
             guard let count = number(digits), !(digits.count == 4 && (1900...2099).contains(count)),
                   endsABracketWell(after), !isLabelled(before) else { return nil }
-            return Reading(rest: before + "(#)" + after, count: count)
+            return Reading(before: before + "(", count: count, what: ")", after: String(after))
         }
     }
 
@@ -86,7 +108,7 @@ enum ChangingCounts {
             } else {
                 guard after.isEmpty else { return nil }
             }
-            return Reading(rest: before + "# " + what + after, count: count)
+            return Reading(before: String(before), count: count, what: " " + what, after: String(after))
         }
     }
 

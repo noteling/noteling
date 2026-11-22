@@ -355,9 +355,12 @@ final class WandController {
                 below.append(note)   // its control is on the page, scrolled out of view
             }
             // Last, so that only a hint that would be missing is on its control by all of its name but a count.
-            else if let control = Self.recounted(anchor, in: page), !control.visible { below.append(note) }
-            else if let frame = Self.recounted(anchor, in: page)?.frame, frame.width > 0 || frame.height > 0 {
-                placed.append(PlacedNote(note: note, frame: appKit(frame), recounted: true))
+            else if let control = Self.recounted(anchor, in: page) {
+                if !control.visible { below.append(note) }
+                else if let frame = control.frame, frame.width > 0 || frame.height > 0 {
+                    placed.append(PlacedNote(note: note, frame: appKit(frame), recounted: true))
+                }
+                else { missing.append(note) }
             }
             else { missing.append(note) }
         }
@@ -368,12 +371,18 @@ final class WandController {
     /// "Notifications (4)" here), in view or not. Nil when the page lists two or more, or has the hint's own name or id
     /// anywhere; or may have more than was read of it.
     static func recounted(_ anchor: NoteAnchor, in page: PageSnapshot) -> PageElement? {
-        guard anchor.label != nil, !page.truncated, !page.loading else { return nil }
-        guard !page.elements.contains(where: { anchor.matchesElement(role: $0.role, label: $0.label)
-                                               || (anchor.domID != nil && $0.domID == anchor.domID) }) else { return nil }
-        let like = page.elements.filter { $0.role == anchor.role && ChangingCounts.differOnly(anchor.label, $0.label) }
-        guard like.count == 1, anchor.isRecounted(role: like[0].role, label: like[0].label, domID: like[0].domID) else { return nil }
-        return like[0]
+        // This is run on the main thread for every hint that would be missing, so what costs least comes first: most
+        // hints have no count in their name, and few names on a page are like it.
+        let mine = ChangingCounts.readings(of: anchor.label)
+        guard !mine.isEmpty, !page.truncated, !page.loading else { return nil }
+        var found: PageElement?
+        for element in page.elements where element.role == anchor.role && ChangingCounts.differOnly(mine, element.label) {
+            guard found == nil else { return nil }
+            found = element
+        }
+        guard let like = found, !page.elements.contains(where: { anchor.matchesElement(role: $0.role, label: $0.label)
+                                                                 || (anchor.domID != nil && $0.domID == anchor.domID) }) else { return nil }
+        return anchor.isRecounted(role: like.role, label: like.label, domID: like.domID) ? like : nil
     }
 
     /// Of the controls a note may be on, the one nearest where the note's control was in the window, when the note

@@ -45,6 +45,14 @@ struct ChangingCountsTests {
         ("Notifications (3), open", "Notifications (4), open"),
         ("Notifications (3): open", "Notifications (4): open"),
         ("Notifications (3) open", "Notifications (4) open"),
+        ("Notifications (0)", "Notifications (9)"),
+        ("Messages, 1,000 unread messages", "Messages, 1 unread message"),
+        // A "#" of the name's own, before the count and after it.
+        ("#general: unread (3)", "#general: unread (4)"),
+        ("Thread #12 comments (3)", "Thread #12 comments (14)"),
+        ("Thread #12: 1 comment", "Thread #12: 2 comments"),
+        ("3 messages in #general", "14 messages in #general"),
+        ("Notifications (3) #general", "Notifications (4) #general"),
     ]
 
     /// One control too, and left missing: no shape here tells such a name from another control's.
@@ -148,6 +156,9 @@ struct ChangingCountsTests {
         ("Wish list 3 orders", "Wish list 4 orders"),
         ("Inbox (3)", "Inbox (4)"),                         // five characters of name
         ("2 items in", "3 items in"),
+        ("Thread #12 comments (3)", "Thread #13 comments (4)"),
+        ("(3) Notifications (#)", "(#) Notifications (4)"),   // a count each, in another place
+        ("2 messages in #general", "3 messages in #random"),
     ]
 
     /// Two controls told apart only by such a number, and taken for one: accepted. Each needs the hint's own name to be
@@ -240,6 +251,14 @@ struct ChangingCountsTests {
         #expect(Self.recounted(note, on: Self.page([Self.button(now, Self.elsewhere)], kind: kind)))
         #expect(V.landing(note, on: Self.page([Self.button(now, Self.away, visible: false)], kind: kind)) == .below)
         #expect(V.landing(note, on: Self.page([Self.button(now, nil, visible: false)], kind: kind)) == .below)
+    }
+
+    /// A hint whose name has a "#" of its own, among controls named much like it.
+    @Test(arguments: [("Thread #12 comments (3)", "Thread #12 comments (4)"), ("3 messages in #general", "1 message in #general"), ("#12: 3 unread messages", "#12: 1,204 unread messages")])
+    func aNameWithANumberSignIsFoundToo(_ was: String, _ now: String) {
+        let others = ["Thread #13 comments (4)", "Thread #12 comments", "Thread #12 comments (2024)", "4 messages in #random", "Messages in #general", "#13: 1 unread message", "#12: unread messages"]
+        let page = Self.page(others.map { Self.button($0) } + [Self.button(now, Self.elsewhere)])
+        #expect(V.landing(Self.hint(was), on: page) == .on(Self.elsewhere))
     }
 
     @Test func twoSuchControlsAreNone() {
