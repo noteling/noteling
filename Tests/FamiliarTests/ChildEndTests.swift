@@ -64,7 +64,10 @@ struct ChildEndTests {
         let child = Process()
         child.executableURL = URL(fileURLWithPath: "/bin/sh")
         child.arguments = ["-c", "trap '' TERM INT; while :; do /bin/sleep 1; done"]
+        child.standardOutput = FileHandle.nullDevice   // left behind, it would hold the run's own output open
+        child.standardError = FileHandle.nullDevice
         try child.run()
+        defer { if child.isRunning { _ = kill(child.processIdentifier, SIGKILL) } }
         let end = try await ChildEnd.of(child, limit: 0.3)
         #expect(end.seenRunning && end.timedOut && end.status == SIGKILL)
         #expect(kill(child.processIdentifier, 0) == -1 && errno == ESRCH)
@@ -76,6 +79,7 @@ struct ChildEndTests {
         child.executableURL = URL(fileURLWithPath: "/bin/sh")
         child.arguments = ["-c", "/bin/sleep 60 & echo $!; wait"]
         child.standardOutput = pipe
+        child.standardError = FileHandle.nullDevice
         try child.run()
         let line = String(decoding: pipe.fileHandleForReading.availableData, as: UTF8.self)
         let grandchild = try #require(pid_t(line.trimmingCharacters(in: .whitespacesAndNewlines)))
