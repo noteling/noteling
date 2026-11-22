@@ -29,8 +29,9 @@ esac
 [ -d "$APP" ] || { echo "refused: no app to check in $TARGET"; exit 1; }
 
 # Links are skipped: macOS follows them without using their own mode.
+# What its owner can run or enter, every account must; a folder its owner can't enter stops find, and so this.
 BAD="$(find "$APP" ! -type l \( ! -perm -444 -o -perm -020 -o -perm -002 \
-  -o \( -type d ! -perm -111 \) -o \( -perm -100 ! -perm -011 \) \) -exec stat -f '%Sp %N' {} +)"
+  -o \( -perm -100 ! -perm -011 \) \) -exec stat -f '%Sp %N' {} +)"
 if [ -n "$MOUNTED" ]; then   # the window the app is dragged from
   BAD="$BAD$(find "$WORK/mount" -maxdepth 0 ! -perm -555 -exec stat -f '%Sp %N' {} +)"
 fi
