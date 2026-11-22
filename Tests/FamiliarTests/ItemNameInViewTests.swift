@@ -352,7 +352,8 @@ struct ItemNameInViewTests {
     @Test func aHintForOnePageIsNotPutOnAnotherName() async throws {
         var note = try await Self.kept(on: P.titleA)
         note.anchor.pattern = nil
-        #expect(Self.landing(note, on: Lamp.page(Lamp.urlB, [P.titleB, P.priceB, Self.away(P.cartB)])) == .below)
+        // Nor further down with the neighbour it still carries: its title is not on this page at all.
+        #expect(Self.landing(note, on: Lamp.page(Lamp.urlB, [P.titleB, P.priceB, Self.away(P.cartB)])) == .missing)
     }
 
     @Test func theNeighbourInViewStillPicksTheTitleOfTwo() async throws {
