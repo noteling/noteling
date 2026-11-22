@@ -159,21 +159,26 @@ struct HintsTests {
         // Two hints on a page laying itself out: the control that stayed gets its tag; the one still moving waits.
         let still = NSRect(x: 100, y: 500, width: 120, height: 30)
         let moving = [NSRect(x: 100, y: 300, width: 120, height: 30), NSRect(x: 100, y: 240, width: 120, height: 30)]
-        var reads = 0
+        // The marks on as each look began: a wait on the clock can miss what the second look put on, for the third
+        // comes as soon as the wait's next turn does.
+        var showing: [[HintsController.Mark]] = []
+        weak var watched: HintsController?
         let hints = controller { _, notes in
-            reads += 1
+            showing.append(watched?.marks ?? [])
+            let reads = showing.count
             return .init(marks: notes.map { .init(note: $0, frame: $0.id == "a" ? still : moving[min(reads, 2) - 1]) })
         }
+        watched = hints
         hints.retryDelays = [0.05, 0.05, 0.05]
-        hints.arrive(scene(), notes: [note("a"), note("b", label: "Validate")])
+        let a = note("a"), b = note("b", label: "Validate")
+        hints.arrive(scene(), notes: [a, b])
+        await looks(hints, until: { showing.count >= 3 })
+        try? await Task.sleep(for: .milliseconds(150))
         await hints.settle()
-        #expect(hints.marks.isEmpty)
-        await looks(hints, until: { !hints.marks.isEmpty })
-        #expect(hints.marks.map(\.note.id) == ["a"])   // the second look: a stayed, b moved
-        await looks(hints, until: { hints.marks.count == 2 })
-        #expect(hints.marks.map(\.note.id) == ["a", "b"])
-        #expect(hints.marks.last?.frame == moving[1])
-        #expect(reads == 3)
+        // Nothing on after the first look; a, which stayed, after the second, and b, which moved, not yet; both after
+        // the third, and no look after that.
+        #expect(showing == [[], [], [.init(note: a, frame: still)]])
+        #expect(hints.marks == [.init(note: a, frame: still), .init(note: b, frame: moving[1])])
     }
 
     @Test func theLooksRunningOutShowTheLastLook() async {

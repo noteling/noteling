@@ -1,5 +1,4 @@
 #if DEBUG
-import Darwin
 import Foundation
 import Testing
 
@@ -25,28 +24,16 @@ struct ChatLayoutRegressionTests {
         child.standardOutput = handle
         child.standardError = handle
         try child.run()
-        let deadline = Date().addingTimeInterval(20)
-        while child.isRunning && Date() < deadline {
-            try await Task.sleep(for: .milliseconds(100))
-        }
-        let timedOut = child.isRunning
-        if timedOut {
-            let sample = Process()
-            sample.executableURL = URL(fileURLWithPath: "/usr/bin/sample")
-            sample.arguments = [String(child.processIdentifier), "1", "1", "-file", directory.appendingPathComponent("hang-sample.txt").path]
-            sample.standardOutput = handle
-            sample.standardError = handle
-            try? sample.run()
-            sample.waitUntilExit()
-            kill(child.processIdentifier, SIGKILL)
+        let end = try await ChildEnd.of(child, limit: 20) {
+            await ChildEnd.sample(child, to: directory.appendingPathComponent("hang-sample.txt"), output: handle)
             FileHandle.standardOutput.write(Data("CHAT LAYOUT: failure artifacts: \(directory.path)\n".utf8))
         }
-        child.waitUntilExit()
         let log = try String(contentsOf: output, encoding: .utf8)
-        #expect(!timedOut, "The chat main thread stopped responding after a follow-up. Child progress:\n\(log)")
-        #expect(child.terminationStatus == 0, "Hosted chat failed:\n\(log)")
-        #expect(log.contains("CHAT LAYOUT: conversation completed and chat responsive"), "The child did not finish the conversation:\n\(log)")
-        completed = !timedOut && child.terminationStatus == 0 && log.contains("CHAT LAYOUT: conversation completed and chat responsive")
+        let told = end.told(child, log: log)
+        #expect(!end.timedOut, "The chat main thread stopped responding after a follow-up. \(told)")
+        #expect(end.status == 0, "Hosted chat failed. \(told)")
+        #expect(log.contains("CHAT LAYOUT: conversation completed and chat responsive"), "The child did not finish the conversation. \(told)")
+        completed = !end.timedOut && end.status == 0 && log.contains("CHAT LAYOUT: conversation completed and chat responsive")
     }
 }
 #endif
