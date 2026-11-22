@@ -139,9 +139,17 @@ struct NoteAnchor: Codable, Equatable {
         return (words.intersection(slugWords).count, words.count)
     }
 
-    /// A hint for pages of a kind on the item's own name: kept with a named neighbour and its spot, by which it is
-    /// found on the other pages of the kind.
-    var isOnTheItemsName: Bool { pattern != nil && Self.namesTheItem(label, page: page) }
+    /// The roles of what is there to be read. Anything else (a button, a link, a role not listed here, none at all) is
+    /// taken to act.
+    static let rolesForReading: Set<String> = ["AXHeading", "AXImage", "AXStaticText"]
+
+    static func isForReading(_ role: String?) -> Bool { role.map(rolesForReading.contains) ?? false }
+
+    /// A hint for pages of a kind on the item's own name, its title or its picture: kept with a named neighbour and its
+    /// spot, by which it is found on the other pages of the kind. A control that acts is never that, whatever its
+    /// name: "Write a review for" one item and "Remove" another are both named by an item, and nothing in the names
+    /// and the addresses tells such controls from each other ("Track my recent order", "Cancel my recent order").
+    var isOnTheItemsName: Bool { pattern != nil && Self.isForReading(role) && Self.namesTheItem(label, page: page) }
 
     /// Found by the named control beside it: a hint on a control with no name, or on the item's own name. Any other
     /// hint is on its own control or none, whatever neighbour it carries (a title's hint, changed from pages like

@@ -321,6 +321,13 @@ final class WandController {
                     found = Self.nearest(page.elements.filter { $0.visible && anchor.isLikeElement(role: $0.role, label: $0.label) }, to: spot)?.frame
                 }
             }
+            // On the hint's own page its own control is scrolled away, and it acts (an older pen kept such a hint as
+            // the text of the words inside): further down, before the steps that look for a title. On another page
+            // of the kind it is a link to the hint's item, and the title there is looked for.
+            if found == nil, let own = anchor.page, own == page.key, page.elements.contains(where: {
+                !$0.visible && !NoteAnchor.isForReading($0.role) && anchor.matchesElement(role: $0.role, label: $0.label) }) {
+                below.append(note); continue
+            }
             var predicted = false
             // A control with no name, or the item's own: beside the named one it was next to, where that one is now.
             if found == nil, anchor.goesByItsNeighbour, let near = anchor.near, let named = Self.neighbour(near, in: page, spot: spot), let there = named.frame {
@@ -343,8 +350,9 @@ final class WandController {
             // A named control that isn't on the page is left out, not drawn where it was: the spot kept beside a
             // name says where it was, nothing more.
             // A hint on the item's own name with no such control here is the exception: it goes where it was,
-            // checked as any predicted mark is.
-            if found == nil, anchor.label == nil || anchor.isOnTheItemsName, let spot {
+            // checked as any predicted mark is. On text only with a neighbour kept: without one it may be an older
+            // pen's, on the words inside a button.
+            if found == nil, anchor.label == nil || (anchor.isOnTheItemsName && (anchor.role != "AXStaticText" || anchor.near != nil)), let spot {
                 found = spot
                 predicted = true
             }
@@ -394,15 +402,15 @@ final class WandController {
     }
 
     /// The control naming this page's item that a hint on another item's name (its title, its picture) goes on: of the
-    /// hint's role, its name the item's own by this page's address. Of several (the title and a carousel of like
-    /// items), the name with the most of its words in the address, in view or not: a like item's name in view is not
-    /// this item's, scrolled away. Of those, the name with the fewest words in all: "Set of 2" or "About" put to the
-    /// title is not the title. Of those, the same again by the words of one or two letters ("2 Pack" and "4 Pack"),
-    /// which never outdo a longer word. Of those as good, one in view before one scrolled away, and the one nearest
-    /// where the hint's control was in the window.
+    /// hint's role and not one that acts, its name the item's own by this page's address. Of several (the title and a
+    /// carousel of like items), the name with the most of its words in the address, in view or not: a like item's name
+    /// in view is not this item's, scrolled away. Of those, the name with the fewest words in all: "Set of 2" or
+    /// "About" put to the title is not the title. Of those, the same again by the words of one or two letters ("2 Pack"
+    /// and "4 Pack"), which never outdo a longer word. Of those as good, one in view before one scrolled away, and the
+    /// one nearest where the hint's control was in the window.
     static func itemsName(of anchor: NoteAnchor, in page: PageSnapshot, spot: CGRect?) -> PageElement? {
         guard let key = page.key else { return nil }
-        let named = page.elements.filter { $0.frame != nil && anchor.roleAgrees($0.role) && NoteAnchor.namesTheItem($0.label, page: key) }
+        let named = page.elements.filter { $0.frame != nil && anchor.roleAgrees($0.role) && NoteAnchor.isForReading($0.role) && NoteAnchor.namesTheItem($0.label, page: key) }
         let ranks = named.map { element in
             let long = NoteAnchor.itemWords(element.label, page: key), short = NoteAnchor.itemWords(element.label, page: key, short: true)
             return (long.inAddress, -long.all, short.inAddress, -short.all)
@@ -970,7 +978,8 @@ final class WandView: NSView {
     private func readPageForPaper(anchor: NoteAnchor, existing: StickyNote?, found: Bool) {
         pageForPaper = nil
         paperReads += 1         // a read begun for an earlier paper is not this one's, whether or not this one reads
-        guard found, anchor.page != nil, anchor.label == nil || NoteAnchor.namesTheItem(anchor.label, page: anchor.page),
+        guard found, anchor.page != nil,
+              anchor.label == nil || (NoteAnchor.isForReading(anchor.role) && NoteAnchor.namesTheItem(anchor.label, page: anchor.page)),
               anchor.domID == nil, existing?.anchor.near == nil,
               let bundle = controller.scene?.bundleID else { return }
         let read = paperReads
