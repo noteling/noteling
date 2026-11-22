@@ -202,6 +202,57 @@ struct ActingControlHintTests {
         #expect(V.landing(alone, on: Lamp.page(Lamp.urlB, [remove])) == .missing)
     }
 
+    /// Only a control that acts, by the hint's own name and of a role that agrees, puts it further down before the
+    /// title is looked for; and only where the hint's own is not in view. `variant` is A's title with a word put another
+    /// way, so it is found by the item's name alone.
+    static let variant = Lamp.titleA.replacingOccurrences(of: " & ", with: " ")
+
+    @Test(arguments: reading) func itsOwnTitleScrolledAwayLeavesAnotherOfTheItemsNameInView(_ role: String) throws {
+        let own = V.away(Self.element(role, Lamp.titleA)), other = Self.element(role, Self.variant, y: 300)
+        for near in [nil, P.nearA] {
+            let note = try Self.hint(role, Lamp.titleA, on: Lamp.urlA, near: near)
+            for beside in [[], [P.cartA]] { #expect(V.landing(note, on: Lamp.page(Lamp.urlA, [other, own] + beside)) == .on(other.frame!)) }
+            // One with the item's name just where the neighbour says.
+            let there = Self.element(role, Self.variant)
+            #expect(V.landing(note, on: Lamp.page(Lamp.urlA, [there, own, P.cartA])) == .on(there.frame!))
+        }
+    }
+
+    /// Two controls by its name, a plain one or the item's, one of them scrolled away: on the one in view.
+    @Test(arguments: ["AXButton", "AXLink"], ["Add to cart", Lamp.titleA, review + Lamp.titleA]) func anotherByItsNameScrolledAwayDoesNotMatter(_ role: String, _ name: String) throws {
+        let own = Self.element(role, name), again = V.away(Self.element(role, name, y: 300))
+        for kept in [role, "AXStaticText"] {
+            var note = try Self.hint(kept, name, on: Lamp.urlA)
+            for pattern in [note.anchor.pattern, nil] {
+                note.anchor.pattern = pattern
+                #expect(V.landing(note, on: Lamp.page(Lamp.urlA, [again, own])) == .on(own.frame!))
+            }
+        }
+    }
+
+    @Test(arguments: ["AXButton", "AXLink"]) func aControlOfAnotherRoleByItsNameIsNotItsOwn(_ role: String) throws {
+        let there = V.away(Self.element(role, Lamp.titleA)), other = Self.element("AXHeading", Self.variant, y: 300)
+        let title = try Self.hint("AXHeading", Lamp.titleA, on: Lamp.urlA)
+        #expect(V.landing(title, on: Lamp.page(Lamp.urlA, [other, there])) == .on(other.frame!))
+        let box = try Self.hint("AXCheckBox", Lamp.titleA, on: Lamp.urlA)
+        #expect(V.landing(box, on: Lamp.page(Lamp.urlA, [there])) == .missing)
+    }
+
+    @Test(arguments: ["AXButton", "AXLink"]) func aControlWhoseNameOnlyStartsAsItsDoesIsNotItsOwn(_ role: String) throws {
+        let like = V.away(Self.element(role, Lamp.titleA + " - Save")), other = Self.element("AXStaticText", Self.variant, y: 300)
+        var note = try Self.hint("AXStaticText", Lamp.titleA, on: Lamp.urlA)
+        #expect(note.anchor.isLikeElement(role: role, label: like.label))
+        #expect(V.landing(note, on: Lamp.page(Lamp.urlA, [other, like])) == .on(other.frame!))
+        note.anchor.pattern = nil
+        #expect(V.landing(note, on: Lamp.page(Lamp.urlA, [other, like])) == .missing)
+        // Nor is "Add to cart - Eggs" the "Add to cart - Milk" of this page.
+        for kept in [role, "AXStaticText"] {
+            var milk = try Self.hint(kept, "Add to cart - Milk", on: Lamp.urlA)
+            milk.anchor.pattern = nil
+            #expect(V.landing(milk, on: Lamp.page(Lamp.urlA, [V.away(Self.element(role, "Add to cart - Eggs"))])) == .missing)
+        }
+    }
+
     /// Its own page is the one with its page key: parameters that don't name the page change nothing; another slug for
     /// the same item is another page.
     @Test func itsOwnPageIsToldByThePageKey() throws {
@@ -258,5 +309,15 @@ struct ActingControlHintTests {
         try pen.open(Self.element(role, Lamp.titleA))
         try await pen.pageRead()
         #expect(try pen.keep(scope: 1).anchor.near == P.nearA)
+    }
+
+    /// Nor for what is there to be read under a name that is not the item's.
+    @Test(arguments: reading) func thePenReadsNoPageForAnotherName(_ role: String) async throws {
+        let reads = P.Reads(P.pageA), pen = P.Pen(on: Lamp.urlA, reads: reads)
+        try pen.open(Self.element(role, "Customer reviews"))
+        try await P.settle()
+        let note = try pen.keep(scope: 1)
+        #expect(note.anchor.label == "Customer reviews" && note.anchor.pattern != nil)
+        #expect(note.anchor.near == nil && reads.bundles.isEmpty)
     }
 }
