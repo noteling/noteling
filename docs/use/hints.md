@@ -56,7 +56,7 @@ when you leave a hint, and nothing goes anywhere but your own Mac until you shar
   controls, it is the one nearest where the hint was left. "Save changes" and "Save draft" share only "Save", so they
   are never taken for each other; nor are names that part at a plain word, as "Sign in with Google" and "Sign in with
   Apple" do. So a hint on "Write a review for lamp" isn't found at "Write a review for chair", nor one on "Add to
-  cart - Great Value Milk" at "Add to cart - Great Value Eggs".
+  cart - Great Value Milk" at "Add to cart - Great Value Eggs", also when the pages' addresses have those words.
 - **A name with a count.** "Notifications (3)" or "Shopping cart 1 item" is called something else when the count
   changes. When nothing on the page has the hint's name, its hint goes on the one control of the same kind whose name
   differs only in the count; with two or more of them, on none. A number is a count in brackets, or before a word such as
@@ -65,10 +65,16 @@ when you leave a hint, and nothing goes anywhere but your own Mac until you shar
   of its kind beside the named control it sits next to ("Add to cart"), where that control is now, and about the
   size it was: a section of the page around that spot is never taken for it. Of several controls by one name, the
   one nearest where the hint was left.
-- **The item's own name.** A hint for pages like this on the item's title or picture, whose name is that item's
-  alone (most of its words are in the page's address), is found on the next item's page the same way: beside the
-  control it sat next to, else where it was. A size, count, rating or price is not the item's name: like any named
-  control, it is left out on a page that doesn't have it.
+- **The item's own name.** A hint for **Pages like this** on the item's title or picture (a heading, a picture or plain
+  text), whose name is that item's alone (most of its words are in the page's address), is found on the next item's
+  page beside the control it sat next to, when something of its kind is there. Else it goes on that page's own item's
+  name: of the same kind of thing, the name with the most words of that page's address and the fewest others. Else it is
+  where it was, but for plain text with nothing kept beside it, which is left out. A size, count, rating or price is not
+  the item's name: like any named control, it is left out on a page that doesn't have it.
+- **A control named for its item.** A button, a link or any other control is never found by the item's name, as other
+  controls carry that name too: "Write a review for" one lamp, "Remove" the next. Its hint goes on the control with its
+  own name, or with one that differs as said above, or is left out. This includes a title that is a link, and a picture
+  that is a button.
 
 Turn the tags off with **Hints on pages** in Noteling's right-click menu, or in Settings. Hints then show only with
 the pen or ⌥ Option twice.
