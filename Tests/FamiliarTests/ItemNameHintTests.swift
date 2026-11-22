@@ -69,6 +69,16 @@ struct ItemNameHintTests {
         #expect(!NoteAnchor.namesTheItem(Self.titleA, page: nil))
     }
 
+    /// Short words are outside the share too: those of the address don't make a name of one that has half its longer
+    /// words there, and those it lacks don't spoil one that has them all.
+    @Test func shortWordsNeitherMakeNorSpoilTheItemsName() {
+        let a = PageKey.of(Self.urlA)
+        #expect(!NoteAnchor.namesTheItem("Velvet Cushion", page: a))
+        #expect(!NoteAnchor.namesTheItem("13 in Velvet Cushion", page: a))
+        #expect(NoteAnchor.namesTheItem("Velvet Lamp", page: a))
+        #expect(NoteAnchor.namesTheItem("Velvet Lamp, 2 Pk", page: a))
+    }
+
     /// Page B: a different title, the same "Add to cart" button, roughly where A's were.
     static let pageB = page(urlB, [
         element("AXHeading", titleB, CGRect(x: 500, y: 160, width: 400, height: 40)),
