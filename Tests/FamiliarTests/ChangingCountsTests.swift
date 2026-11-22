@@ -47,6 +47,9 @@ struct ChangingCountsTests {
         ("Notifications (3) open", "Notifications (4) open"),
         ("Notifications (0)", "Notifications (9)"),
         ("Messages, 1,000 unread messages", "Messages, 1 unread message"),
+        // Two counts in the name, one of them changed.
+        ("Notifications (3), 2 items", "Notifications (4), 2 items"),
+        ("Notifications (3), 2 items", "Notifications (3), 5 items"),
         // A "#" of the name's own, before the count and after it.
         ("#general: unread (3)", "#general: unread (4)"),
         ("Thread #12 comments (3)", "Thread #12 comments (14)"),
@@ -259,6 +262,11 @@ struct ChangingCountsTests {
         let others = ["Thread #13 comments (4)", "Thread #12 comments", "Thread #12 comments (2024)", "4 messages in #random", "Messages in #general", "#13: 1 unread message", "#12: unread messages"]
         let page = Self.page(others.map { Self.button($0) } + [Self.button(now, Self.elsewhere)])
         #expect(V.landing(Self.hint(was), on: page) == .on(Self.elsewhere))
+    }
+
+    /// The one such control, listed as in view with nowhere to put a hint: missing.
+    @Test(arguments: [nil, CGRect(x: 600, y: 300, width: 0, height: 0)]) func aControlWithNoFrameHasNone(_ frame: CGRect?) {
+        #expect(V.landing(Self.hint("Shopping cart 1 item"), on: Self.page([Self.button("Shopping cart 2 items", frame)])) == .missing)
     }
 
     @Test func twoSuchControlsAreNone() {
