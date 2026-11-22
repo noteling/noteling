@@ -170,6 +170,69 @@ struct ItemNameInViewTests {
         #expect(Self.landing(Self.alone(note), on: page) == .on(Self.like.frame!))
     }
 
+    // MARK: names with as many words in the address
+
+    /// B's title with more put to it: another listing, or a section about it.
+    static let longer = ["\(Lamp.titleB), Set of 2", "About \(Lamp.titleB)"].map { P.element("AXHeading", $0, like.frame!) }
+
+    @Test func theTitleWithMorePutToItIsNotTheTitleScrolledAway() async throws {
+        let note = try await Self.kept(on: P.titleA)
+        for other in Self.longer {
+            #expect(NoteAnchor.itemWords(other.label, page: PageKey.of(Lamp.urlB)).inAddress
+                    == NoteAnchor.itemWords(Lamp.titleB, page: PageKey.of(Lamp.urlB)).inAddress)
+            for cart in [Self.away(P.cartB, y: -400), P.cartB] {
+                let page = Lamp.page(Lamp.urlB, [Self.away(P.titleB, y: -600), cart, other])
+                #expect(Self.landing(note, on: page) == .below, "\(other.label ?? "")")
+                #expect(Self.landing(Self.alone(note), on: page) == .below, "\(other.label ?? "")")
+            }
+        }
+    }
+
+    /// Both in view, the longer one just where A's title was: B's title. And with the longer one scrolled away.
+    @Test func ofTheTitleAndOneWithMorePutToItItIsTheTitle() async throws {
+        let note = try await Self.kept(on: P.titleA)
+        for other in Self.longer {
+            var near = other
+            near.frame = P.titleA.frame
+            for names in [[near, P.titleB], [P.titleB, near], [Self.away(near), P.titleB]] {
+                let page = Lamp.page(Lamp.urlB, names + [Self.away(P.cartB)])
+                #expect(Self.landing(note, on: page) == .on(Self.frameB), "\(other.label ?? "")")
+                #expect(Self.landing(Self.alone(note), on: page) == .on(Self.frameB), "\(other.label ?? "")")
+            }
+        }
+    }
+
+    /// The fewest words count only among the names with the most in the address: one of two words, both in it, is not
+    /// the title.
+    @Test func aShortNameAllInTheAddressIsNotTheTitle() async throws {
+        let note = try await Self.kept(on: P.titleA)
+        let short = P.element("AXHeading", "Home Decor", P.titleA.frame!)
+        #expect(NoteAnchor.namesTheItem(short.label, page: PageKey.of(Lamp.urlB)))
+        for names in [[short, P.titleB, Self.longer[0]], [Self.longer[0], P.titleB, short]] {
+            let page = Lamp.page(Lamp.urlB, names + [Self.away(P.cartB)])
+            #expect(Self.landing(note, on: page) == .on(Self.frameB))
+            #expect(Self.landing(Self.alone(note), on: page) == .on(Self.frameB))
+        }
+    }
+
+    /// Known limit: B's title without its brand (which B's address has), and a like lamp named with it, which then has
+    /// more words in the address. In view it takes the hint: a wrong place. Scrolled away, it is a miss.
+    @Test func aLikeNameWithTheBrandTakesTheHintFromATitleWithoutIt() async throws {
+        let note = try await Self.kept(on: P.titleA)
+        let bare = P.element("AXHeading", "18 in Ribbed Ceramic Table Lamp with Ivory Pleated Shade", Self.frameB)
+        let blue = P.element("AXHeading", Lamp.titleB.replacingOccurrences(of: "Ivory", with: "Blue"), Self.like.frame!)
+        let both = Lamp.page(Lamp.urlB, [bare, blue, Self.away(P.cartB)])
+        #expect(Self.landing(note, on: both) == .on(blue.frame!))
+        #expect(Self.landing(Self.alone(note), on: both) == .on(blue.frame!))
+        // The cart in view: the neighbour finds the title, and with no neighbour it is the like lamp's again.
+        let cart = Lamp.page(Lamp.urlB, [bare, blue, P.cartB])
+        #expect(Self.landing(note, on: cart) == .on(Self.frameB))
+        #expect(Self.landing(Self.alone(note), on: cart) == .on(blue.frame!))
+        let miss = Lamp.page(Lamp.urlB, [bare, Self.away(blue), Self.away(P.cartB)])
+        #expect(Self.landing(note, on: miss) == .below)
+        #expect(Self.landing(Self.alone(note), on: miss) == .below)
+    }
+
     // MARK: as before
 
     @Test func aPriceIsFurtherDownWithItsNeighbour() async throws {

@@ -358,14 +358,16 @@ final class WandController {
     /// The control naming this page's item that a hint on another item's name (its title, its picture) goes on: of the
     /// hint's role, its name the item's own by this page's address. Of several (the title and a carousel of like
     /// items), the name with the most of its words in the address, in view or not: a like item's name in view is not
-    /// this item's, scrolled away. Of those as good, one in view before one scrolled away, and the one nearest where
-    /// the hint's control was in the window.
+    /// this item's, scrolled away. Of those, the name with the fewest words in all: "Set of 2" or "About" put to the
+    /// title is not the title. Of those as good, one in view before one scrolled away, and the one nearest where the
+    /// hint's control was in the window.
     static func itemsName(of anchor: NoteAnchor, in page: PageSnapshot, spot: CGRect?) -> PageElement? {
         guard let key = page.key else { return nil }
         let named = page.elements.filter { $0.frame != nil && anchor.roleAgrees($0.role) && NoteAnchor.namesTheItem($0.label, page: key) }
-        let words = named.map { NoteAnchor.itemWords($0.label, page: key).inAddress }
-        let most = words.max()
-        let best = zip(named, words).filter { $0.1 == most }.map(\.0)
+        let words = named.map { NoteAnchor.itemWords($0.label, page: key) }
+        let most = words.map(\.inAddress).max()
+        let fewest = words.filter { $0.inAddress == most }.map(\.all).min()
+        let best = zip(named, words).filter { $0.1.inAddress == most && $0.1.all == fewest }.map(\.0)
         let shown = best.filter(\.visible)
         return shown.isEmpty ? best.first : nearest(shown, to: spot)
     }
